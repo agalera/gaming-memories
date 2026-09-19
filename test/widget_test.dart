@@ -2,6 +2,7 @@ import 'dart:io';
 
 import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:forui/forui.dart';
 import 'package:gaming_memories/app.dart';
 import 'package:gaming_memories/controllers/library_controller.dart';
 import 'package:gaming_memories/models/app_settings.dart';
@@ -35,6 +36,7 @@ void main() {
     await tester.pump(const Duration(milliseconds: 200));
 
     expect(find.text('Screenshot library'), findsOneWidget);
+    expect(find.text('Color mode'), findsOneWidget);
     expect(find.text('Diablo IV'), findsOneWidget);
 
     await tester.pumpWidget(const SizedBox.shrink());
@@ -101,6 +103,51 @@ void main() {
     expect(find.text('25%'), findsOneWidget);
 
     await tester.pumpWidget(const SizedBox.shrink());
+  });
+
+  testWidgets('changes between dark and light modes', (tester) async {
+    final controller =
+        LibraryController(
+            configStore: _MemoryConfigStore(),
+            scanner: const LibraryScanner(),
+            providers: const [],
+          )
+          ..isInitializing = false
+          ..view = LibraryView.settings
+          ..settings = const AppSettings(
+            outputPath: '',
+            themeMode: AppThemeMode.dark,
+            diabloIV: ProviderSettings.disabled(),
+          );
+
+    await tester.pumpWidget(GamingMemoriesApp(controller: controller));
+    await tester.pump();
+    expect(
+      FTheme.of(tester.element(find.byType(FScaffold))).colors.brightness,
+      Brightness.dark,
+    );
+
+    await tester.tap(find.byKey(const ValueKey('theme-mode-light')));
+    await tester.pumpAndSettle();
+
+    expect(controller.settings.themeMode, AppThemeMode.light);
+    expect(
+      FTheme.of(tester.element(find.byType(FScaffold))).colors.brightness,
+      Brightness.light,
+    );
+
+    tester.platformDispatcher.platformBrightnessTestValue = Brightness.dark;
+    addTearDown(tester.platformDispatcher.clearPlatformBrightnessTestValue);
+    controller.previewTheme(AppThemeMode.system);
+    await tester.pumpAndSettle();
+
+    expect(
+      FTheme.of(tester.element(find.byType(FScaffold))).colors.brightness,
+      Brightness.dark,
+    );
+
+    await tester.pumpWidget(const SizedBox.shrink());
+    await tester.pump(const Duration(milliseconds: 200));
   });
 
   testWidgets('edits Steam ignored and custom game lists', (tester) async {

@@ -25,6 +25,7 @@ class _SettingsPageState extends State<SettingsPage> {
   late final TextEditingController _steamCustomNameController;
   late final List<String> _steamIgnoredGames;
   late final List<_CustomGame> _steamCustomGames;
+  late AppThemeMode _themeMode;
   late bool _diabloEnabled;
   late bool _steamEnabled;
   late bool _steamOnlineGallery;
@@ -54,6 +55,7 @@ class _SettingsPageState extends State<SettingsPage> {
     _steamEnabled = steam.enabled;
     _steamOnlineGallery = steam.onlineGallery;
     _steamDownloadCovers = steam.downloadCovers;
+    _themeMode = widget.controller.settings.themeMode;
   }
 
   @override
@@ -87,6 +89,40 @@ class _SettingsPageState extends State<SettingsPage> {
                 ),
               ),
               const SizedBox(height: 22),
+              _sectionTitle(context, 'Appearance'),
+              const SizedBox(height: 10),
+              FCard(
+                child: Padding(
+                  padding: const EdgeInsets.all(20),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Color mode',
+                        style: context.theme.typography.body.lg.copyWith(
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                      const SizedBox(height: 6),
+                      Text(
+                        'Use the system mode or choose a fixed app mode.',
+                        style: context.theme.typography.body.sm.copyWith(
+                          color: context.theme.colors.mutedForeground,
+                        ),
+                      ),
+                      const SizedBox(height: 16),
+                      _ThemeModeSelector(
+                        value: _themeMode,
+                        onChange: (value) {
+                          setState(() => _themeMode = value);
+                          widget.controller.previewTheme(value);
+                        },
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+              const SizedBox(height: 28),
               _sectionTitle(context, 'Library'),
               const SizedBox(height: 10),
               FCard(
@@ -533,6 +569,7 @@ class _SettingsPageState extends State<SettingsPage> {
   Future<void> _save() async {
     final next = AppSettings(
       outputPath: _outputController.text.trim(),
+      themeMode: _themeMode,
       diabloIV: ProviderSettings(
         enabled: _diabloEnabled,
         sourcePath: _diabloController.text.trim(),
@@ -601,6 +638,43 @@ class _CustomGame {
 
   final String appId;
   final String name;
+}
+
+class _ThemeModeSelector extends StatelessWidget {
+  const _ThemeModeSelector({required this.value, required this.onChange});
+
+  final AppThemeMode value;
+  final ValueChanged<AppThemeMode> onChange;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        for (final mode in AppThemeMode.values) ...[
+          if (mode != AppThemeMode.system) const SizedBox(width: 10),
+          Expanded(
+            child: FButton(
+              key: ValueKey('theme-mode-${mode.name}'),
+              variant: value == mode
+                  ? FButtonVariant.primary
+                  : FButtonVariant.outline,
+              onPress: () => onChange(mode),
+              prefix: Icon(switch (mode) {
+                AppThemeMode.system => FLucideIcons.monitor,
+                AppThemeMode.light => FLucideIcons.sun,
+                AppThemeMode.dark => FLucideIcons.moon,
+              }),
+              child: Text(switch (mode) {
+                AppThemeMode.system => 'System',
+                AppThemeMode.light => 'Light',
+                AppThemeMode.dark => 'Dark',
+              }),
+            ),
+          ),
+        ],
+      ],
+    );
+  }
 }
 
 class _CredentialHelpSection extends StatelessWidget {

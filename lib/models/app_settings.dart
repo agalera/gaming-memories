@@ -1,3 +1,18 @@
+enum AppThemeMode {
+  system,
+  light,
+  dark;
+
+  factory AppThemeMode.fromJson(Object? value) {
+    for (final mode in values) {
+      if (mode.name == value) {
+        return mode;
+      }
+    }
+    return system;
+  }
+}
+
 class ProviderSettings {
   const ProviderSettings({required this.enabled, required this.sourcePath});
 
@@ -96,26 +111,31 @@ class AppSettings {
     required this.outputPath,
     required this.diabloIV,
     this.steam = const SteamSettings.disabled(),
+    this.themeMode = AppThemeMode.system,
   });
 
   const AppSettings.defaults()
     : outputPath = '',
       diabloIV = const ProviderSettings.disabled(),
-      steam = const SteamSettings.disabled();
+      steam = const SteamSettings.disabled(),
+      themeMode = AppThemeMode.system;
 
   final String outputPath;
   final ProviderSettings diabloIV;
   final SteamSettings steam;
+  final AppThemeMode themeMode;
 
   AppSettings copyWith({
     String? outputPath,
     ProviderSettings? diabloIV,
     SteamSettings? steam,
+    AppThemeMode? themeMode,
   }) {
     return AppSettings(
       outputPath: outputPath ?? this.outputPath,
       diabloIV: diabloIV ?? this.diabloIV,
       steam: steam ?? this.steam,
+      themeMode: themeMode ?? this.themeMode,
     );
   }
 
@@ -131,12 +151,14 @@ class AppSettings {
       steam: steamJson is Map<String, Object?>
           ? SteamSettings.fromJson(steamJson)
           : const SteamSettings.disabled(),
+      themeMode: AppThemeMode.fromJson(json['themeMode']),
     );
   }
 
   Map<String, Object?> toJson() => {
-    'version': 2,
+    'version': 3,
     'outputPath': outputPath,
+    'themeMode': themeMode.name,
     'diabloIV': diabloIV.toJson(),
     'steam': steam.toJson(),
   };

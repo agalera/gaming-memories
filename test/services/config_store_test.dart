@@ -14,6 +14,7 @@ void main() {
     );
     const expected = AppSettings(
       outputPath: '/screenshots',
+      themeMode: AppThemeMode.dark,
       diabloIV: ProviderSettings(enabled: true, sourcePath: '/diablo'),
       steam: SteamSettings(
         enabled: true,
@@ -31,6 +32,7 @@ void main() {
     final actual = await store.load();
 
     expect(actual.outputPath, expected.outputPath);
+    expect(actual.themeMode, AppThemeMode.dark);
     expect(actual.diabloIV.enabled, isTrue);
     expect(actual.diabloIV.sourcePath, expected.diabloIV.sourcePath);
     expect(actual.steam.enabled, isTrue);

@@ -102,6 +102,11 @@ class LibraryController extends ChangeNotifier {
     notifyListeners();
   }
 
+  void previewTheme(AppThemeMode themeMode) {
+    settings = settings.copyWith(themeMode: themeMode);
+    notifyListeners();
+  }
+
   Future<void> saveSettings(AppSettings next) async {
     await _run(() async {
       _setProgress('Saving settings…');
