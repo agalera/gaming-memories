@@ -38,6 +38,14 @@ void main() {
     expect(find.text('Screenshot library'), findsOneWidget);
     expect(find.text('Color mode'), findsOneWidget);
     expect(find.text('Diablo IV'), findsOneWidget);
+    expect(
+      tester
+          .widget<FButton>(
+            find.byKey(const ValueKey('settings-sidebar-button')),
+          )
+          .selected,
+      isTrue,
+    );
 
     await tester.pumpWidget(const SizedBox.shrink());
   });
@@ -79,6 +87,21 @@ void main() {
     expect(controller.view, LibraryView.platform);
     expect(controller.pageTitle, 'PC');
     expect(controller.visibleScreenshots, hasLength(1));
+    expect(find.text('Diablo IV  1'), findsOneWidget);
+
+    await tester.tap(find.byKey(const ValueKey('platform-toggle-PC')));
+    await tester.pump(const Duration(milliseconds: 300));
+
+    expect(controller.view, LibraryView.platform);
+    expect(find.text('Diablo IV  1'), findsNothing);
+
+    await tester.tap(find.byKey(const ValueKey('platform-toggle-PC')));
+    await tester.pump(const Duration(milliseconds: 300));
+    await tester.tap(find.text('Diablo IV  1'));
+    await tester.pump();
+
+    expect(controller.view, LibraryView.album);
+    expect(controller.pageTitle, 'Diablo IV');
 
     await tester.pumpWidget(const SizedBox.shrink());
     await tester.pump(const Duration(milliseconds: 200));

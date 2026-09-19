@@ -13,13 +13,12 @@ class LibrarySidebar extends StatelessWidget {
     final albumGroups = controller.library.albumsByPlatform.entries.map((
       entry,
     ) {
-      return FSidebarItem(
-        icon: const Icon(FLucideIcons.monitor),
-        label: Text(entry.key),
+      return _PlatformSidebarItem(
+        key: ValueKey('platform-${entry.key}'),
+        platform: entry.key,
         selected:
             controller.view == LibraryView.platform &&
             controller.selectedPlatform == entry.key,
-        initiallyExpanded: true,
         onPress: () => controller.showPlatform(entry.key),
         children: entry.value.map((album) {
           final selected =
@@ -70,7 +69,9 @@ class LibrarySidebar extends StatelessWidget {
       footer: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 16),
         child: FButton(
+          key: const ValueKey('settings-sidebar-button'),
           variant: FButtonVariant.ghost,
+          selected: controller.view == LibraryView.settings,
           mainAxisSize: MainAxisSize.max,
           prefix: const Icon(FLucideIcons.settings),
           onPress: controller.showSettings,
@@ -111,6 +112,88 @@ class LibrarySidebar extends StatelessWidget {
                 ]
               : albumGroups,
         ),
+      ],
+    );
+  }
+}
+
+class _PlatformSidebarItem extends StatefulWidget {
+  const _PlatformSidebarItem({
+    required this.platform,
+    required this.selected,
+    required this.onPress,
+    required this.children,
+    super.key,
+  });
+
+  final String platform;
+  final bool selected;
+  final VoidCallback onPress;
+  final List<Widget> children;
+
+  @override
+  State<_PlatformSidebarItem> createState() => _PlatformSidebarItemState();
+}
+
+class _PlatformSidebarItemState extends State<_PlatformSidebarItem> {
+  bool _expanded = true;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Row(
+          children: [
+            Expanded(
+              child: FButton(
+                key: ValueKey('platform-label-${widget.platform}'),
+                variant: FButtonVariant.ghost,
+                size: FButtonSizeVariant.sm,
+                selected: widget.selected,
+                mainAxisSize: MainAxisSize.max,
+                mainAxisAlignment: MainAxisAlignment.start,
+                semanticsLabel: 'Show ${widget.platform} timeline',
+                prefix: const Icon(FLucideIcons.monitor),
+                onPress: widget.onPress,
+                child: Text(widget.platform),
+              ),
+            ),
+            const SizedBox(width: 2),
+            FButton.icon(
+              key: ValueKey('platform-toggle-${widget.platform}'),
+              variant: FButtonVariant.ghost,
+              size: FButtonSizeVariant.sm,
+              selected: widget.selected,
+              semanticsLabel: _expanded
+                  ? 'Collapse ${widget.platform} albums'
+                  : 'Expand ${widget.platform} albums',
+              onPress: () => setState(() => _expanded = !_expanded),
+              child: AnimatedRotation(
+                turns: _expanded ? 0.25 : 0,
+                duration: const Duration(milliseconds: 150),
+                child: const Icon(FLucideIcons.chevronRight),
+              ),
+            ),
+          ],
+        ),
+        if (_expanded)
+          Padding(
+            padding: const EdgeInsets.only(left: 24, top: 4),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                for (
+                  var index = 0;
+                  index < widget.children.length;
+                  index++
+                ) ...[
+                  if (index > 0) const SizedBox(height: 4),
+                  widget.children[index],
+                ],
+              ],
+            ),
+          ),
       ],
     );
   }
