@@ -82,7 +82,9 @@ class LibraryScanner {
         recursive: true,
         followLinks: false,
       )) {
-        if (entity is! File || !_isImage(entity.path)) {
+        if (entity is! File ||
+            !_isImage(entity.path) ||
+            p.basename(entity.path).toLowerCase() == 'cover.jpg') {
           continue;
         }
 

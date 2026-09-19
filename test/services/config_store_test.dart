@@ -15,6 +15,16 @@ void main() {
     const expected = AppSettings(
       outputPath: '/screenshots',
       diabloIV: ProviderSettings(enabled: true, sourcePath: '/diablo'),
+      steam: SteamSettings(
+        enabled: true,
+        userdataPath: '/steam',
+        onlineGallery: true,
+        userId: '7656119',
+        apiKey: 'secret',
+        downloadCovers: false,
+        ignoredGames: ['10'],
+        customGames: {'20': 'Custom Game'},
+      ),
     );
 
     await store.save(expected);
@@ -23,5 +33,13 @@ void main() {
     expect(actual.outputPath, expected.outputPath);
     expect(actual.diabloIV.enabled, isTrue);
     expect(actual.diabloIV.sourcePath, expected.diabloIV.sourcePath);
+    expect(actual.steam.enabled, isTrue);
+    expect(actual.steam.userdataPath, '/steam');
+    expect(actual.steam.onlineGallery, isTrue);
+    expect(actual.steam.userId, '7656119');
+    expect(actual.steam.apiKey, 'secret');
+    expect(actual.steam.downloadCovers, isFalse);
+    expect(actual.steam.ignoredGames, ['10']);
+    expect(actual.steam.customGames, {'20': 'Custom Game'});
   });
 }

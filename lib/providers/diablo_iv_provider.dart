@@ -1,31 +1,35 @@
 import 'dart:io';
 
-import 'package:crypto/crypto.dart';
 import 'package:path/path.dart' as p;
 
 import '../models/app_settings.dart';
 import '../services/library_scanner.dart';
+import '../services/media_importer.dart';
+import 'screenshot_provider.dart';
 
-class ImportResult {
-  const ImportResult({required this.imported, required this.skipped});
+class DiabloIVProvider implements ScreenshotProvider {
+  const DiabloIVProvider({this.importer = const MediaImporter()});
 
-  const ImportResult.empty() : imported = 0, skipped = 0;
-
-  final int imported;
-  final int skipped;
-}
-
-class DiabloIVProvider {
-  const DiabloIVProvider();
+  final MediaImporter importer;
 
   static const id = 'diablo_4';
-  static const name = 'Diablo IV';
+  static const gameName = 'Diablo IV';
   static const platform = 'PC';
   static const _extensions = {'.jpg', '.jpeg', '.png'};
 
-  Future<ImportResult> collect(AppSettings settings) async {
+  @override
+  String get name => gameName;
+
+  @override
+  bool isEnabled(AppSettings settings) => settings.diabloIV.enabled;
+
+  @override
+  Future<ImportResult> collect(
+    AppSettings settings, {
+    ProgressCallback? onProgress,
+  }) async {
     if (!settings.diabloIV.enabled) {
-      return const ImportResult.empty();
+      return ImportResult.empty(name);
     }
 
     final outputPath = settings.outputPath.trim();
@@ -41,36 +45,58 @@ class DiabloIVProvider {
     }
 
     final destination = Directory(
-      p.join(expandUserPath(outputPath), platform, name),
+      p.join(expandUserPath(outputPath), platform, gameName),
     );
     await destination.create(recursive: true);
 
-    var imported = 0;
-    var skipped = 0;
+    onProgress?.call(
+      const ProviderProgress(message: 'Scanning Diablo IV screenshots…'),
+    );
+    final files = <File>[];
 
     for (final sourceDirectory in sourceDirectories) {
       if (!await sourceDirectory.exists()) {
         continue;
       }
 
-      final files = await sourceDirectory
+      final sourceFiles = await sourceDirectory
           .list(followLinks: false)
           .where((entity) => entity is File && _isScreenshot(entity.path))
           .cast<File>()
           .toList();
-      files.sort((left, right) => left.path.compareTo(right.path));
+      files.addAll(sourceFiles);
+    }
+    files.sort((left, right) => left.path.compareTo(right.path));
 
-      for (final source in files) {
-        final copied = await _copyScreenshot(source, destination);
-        if (copied) {
-          imported++;
-        } else {
-          skipped++;
-        }
+    var imported = 0;
+    var skipped = 0;
+    for (var index = 0; index < files.length; index++) {
+      onProgress?.call(
+        ProviderProgress(
+          message: 'Importing Diablo IV screenshots…',
+          completed: index,
+          total: files.length,
+        ),
+      );
+      final copied = await importer.copyByModifiedDate(
+        files[index],
+        destination,
+      );
+      if (copied) {
+        imported++;
+      } else {
+        skipped++;
       }
     }
+    onProgress?.call(
+      ProviderProgress(
+        message: 'Processed Diablo IV screenshots.',
+        completed: files.length,
+        total: files.length,
+      ),
+    );
 
-    return ImportResult(imported: imported, skipped: skipped);
+    return ImportResult(provider: name, imported: imported, skipped: skipped);
   }
 
   List<Directory> _sourceDirectories(String configuredPath) {
@@ -96,42 +122,5 @@ class DiabloIVProvider {
 
   bool _isScreenshot(String path) {
     return _extensions.contains(p.extension(path).toLowerCase());
-  }
-
-  Future<bool> _copyScreenshot(File source, Directory destination) async {
-    final stat = await source.stat();
-    final extension = p.extension(source.path).toLowerCase();
-    final baseName = _formatDate(stat.modified);
-    var target = File(p.join(destination.path, '$baseName$extension'));
-
-    if (await target.exists()) {
-      final sourceHash = await _hash(source);
-      if (sourceHash == await _hash(target)) {
-        return false;
-      }
-
-      target = File(
-        p.join(destination.path, '${baseName}_$sourceHash$extension'),
-      );
-      if (await target.exists() && sourceHash == await _hash(target)) {
-        return false;
-      }
-    }
-
-    await source.copy(target.path);
-    await target.setLastModified(stat.modified);
-    return true;
-  }
-
-  Future<String> _hash(File file) async {
-    return (await sha1.bind(file.openRead()).first).toString();
-  }
-
-  String _formatDate(DateTime value) {
-    String two(int number) => number.toString().padLeft(2, '0');
-
-    return '${value.year.toString().padLeft(4, '0')}-'
-        '${two(value.month)}-${two(value.day)}_'
-        '${two(value.hour)}-${two(value.minute)}-${two(value.second)}';
   }
 }

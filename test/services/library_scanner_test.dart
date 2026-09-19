@@ -13,6 +13,7 @@ void main() {
     await File(p.join(game.path, '2026-01-02_03-04-05.jpg')).writeAsString('a');
     await File(p.join(game.path, '2026-02-03_04-05-06.png')).writeAsString('b');
     await File(p.join(game.path, 'notes.txt')).writeAsString('ignored');
+    await File(p.join(game.path, 'cover.jpg')).writeAsString('cover');
 
     final library = await const LibraryScanner().scan(output.path);
 

@@ -17,7 +17,15 @@ class SettingsPage extends StatefulWidget {
 class _SettingsPageState extends State<SettingsPage> {
   late final TextEditingController _outputController;
   late final TextEditingController _diabloController;
+  late final TextEditingController _steamPathController;
+  late final TextEditingController _steamUserController;
+  late final TextEditingController _steamKeyController;
+  late final TextEditingController _steamIgnoredController;
+  late final TextEditingController _steamCustomController;
   late bool _diabloEnabled;
+  late bool _steamEnabled;
+  late bool _steamOnlineGallery;
+  late bool _steamDownloadCovers;
 
   @override
   void initState() {
@@ -28,13 +36,33 @@ class _SettingsPageState extends State<SettingsPage> {
     _diabloController = TextEditingController(
       text: widget.controller.settings.diabloIV.sourcePath,
     );
+    final steam = widget.controller.settings.steam;
+    _steamPathController = TextEditingController(text: steam.userdataPath);
+    _steamUserController = TextEditingController(text: steam.userId);
+    _steamKeyController = TextEditingController(text: steam.apiKey);
+    _steamIgnoredController = TextEditingController(
+      text: steam.ignoredGames.join(', '),
+    );
+    _steamCustomController = TextEditingController(
+      text: steam.customGames.entries
+          .map((entry) => '${entry.key} = ${entry.value}')
+          .join('\n'),
+    );
     _diabloEnabled = widget.controller.settings.diabloIV.enabled;
+    _steamEnabled = steam.enabled;
+    _steamOnlineGallery = steam.onlineGallery;
+    _steamDownloadCovers = steam.downloadCovers;
   }
 
   @override
   void dispose() {
     _outputController.dispose();
     _diabloController.dispose();
+    _steamPathController.dispose();
+    _steamUserController.dispose();
+    _steamKeyController.dispose();
+    _steamIgnoredController.dispose();
+    _steamCustomController.dispose();
     super.dispose();
   }
 
@@ -166,6 +194,146 @@ class _SettingsPageState extends State<SettingsPage> {
                   ),
                 ),
               ),
+              const SizedBox(height: 16),
+              FCard(
+                child: Padding(
+                  padding: const EdgeInsets.all(20),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          Container(
+                            width: 44,
+                            height: 44,
+                            decoration: BoxDecoration(
+                              color: context.theme.colors.muted,
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            child: const Icon(FLucideIcons.gamepad2),
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  'Steam',
+                                  style: context.theme.typography.body.lg
+                                      .copyWith(fontWeight: FontWeight.w700),
+                                ),
+                                const SizedBox(height: 2),
+                                Text(
+                                  'PC · Local and online screenshots',
+                                  style: context.theme.typography.body.sm
+                                      .copyWith(
+                                        color: context
+                                            .theme
+                                            .colors
+                                            .mutedForeground,
+                                      ),
+                                ),
+                              ],
+                            ),
+                          ),
+                          FSwitch(
+                            value: _steamEnabled,
+                            semanticsLabel: 'Enable Steam',
+                            onChange: (value) {
+                              setState(() => _steamEnabled = value);
+                            },
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 20),
+                      _DirectoryField(
+                        controller: _steamPathController,
+                        label: 'Steam folder',
+                        hint: 'auto or /path/to/Steam',
+                        enabled: _steamEnabled,
+                        onBrowse: () => _chooseDirectory(
+                          controller: _steamPathController,
+                          title: 'Choose the Steam folder',
+                        ),
+                      ),
+                      const SizedBox(height: 16),
+                      _SwitchSetting(
+                        label: 'Download game covers',
+                        description: 'Save a cover.jpg file in each album.',
+                        value: _steamDownloadCovers,
+                        enabled: _steamEnabled,
+                        onChange: (value) {
+                          setState(() => _steamDownloadCovers = value);
+                        },
+                      ),
+                      const SizedBox(height: 12),
+                      _SwitchSetting(
+                        label: 'Import online gallery',
+                        description: 'Import public screenshots from Steam.',
+                        value: _steamOnlineGallery,
+                        enabled: _steamEnabled,
+                        onChange: (value) {
+                          setState(() => _steamOnlineGallery = value);
+                        },
+                      ),
+                      const SizedBox(height: 16),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: FTextField(
+                              control: FTextFieldControl.managed(
+                                controller: _steamUserController,
+                              ),
+                              label: const Text('Steam user ID'),
+                              hint: '7656119…',
+                              enabled: _steamEnabled,
+                            ),
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: FTextField.password(
+                              control: FTextFieldControl.managed(
+                                controller: _steamKeyController,
+                              ),
+                              label: const Text('Steam Web API key'),
+                              hint: 'Required for game names',
+                              enabled: _steamEnabled,
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 16),
+                      FTextField(
+                        control: FTextFieldControl.managed(
+                          controller: _steamIgnoredController,
+                        ),
+                        label: const Text('Ignored app IDs'),
+                        hint: '1234, 5678',
+                        description: const Text(
+                          'Separate app IDs with commas or new lines.',
+                        ),
+                        minLines: 2,
+                        maxLines: 3,
+                        enabled: _steamEnabled,
+                      ),
+                      const SizedBox(height: 16),
+                      FTextField(
+                        control: FTextFieldControl.managed(
+                          controller: _steamCustomController,
+                        ),
+                        label: const Text('Custom game names'),
+                        hint: '1234 = My Game',
+                        description: const Text(
+                          'Enter one app ID and game name on each line.',
+                        ),
+                        minLines: 3,
+                        maxLines: 6,
+                        enabled: _steamEnabled,
+                      ),
+                    ],
+                  ),
+                ),
+              ),
               const SizedBox(height: 24),
               Row(
                 children: [
@@ -213,14 +381,86 @@ class _SettingsPageState extends State<SettingsPage> {
   }
 
   Future<void> _save() async {
+    final ignoredGames = _steamIgnoredController.text
+        .split(RegExp(r'[,\n]'))
+        .map((value) => value.trim())
+        .where((value) => value.isNotEmpty)
+        .toList(growable: false);
+    final customGames = <String, String>{};
+    for (final line in _steamCustomController.text.split('\n')) {
+      final separator = line.indexOf('=');
+      if (separator < 1) {
+        continue;
+      }
+      final appId = line.substring(0, separator).trim();
+      final name = line.substring(separator + 1).trim();
+      if (appId.isNotEmpty && name.isNotEmpty) {
+        customGames[appId] = name;
+      }
+    }
     final next = AppSettings(
       outputPath: _outputController.text.trim(),
       diabloIV: ProviderSettings(
         enabled: _diabloEnabled,
         sourcePath: _diabloController.text.trim(),
       ),
+      steam: SteamSettings(
+        enabled: _steamEnabled,
+        userdataPath: _steamPathController.text.trim(),
+        onlineGallery: _steamOnlineGallery,
+        userId: _steamUserController.text.trim(),
+        apiKey: _steamKeyController.text.trim(),
+        downloadCovers: _steamDownloadCovers,
+        ignoredGames: ignoredGames,
+        customGames: customGames,
+      ),
     );
     await widget.controller.saveSettings(next);
+  }
+}
+
+class _SwitchSetting extends StatelessWidget {
+  const _SwitchSetting({
+    required this.label,
+    required this.description,
+    required this.value,
+    required this.enabled,
+    required this.onChange,
+  });
+
+  final String label;
+  final String description;
+  final bool value;
+  final bool enabled;
+  final ValueChanged<bool> onChange;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(label, style: context.theme.typography.body.sm),
+              const SizedBox(height: 2),
+              Text(
+                description,
+                style: context.theme.typography.body.xs.copyWith(
+                  color: context.theme.colors.mutedForeground,
+                ),
+              ),
+            ],
+          ),
+        ),
+        FSwitch(
+          value: value,
+          enabled: enabled,
+          semanticsLabel: label,
+          onChange: onChange,
+        ),
+      ],
+    );
   }
 }
 

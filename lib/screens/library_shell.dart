@@ -51,6 +51,11 @@ class _LibraryShellState extends State<LibraryShell> {
           ),
           child: Column(
             children: [
+              if (controller.isBusy && controller.progressMessage != null)
+                _ProgressBanner(
+                  message: controller.progressMessage!,
+                  value: controller.progressValue,
+                ),
               if (controller.message != null || controller.error != null)
                 _StatusBanner(
                   message: controller.error ?? controller.message!,
@@ -74,7 +79,8 @@ class _LibraryShellState extends State<LibraryShell> {
         key: ValueKey(
           '${controller.settings.outputPath}|'
           '${controller.settings.diabloIV.enabled}|'
-          '${controller.settings.diabloIV.sourcePath}',
+          '${controller.settings.diabloIV.sourcePath}|'
+          '${controller.settings.steam.toJson()}',
         ),
         controller: controller,
       );
@@ -85,6 +91,57 @@ class _LibraryShellState extends State<LibraryShell> {
       description: controller.pageDescription,
       needsSetup: controller.settings.outputPath.trim().isEmpty,
       onSetup: controller.showSettings,
+    );
+  }
+}
+
+class _ProgressBanner extends StatelessWidget {
+  const _ProgressBanner({required this.message, required this.value});
+
+  final String message;
+  final double? value;
+
+  @override
+  Widget build(BuildContext context) {
+    final progress = value;
+    final percent = progress == null ? null : (progress * 100).round();
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.fromLTRB(24, 10, 24, 12),
+      color: context.theme.colors.muted,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  message,
+                  style: context.theme.typography.body.sm.copyWith(
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ),
+              if (percent != null)
+                Text(
+                  '$percent%',
+                  style: context.theme.typography.body.xs.copyWith(
+                    color: context.theme.colors.mutedForeground,
+                  ),
+                ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          if (progress == null)
+            const FProgress(semanticsLabel: 'Collection in progress')
+          else
+            FDeterminateProgress(
+              value: progress,
+              semanticsLabel: 'Collection progress: $percent percent',
+            ),
+        ],
+      ),
     );
   }
 }

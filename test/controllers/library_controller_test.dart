@@ -1,7 +1,10 @@
+import 'dart:async';
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:gaming_memories/controllers/library_controller.dart';
+import 'package:gaming_memories/models/app_settings.dart';
 import 'package:gaming_memories/models/library.dart';
-import 'package:gaming_memories/providers/diablo_iv_provider.dart';
+import 'package:gaming_memories/providers/screenshot_provider.dart';
 import 'package:gaming_memories/services/config_store.dart';
 import 'package:gaming_memories/services/library_scanner.dart';
 
@@ -10,7 +13,7 @@ void main() {
     final controller = LibraryController(
       configStore: const ConfigStore(filePath: 'unused'),
       scanner: const LibraryScanner(),
-      diabloIVProvider: const DiabloIVProvider(),
+      providers: const [],
     );
     final older = ScreenshotItem(
       path: '/pc-old.jpg',
@@ -49,4 +52,53 @@ void main() {
     expect(controller.selectedGame, isNull);
     expect(controller.visibleScreenshots, [newer, older]);
   });
+
+  test('reports provider progress during collection', () async {
+    final provider = _ProgressProvider();
+    final controller = LibraryController(
+      configStore: const ConfigStore(filePath: 'unused'),
+      scanner: const LibraryScanner(),
+      providers: [provider],
+    );
+
+    final collection = controller.collect();
+    await Future<void>.delayed(Duration.zero);
+
+    expect(controller.isBusy, isTrue);
+    expect(controller.progressMessage, 'Importing test screenshots…');
+    expect(controller.progressValue, 0.5);
+
+    provider.release.complete();
+    await collection;
+
+    expect(controller.isBusy, isFalse);
+    expect(controller.progressMessage, isNull);
+    expect(controller.progressValue, isNull);
+  });
+}
+
+class _ProgressProvider implements ScreenshotProvider {
+  final release = Completer<void>();
+
+  @override
+  String get name => 'Test';
+
+  @override
+  bool isEnabled(AppSettings settings) => true;
+
+  @override
+  Future<ImportResult> collect(
+    AppSettings settings, {
+    ProgressCallback? onProgress,
+  }) async {
+    onProgress?.call(
+      const ProviderProgress(
+        message: 'Importing test screenshots…',
+        completed: 1,
+        total: 2,
+      ),
+    );
+    await release.future;
+    return const ImportResult(provider: 'Test', imported: 1, skipped: 0);
+  }
 }

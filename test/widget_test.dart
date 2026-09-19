@@ -5,7 +5,6 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:gaming_memories/app.dart';
 import 'package:gaming_memories/controllers/library_controller.dart';
 import 'package:gaming_memories/models/library.dart';
-import 'package:gaming_memories/providers/diablo_iv_provider.dart';
 import 'package:gaming_memories/services/config_store.dart';
 import 'package:gaming_memories/services/library_scanner.dart';
 import 'package:path/path.dart' as p;
@@ -19,7 +18,7 @@ void main() {
         filePath: p.join(directory.path, 'settings.json'),
       ),
       scanner: const LibraryScanner(),
-      diabloIVProvider: const DiabloIVProvider(),
+      providers: const [],
     );
     await tester.runAsync(controller.initialize);
 
@@ -48,7 +47,7 @@ void main() {
         filePath: p.join(directory.path, 'settings.json'),
       ),
       scanner: const LibraryScanner(),
-      diabloIVProvider: const DiabloIVProvider(),
+      providers: const [],
     );
     await tester.runAsync(controller.initialize);
     controller.library = ScreenshotLibrary(
@@ -80,5 +79,26 @@ void main() {
 
     await tester.pumpWidget(const SizedBox.shrink());
     await tester.pump(const Duration(milliseconds: 200));
+  });
+
+  testWidgets('shows collection progress with a percentage', (tester) async {
+    final controller =
+        LibraryController(
+            configStore: const ConfigStore(filePath: 'unused'),
+            scanner: const LibraryScanner(),
+            providers: const [],
+          )
+          ..isInitializing = false
+          ..isBusy = true
+          ..progressMessage = 'Importing Steam screenshots…'
+          ..progressValue = 0.25;
+
+    await tester.pumpWidget(GamingMemoriesApp(controller: controller));
+    await tester.pump();
+
+    expect(find.text('Importing Steam screenshots…'), findsOneWidget);
+    expect(find.text('25%'), findsOneWidget);
+
+    await tester.pumpWidget(const SizedBox.shrink());
   });
 }
