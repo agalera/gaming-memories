@@ -1,5 +1,6 @@
 import 'dart:io';
 
+import 'package:crypto/crypto.dart';
 import 'package:path/path.dart' as p;
 
 import '../models/app_settings.dart';
@@ -42,6 +43,14 @@ class SteamProvider implements ScreenshotProvider {
     var imported = 0;
     var skipped = 0;
     final games = <String, String>{};
+
+    games.addAll(
+      await _migrateCustomAlbums(
+        settings,
+        ignored: ignored,
+        onProgress: onProgress,
+      ),
+    );
 
     onProgress?.call(
       const ProviderProgress(message: 'Scanning local Steam screenshots…'),
@@ -226,6 +235,160 @@ class SteamProvider implements ScreenshotProvider {
       files.sort((left, right) => left.path.compareTo(right.path));
     }
     return screenshots;
+  }
+
+  Future<Map<String, String>> _migrateCustomAlbums(
+    AppSettings settings, {
+    required Set<String> ignored,
+    ProgressCallback? onProgress,
+  }) async {
+    final entries = settings.steam.customGames.entries
+        .where(
+          (entry) =>
+              entry.key.trim().isNotEmpty &&
+              entry.value.trim().isNotEmpty &&
+              !ignored.contains(entry.key.trim()),
+        )
+        .toList(growable: false);
+    final migrated = <String, String>{};
+
+    for (var index = 0; index < entries.length; index++) {
+      final entry = entries[index];
+      onProgress?.call(
+        ProviderProgress(
+          message: 'Applying custom Steam game names…',
+          completed: index,
+          total: entries.length,
+        ),
+      );
+
+      String? original;
+      try {
+        original = await api.gameName(
+          entry.key.trim(),
+          settings.steam.apiKey.trim(),
+        );
+      } on Exception {
+        continue;
+      }
+      if (original == null || original.trim().isEmpty) {
+        continue;
+      }
+
+      final originalName = _safeName(original);
+      final customName = _safeName(entry.value);
+      if (originalName == customName) {
+        continue;
+      }
+
+      final source = _destination(settings.outputPath, originalName);
+      if (!await source.exists()) {
+        continue;
+      }
+      await _mergeAlbum(source, _destination(settings.outputPath, customName));
+      migrated[entry.key.trim()] = customName;
+    }
+
+    if (entries.isNotEmpty) {
+      onProgress?.call(
+        ProviderProgress(
+          message: 'Applied custom Steam game names.',
+          completed: entries.length,
+          total: entries.length,
+        ),
+      );
+    }
+    return migrated;
+  }
+
+  Future<void> _mergeAlbum(Directory source, Directory destination) async {
+    if (_samePath(source.path, destination.path)) {
+      return;
+    }
+    if (!await destination.exists()) {
+      await destination.parent.create(recursive: true);
+      try {
+        await source.rename(destination.path);
+        return;
+      } on FileSystemException {
+        // A file-by-file move supports file systems that cannot rename here.
+      }
+    }
+
+    await destination.create(recursive: true);
+    final files = await source
+        .list(recursive: true, followLinks: false)
+        .where((entity) => entity is File)
+        .cast<File>()
+        .toList();
+    files.sort((left, right) => left.path.compareTo(right.path));
+
+    for (final file in files) {
+      final relative = p.relative(file.path, from: source.path);
+      final target = File(p.join(destination.path, relative));
+      await target.parent.create(recursive: true);
+      await _mergeFile(file, target);
+    }
+    if (await source.exists()) {
+      await source.delete(recursive: true);
+    }
+  }
+
+  Future<void> _mergeFile(File source, File target) async {
+    if (!await target.exists()) {
+      await _moveFile(source, target);
+      return;
+    }
+
+    final sourceBytes = await source.readAsBytes();
+    if (sha1.convert(sourceBytes) == sha1.convert(await target.readAsBytes())) {
+      await source.delete();
+      return;
+    }
+
+    if (p.basename(target.path).toLowerCase() == 'cover.jpg') {
+      await source.delete();
+      return;
+    }
+
+    final digest = sha1.convert(sourceBytes);
+    final collision = File(
+      p.join(
+        target.parent.path,
+        '${p.basenameWithoutExtension(target.path)}_$digest'
+        '${p.extension(target.path)}',
+      ),
+    );
+    if (await collision.exists()) {
+      if (sha1.convert(await collision.readAsBytes()) != digest) {
+        throw FileSystemException(
+          'A renamed Steam file has a content hash collision.',
+          collision.path,
+        );
+      }
+      await source.delete();
+      return;
+    }
+    await _moveFile(source, collision);
+  }
+
+  Future<void> _moveFile(File source, File target) async {
+    try {
+      await source.rename(target.path);
+    } on FileSystemException {
+      final modified = (await source.stat()).modified;
+      await source.copy(target.path);
+      await target.setLastModified(modified);
+      await source.delete();
+    }
+  }
+
+  bool _samePath(String left, String right) {
+    final normalizedLeft = p.normalize(p.absolute(left));
+    final normalizedRight = p.normalize(p.absolute(right));
+    return Platform.isWindows
+        ? normalizedLeft.toLowerCase() == normalizedRight.toLowerCase()
+        : normalizedLeft == normalizedRight;
   }
 
   Directory? _userdataDirectory(String configuredPath) {

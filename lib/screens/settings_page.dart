@@ -20,8 +20,11 @@ class _SettingsPageState extends State<SettingsPage> {
   late final TextEditingController _steamPathController;
   late final TextEditingController _steamUserController;
   late final TextEditingController _steamKeyController;
-  late final TextEditingController _steamIgnoredController;
-  late final TextEditingController _steamCustomController;
+  late final TextEditingController _steamIgnoredInputController;
+  late final TextEditingController _steamCustomIdController;
+  late final TextEditingController _steamCustomNameController;
+  late final List<String> _steamIgnoredGames;
+  late final List<_CustomGame> _steamCustomGames;
   late bool _diabloEnabled;
   late bool _steamEnabled;
   late bool _steamOnlineGallery;
@@ -40,14 +43,13 @@ class _SettingsPageState extends State<SettingsPage> {
     _steamPathController = TextEditingController(text: steam.userdataPath);
     _steamUserController = TextEditingController(text: steam.userId);
     _steamKeyController = TextEditingController(text: steam.apiKey);
-    _steamIgnoredController = TextEditingController(
-      text: steam.ignoredGames.join(', '),
-    );
-    _steamCustomController = TextEditingController(
-      text: steam.customGames.entries
-          .map((entry) => '${entry.key} = ${entry.value}')
-          .join('\n'),
-    );
+    _steamIgnoredInputController = TextEditingController();
+    _steamIgnoredGames = steam.ignoredGames.toList();
+    _steamCustomIdController = TextEditingController();
+    _steamCustomNameController = TextEditingController();
+    _steamCustomGames = steam.customGames.entries
+        .map((entry) => _CustomGame(entry.key, entry.value))
+        .toList();
     _diabloEnabled = widget.controller.settings.diabloIV.enabled;
     _steamEnabled = steam.enabled;
     _steamOnlineGallery = steam.onlineGallery;
@@ -61,8 +63,9 @@ class _SettingsPageState extends State<SettingsPage> {
     _steamPathController.dispose();
     _steamUserController.dispose();
     _steamKeyController.dispose();
-    _steamIgnoredController.dispose();
-    _steamCustomController.dispose();
+    _steamIgnoredInputController.dispose();
+    _steamCustomIdController.dispose();
+    _steamCustomNameController.dispose();
     super.dispose();
   }
 
@@ -279,6 +282,26 @@ class _SettingsPageState extends State<SettingsPage> {
                       const SizedBox(height: 16),
                       Row(
                         children: [
+                          Text(
+                            'Steam online credentials',
+                            style: context.theme.typography.body.sm.copyWith(
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                          const SizedBox(width: 6),
+                          FButton.icon(
+                            key: const ValueKey('steam-credentials-help'),
+                            variant: FButtonVariant.ghost,
+                            size: FButtonSizeVariant.xs,
+                            semanticsLabel: 'Help with Steam credentials',
+                            onPress: _showSteamCredentialHelp,
+                            child: const Icon(FLucideIcons.circleHelp),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 8),
+                      Row(
+                        children: [
                           Expanded(
                             child: FTextField(
                               control: FTextFieldControl.managed(
@@ -303,32 +326,97 @@ class _SettingsPageState extends State<SettingsPage> {
                         ],
                       ),
                       const SizedBox(height: 16),
-                      FTextField(
-                        control: FTextFieldControl.managed(
-                          controller: _steamIgnoredController,
+                      Row(
+                        crossAxisAlignment: CrossAxisAlignment.end,
+                        children: [
+                          Expanded(
+                            child: FTextField(
+                              key: const ValueKey('steam-ignored-input'),
+                              control: FTextFieldControl.managed(
+                                controller: _steamIgnoredInputController,
+                              ),
+                              label: const Text('Ignored app ID'),
+                              hint: '1234',
+                              enabled: _steamEnabled,
+                              onSubmit: (_) => _addIgnoredGame(),
+                            ),
+                          ),
+                          const SizedBox(width: 10),
+                          FButton(
+                            key: const ValueKey('steam-ignored-add'),
+                            variant: FButtonVariant.outline,
+                            mainAxisSize: MainAxisSize.min,
+                            onPress: _steamEnabled ? _addIgnoredGame : null,
+                            prefix: const Icon(FLucideIcons.plus),
+                            child: const Text('Add'),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 6),
+                      Text(
+                        'Add one Steam app ID at a time.',
+                        style: context.theme.typography.body.xs.copyWith(
+                          color: context.theme.colors.mutedForeground,
                         ),
-                        label: const Text('Ignored app IDs'),
-                        hint: '1234, 5678',
-                        description: const Text(
-                          'Separate app IDs with commas or new lines.',
-                        ),
-                        minLines: 2,
-                        maxLines: 3,
+                      ),
+                      const SizedBox(height: 10),
+                      _IgnoredGamesList(
+                        games: _steamIgnoredGames,
                         enabled: _steamEnabled,
+                        onRemove: _removeIgnoredGame,
                       ),
                       const SizedBox(height: 16),
-                      FTextField(
-                        control: FTextFieldControl.managed(
-                          controller: _steamCustomController,
+                      Row(
+                        crossAxisAlignment: CrossAxisAlignment.end,
+                        children: [
+                          Expanded(
+                            child: FTextField(
+                              key: const ValueKey('steam-custom-id-input'),
+                              control: FTextFieldControl.managed(
+                                controller: _steamCustomIdController,
+                              ),
+                              label: const Text('Custom app ID'),
+                              hint: '1234',
+                              enabled: _steamEnabled,
+                            ),
+                          ),
+                          const SizedBox(width: 10),
+                          Expanded(
+                            flex: 2,
+                            child: FTextField(
+                              key: const ValueKey('steam-custom-name-input'),
+                              control: FTextFieldControl.managed(
+                                controller: _steamCustomNameController,
+                              ),
+                              label: const Text('Custom game name'),
+                              hint: 'My Game',
+                              enabled: _steamEnabled,
+                              onSubmit: (_) => _addCustomGame(),
+                            ),
+                          ),
+                          const SizedBox(width: 10),
+                          FButton(
+                            key: const ValueKey('steam-custom-add'),
+                            variant: FButtonVariant.outline,
+                            mainAxisSize: MainAxisSize.min,
+                            onPress: _steamEnabled ? _addCustomGame : null,
+                            prefix: const Icon(FLucideIcons.plus),
+                            child: const Text('Add'),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 6),
+                      Text(
+                        'A custom name replaces the Steam store name.',
+                        style: context.theme.typography.body.xs.copyWith(
+                          color: context.theme.colors.mutedForeground,
                         ),
-                        label: const Text('Custom game names'),
-                        hint: '1234 = My Game',
-                        description: const Text(
-                          'Enter one app ID and game name on each line.',
-                        ),
-                        minLines: 3,
-                        maxLines: 6,
+                      ),
+                      const SizedBox(height: 10),
+                      _CustomGamesList(
+                        games: _steamCustomGames,
                         enabled: _steamEnabled,
+                        onRemove: _removeCustomGame,
                       ),
                     ],
                   ),
@@ -380,24 +468,69 @@ class _SettingsPageState extends State<SettingsPage> {
     }
   }
 
+  void _showSteamCredentialHelp() {
+    showFDialog<void>(
+      context: context,
+      builder: (dialogContext, _, animation) => FDialog(
+        animation: animation,
+        semanticsLabel: 'Steam credential help',
+        builder: (context, _) => Padding(
+          padding: const EdgeInsets.all(24),
+          child: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Steam credentials',
+                  style: context.theme.typography.display.sm,
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  'Steam uses these values for online screenshots and game information.',
+                  style: context.theme.typography.body.sm.copyWith(
+                    color: context.theme.colors.mutedForeground,
+                  ),
+                ),
+                const SizedBox(height: 20),
+                const _CredentialHelpSection(
+                  title: 'Steam user ID',
+                  body: 'This 17-digit SteamID64 identifies the owner of the online gallery. It is required only for online gallery imports.',
+                  steps: 'Open Steam. Select your account name, then select Account details. Copy the Steam ID below your account name.',
+                ),
+                const SizedBox(height: 18),
+                const _CredentialHelpSection(
+                  title: 'Steam Web API key',
+                  body: 'The API key authorizes requests for game names and published screenshots. Do not share this key.',
+                  steps: 'Sign in at the address below. Register a key and accept the Steam Web API terms.',
+                  address: 'https://steamcommunity.com/dev/apikey',
+                ),
+                const SizedBox(height: 12),
+                Text(
+                  'Gaming Memories stores the key in its local settings file.',
+                  style: context.theme.typography.body.xs.copyWith(
+                    color: context.theme.colors.mutedForeground,
+                  ),
+                ),
+                const SizedBox(height: 22),
+                Align(
+                  alignment: Alignment.centerRight,
+                  child: FButton(
+                    key: const ValueKey('steam-credentials-help-close'),
+                    mainAxisSize: MainAxisSize.min,
+                    onPress: () => Navigator.of(dialogContext).pop(),
+                    child: const Text('Close'),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
   Future<void> _save() async {
-    final ignoredGames = _steamIgnoredController.text
-        .split(RegExp(r'[,\n]'))
-        .map((value) => value.trim())
-        .where((value) => value.isNotEmpty)
-        .toList(growable: false);
-    final customGames = <String, String>{};
-    for (final line in _steamCustomController.text.split('\n')) {
-      final separator = line.indexOf('=');
-      if (separator < 1) {
-        continue;
-      }
-      final appId = line.substring(0, separator).trim();
-      final name = line.substring(separator + 1).trim();
-      if (appId.isNotEmpty && name.isNotEmpty) {
-        customGames[appId] = name;
-      }
-    }
     final next = AppSettings(
       outputPath: _outputController.text.trim(),
       diabloIV: ProviderSettings(
@@ -411,11 +544,235 @@ class _SettingsPageState extends State<SettingsPage> {
         userId: _steamUserController.text.trim(),
         apiKey: _steamKeyController.text.trim(),
         downloadCovers: _steamDownloadCovers,
-        ignoredGames: ignoredGames,
-        customGames: customGames,
+        ignoredGames: List.unmodifiable(_steamIgnoredGames),
+        customGames: Map.unmodifiable({
+          for (final game in _steamCustomGames) game.appId: game.name,
+        }),
       ),
     );
     await widget.controller.saveSettings(next);
+  }
+
+  void _addIgnoredGame() {
+    final appId = _steamIgnoredInputController.text.trim();
+    if (appId.isEmpty || _steamIgnoredGames.contains(appId)) {
+      return;
+    }
+
+    setState(() {
+      _steamIgnoredGames.add(appId);
+      _steamIgnoredInputController.clear();
+    });
+  }
+
+  void _removeIgnoredGame(String appId) {
+    setState(() => _steamIgnoredGames.remove(appId));
+  }
+
+  void _addCustomGame() {
+    final appId = _steamCustomIdController.text.trim();
+    final name = _steamCustomNameController.text.trim();
+    if (appId.isEmpty || name.isEmpty) {
+      return;
+    }
+
+    setState(() {
+      final index = _steamCustomGames.indexWhere((game) => game.appId == appId);
+      final game = _CustomGame(appId, name);
+      if (index < 0) {
+        _steamCustomGames.add(game);
+      } else {
+        _steamCustomGames[index] = game;
+      }
+      _steamCustomIdController.clear();
+      _steamCustomNameController.clear();
+    });
+  }
+
+  void _removeCustomGame(String appId) {
+    setState(
+      () => _steamCustomGames.removeWhere((game) => game.appId == appId),
+    );
+  }
+}
+
+class _CustomGame {
+  const _CustomGame(this.appId, this.name);
+
+  final String appId;
+  final String name;
+}
+
+class _CredentialHelpSection extends StatelessWidget {
+  const _CredentialHelpSection({
+    required this.title,
+    required this.body,
+    required this.steps,
+    this.address,
+  });
+
+  final String title;
+  final String body;
+  final String steps;
+  final String? address;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          title,
+          style: context.theme.typography.body.md.copyWith(
+            fontWeight: FontWeight.w700,
+          ),
+        ),
+        const SizedBox(height: 5),
+        Text(body, style: context.theme.typography.body.sm),
+        const SizedBox(height: 6),
+        Text(steps, style: context.theme.typography.body.sm),
+        if (address case final value?) ...[
+          const SizedBox(height: 8),
+          SelectableText(
+            value,
+            style: context.theme.typography.body.sm.copyWith(
+              color: context.theme.colors.primary,
+            ),
+          ),
+        ],
+      ],
+    );
+  }
+}
+
+class _IgnoredGamesList extends StatelessWidget {
+  const _IgnoredGamesList({
+    required this.games,
+    required this.enabled,
+    required this.onRemove,
+  });
+
+  final List<String> games;
+  final bool enabled;
+  final ValueChanged<String> onRemove;
+
+  @override
+  Widget build(BuildContext context) {
+    if (games.isEmpty) {
+      return Text(
+        'No ignored games.',
+        style: context.theme.typography.body.sm.copyWith(
+          color: context.theme.colors.mutedForeground,
+        ),
+      );
+    }
+
+    return Container(
+      decoration: BoxDecoration(
+        border: Border.all(color: context.theme.colors.border),
+        borderRadius: BorderRadius.circular(10),
+      ),
+      child: Column(
+        children: [
+          for (var index = 0; index < games.length; index++) ...[
+            if (index > 0)
+              Divider(height: 1, color: context.theme.colors.border),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(12, 6, 6, 6),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      games[index],
+                      style: context.theme.typography.body.sm,
+                    ),
+                  ),
+                  FButton.icon(
+                    key: ValueKey('steam-ignored-remove-${games[index]}'),
+                    variant: FButtonVariant.ghost,
+                    size: FButtonSizeVariant.sm,
+                    semanticsLabel: 'Remove ignored app ID ${games[index]}',
+                    onPress: enabled ? () => onRemove(games[index]) : null,
+                    child: const Icon(FLucideIcons.x),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+class _CustomGamesList extends StatelessWidget {
+  const _CustomGamesList({
+    required this.games,
+    required this.enabled,
+    required this.onRemove,
+  });
+
+  final List<_CustomGame> games;
+  final bool enabled;
+  final ValueChanged<String> onRemove;
+
+  @override
+  Widget build(BuildContext context) {
+    if (games.isEmpty) {
+      return Text(
+        'No custom game names.',
+        style: context.theme.typography.body.sm.copyWith(
+          color: context.theme.colors.mutedForeground,
+        ),
+      );
+    }
+
+    return Container(
+      decoration: BoxDecoration(
+        border: Border.all(color: context.theme.colors.border),
+        borderRadius: BorderRadius.circular(10),
+      ),
+      child: Column(
+        children: [
+          for (var index = 0; index < games.length; index++) ...[
+            if (index > 0)
+              Divider(height: 1, color: context.theme.colors.border),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(12, 6, 6, 6),
+              child: Row(
+                children: [
+                  SizedBox(
+                    width: 110,
+                    child: Text(
+                      games[index].appId,
+                      style: context.theme.typography.body.sm.copyWith(
+                        color: context.theme.colors.mutedForeground,
+                      ),
+                    ),
+                  ),
+                  Expanded(
+                    child: Text(
+                      games[index].name,
+                      style: context.theme.typography.body.sm,
+                    ),
+                  ),
+                  FButton.icon(
+                    key: ValueKey('steam-custom-remove-${games[index].appId}'),
+                    variant: FButtonVariant.ghost,
+                    size: FButtonSizeVariant.sm,
+                    semanticsLabel: 'Remove custom game ${games[index].appId}',
+                    onPress: enabled
+                        ? () => onRemove(games[index].appId)
+                        : null,
+                    child: const Icon(FLucideIcons.x),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
   }
 }
 

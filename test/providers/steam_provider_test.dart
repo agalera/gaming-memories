@@ -118,6 +118,59 @@ void main() {
     ]);
     expect(File(p.join(album, 'cover.jpg')).readAsBytesSync(), [4, 5, 6]);
   });
+
+  test('moves an existing album to its custom game name', () async {
+    api.names['40'] = 'Original Game';
+    final original = Directory(p.join(output.path, 'PC', 'Original Game'));
+    await original.create(recursive: true);
+    await File(p.join(original.path, '2026-01-02_03-04-05.jpg'))
+        .writeAsString('screenshot');
+    await File(p.join(original.path, 'cover.jpg')).writeAsString('cover');
+
+    await SteamProvider(api: api)
+        .collect(settings(customGames: {'40': 'Custom Game'}));
+
+    final renamed = Directory(p.join(output.path, 'PC', 'Custom Game'));
+    expect(original.existsSync(), isFalse);
+    expect(
+      File(p.join(renamed.path, '2026-01-02_03-04-05.jpg')).readAsStringSync(),
+      'screenshot',
+    );
+    expect(File(p.join(renamed.path, 'cover.jpg')).readAsStringSync(), 'cover');
+  });
+
+  test('merges a renamed album without losing screenshots', () async {
+    api.names['50'] = 'Store Name';
+    final original = Directory(p.join(output.path, 'PC', 'Store Name'));
+    final custom = Directory(p.join(output.path, 'PC', 'Custom Name'));
+    await original.create(recursive: true);
+    await custom.create(recursive: true);
+    await File(p.join(original.path, 'shared.jpg')).writeAsString('old');
+    await File(p.join(original.path, 'unique.jpg')).writeAsString('unique');
+    await File(p.join(original.path, 'cover.jpg')).writeAsString('old cover');
+    await File(p.join(custom.path, 'shared.jpg')).writeAsString('new');
+    await File(p.join(custom.path, 'cover.jpg')).writeAsString('new cover');
+
+    await SteamProvider(api: api)
+        .collect(settings(customGames: {'50': 'Custom Name'}));
+
+    final files = custom
+        .listSync()
+        .whereType<File>()
+        .map((file) => p.basename(file.path))
+        .toList();
+    expect(original.existsSync(), isFalse);
+    expect(File(p.join(custom.path, 'shared.jpg')).readAsStringSync(), 'new');
+    expect(
+      File(p.join(custom.path, 'unique.jpg')).readAsStringSync(),
+      'unique',
+    );
+    expect(
+      File(p.join(custom.path, 'cover.jpg')).readAsStringSync(),
+      'new cover',
+    );
+    expect(files.where((name) => name.startsWith('shared_')), hasLength(1));
+  });
 }
 
 class _FakeSteamApi implements SteamApi {
