@@ -6,14 +6,17 @@ class ScreenshotItem {
     required this.platform,
     required this.game,
     required this.capturedAt,
+    this.thumbnailPath,
   });
 
   final String path;
   final String platform;
   final String game;
   final DateTime capturedAt;
+  final String? thumbnailPath;
 
   File get file => File(path);
+  File get galleryFile => File(thumbnailPath ?? path);
 }
 
 class GameAlbum {

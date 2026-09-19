@@ -7,6 +7,7 @@ import 'package:gaming_memories/models/library.dart';
 import 'package:gaming_memories/providers/screenshot_provider.dart';
 import 'package:gaming_memories/services/config_store.dart';
 import 'package:gaming_memories/services/library_scanner.dart';
+import 'package:gaming_memories/services/screenshot_action_service.dart';
 
 void main() {
   test('selects a platform and shows its screenshots by date', () {
@@ -75,6 +76,77 @@ void main() {
     expect(controller.progressMessage, isNull);
     expect(controller.progressValue, isNull);
   });
+
+  test('returns from a screenshot to the same library view', () {
+    final controller = LibraryController(
+      configStore: const ConfigStore(filePath: 'unused'),
+      scanner: const LibraryScanner(),
+      providers: const [],
+    );
+    final screenshot = ScreenshotItem(
+      path: '/pc.jpg',
+      platform: 'PC',
+      game: 'Diablo IV',
+      capturedAt: DateTime(2026, 1, 1),
+    );
+
+    controller.showPlatform('PC');
+    controller.showScreenshot(screenshot);
+
+    expect(controller.view, LibraryView.platform);
+    expect(controller.selectedPlatform, 'PC');
+    expect(controller.selectedScreenshot, same(screenshot));
+
+    controller.closeScreenshot();
+
+    expect(controller.view, LibraryView.platform);
+    expect(controller.selectedPlatform, 'PC');
+    expect(controller.selectedScreenshot, isNull);
+  });
+
+  test('runs screenshot file actions and reports success', () async {
+    final actions = _FakeScreenshotActions();
+    final controller = LibraryController(
+      configStore: const ConfigStore(filePath: 'unused'),
+      scanner: const LibraryScanner(),
+      providers: const [],
+      screenshotActions: actions,
+    );
+    final screenshot = ScreenshotItem(
+      path: '/pc.jpg',
+      platform: 'PC',
+      game: 'Diablo IV',
+      capturedAt: DateTime(2026, 1, 1),
+    );
+
+    await controller.openScreenshotLocation(screenshot);
+    await controller.copyScreenshotImage(screenshot);
+    await controller.copyScreenshotPath(screenshot);
+
+    expect(actions.openedPaths, ['/pc.jpg']);
+    expect(actions.copiedImages, ['/pc.jpg']);
+    expect(actions.copiedPaths, ['/pc.jpg']);
+    expect(controller.message, 'Path copied.');
+    expect(controller.error, isNull);
+  });
+}
+
+class _FakeScreenshotActions implements ScreenshotActionService {
+  final openedPaths = <String>[];
+  final copiedImages = <String>[];
+  final copiedPaths = <String>[];
+
+  @override
+  String get openLocationLabel => 'Open in file manager';
+
+  @override
+  Future<void> openLocation(String path) async => openedPaths.add(path);
+
+  @override
+  Future<void> copyImage(String path) async => copiedImages.add(path);
+
+  @override
+  Future<void> copyPath(String path) async => copiedPaths.add(path);
 }
 
 class _ProgressProvider implements ScreenshotProvider {

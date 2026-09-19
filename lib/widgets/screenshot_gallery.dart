@@ -1,7 +1,9 @@
 import 'package:forui/forui.dart';
 import 'package:material_ui/material_ui.dart';
 
+import '../controllers/library_controller.dart';
 import '../models/library.dart';
+import 'screenshot_actions.dart';
 
 class ScreenshotGallery extends StatelessWidget {
   const ScreenshotGallery({
@@ -9,6 +11,7 @@ class ScreenshotGallery extends StatelessWidget {
     required this.description,
     required this.needsSetup,
     required this.onSetup,
+    required this.controller,
     super.key,
   });
 
@@ -16,6 +19,7 @@ class ScreenshotGallery extends StatelessWidget {
   final String description;
   final bool needsSetup;
   final VoidCallback onSetup;
+  final LibraryController controller;
 
   @override
   Widget build(BuildContext context) {
@@ -61,8 +65,10 @@ class ScreenshotGallery extends StatelessWidget {
                     mainAxisSpacing: 16,
                     mainAxisExtent: 245,
                   ),
-                  itemBuilder: (context, index) =>
-                      _ScreenshotCard(screenshot: screenshots[index]),
+                  itemBuilder: (context, index) => _ScreenshotCard(
+                    screenshot: screenshots[index],
+                    controller: controller,
+                  ),
                 );
               },
             ),
@@ -74,62 +80,84 @@ class ScreenshotGallery extends StatelessWidget {
 }
 
 class _ScreenshotCard extends StatelessWidget {
-  const _ScreenshotCard({required this.screenshot});
+  const _ScreenshotCard({required this.screenshot, required this.controller});
 
   final ScreenshotItem screenshot;
+  final LibraryController controller;
 
   @override
   Widget build(BuildContext context) {
-    return FCard(
-      clipBehavior: Clip.antiAlias,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Expanded(
-            child: SizedBox(
-              width: double.infinity,
-              child: Image.file(
-                screenshot.file,
-                fit: BoxFit.cover,
-                cacheWidth: 900,
-                errorBuilder: (context, error, stackTrace) => ColoredBox(
-                  color: context.theme.colors.muted,
-                  child: Center(
-                    child: Icon(
-                      FLucideIcons.imageOff,
-                      color: context.theme.colors.mutedForeground,
-                    ),
+    return ScreenshotContextMenu(
+      controller: controller,
+      screenshot: screenshot,
+      child: FTappable(
+        key: ValueKey('screenshot-card-${screenshot.path}'),
+        semanticsLabel: 'Open ${screenshot.game} screenshot',
+        onPress: () => controller.showScreenshot(screenshot),
+        child: FCard(
+          clipBehavior: Clip.antiAlias,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Expanded(
+                child: SizedBox(
+                  width: double.infinity,
+                  child: Image.file(
+                    screenshot.galleryFile,
+                    fit: BoxFit.cover,
+                    errorBuilder: (context, error, stackTrace) =>
+                        screenshot.thumbnailPath == null
+                        ? _imageError(context)
+                        : Image.file(
+                            screenshot.file,
+                            fit: BoxFit.cover,
+                            cacheWidth: 900,
+                            errorBuilder: (context, error, stackTrace) =>
+                                _imageError(context),
+                          ),
                   ),
                 ),
               ),
-            ),
-          ),
-          Padding(
-            padding: const EdgeInsets.all(14),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  screenshot.game,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: context.theme.typography.body.sm.copyWith(
-                    fontWeight: FontWeight.w600,
-                  ),
+              Padding(
+                padding: const EdgeInsets.all(14),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      screenshot.game,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: context.theme.typography.body.sm.copyWith(
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      '${screenshot.platform}  •  ${_formatDate(screenshot.capturedAt)}',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: context.theme.typography.body.xs.copyWith(
+                        color: context.theme.colors.mutedForeground,
+                      ),
+                    ),
+                  ],
                 ),
-                const SizedBox(height: 4),
-                Text(
-                  '${screenshot.platform}  •  ${_formatDate(screenshot.capturedAt)}',
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: context.theme.typography.body.xs.copyWith(
-                    color: context.theme.colors.mutedForeground,
-                  ),
-                ),
-              ],
-            ),
+              ),
+            ],
           ),
-        ],
+        ),
+      ),
+    );
+  }
+
+  Widget _imageError(BuildContext context) {
+    return ColoredBox(
+      color: context.theme.colors.muted,
+      child: Center(
+        child: Icon(
+          FLucideIcons.imageOff,
+          color: context.theme.colors.mutedForeground,
+        ),
       ),
     );
   }

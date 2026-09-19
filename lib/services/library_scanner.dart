@@ -3,9 +3,12 @@ import 'dart:io';
 import 'package:path/path.dart' as p;
 
 import '../models/library.dart';
+import 'thumbnail_service.dart';
 
 class LibraryScanner {
-  const LibraryScanner();
+  const LibraryScanner({this.thumbnailService = const ThumbnailService()});
+
+  final ThumbnailService thumbnailService;
 
   static const _imageExtensions = {'.jpg', '.jpeg', '.png', '.webp'};
   static final _datePattern = RegExp(
@@ -84,17 +87,23 @@ class LibraryScanner {
       )) {
         if (entity is! File ||
             !_isImage(entity.path) ||
+            _isThumbnail(entity.path) ||
             p.basename(entity.path).toLowerCase() == 'cover.jpg') {
           continue;
         }
 
         final stat = await entity.stat();
+        final thumbnailPath = await thumbnailService.ensureThumbnail(
+          entity,
+          stat,
+        );
         screenshots.add(
           ScreenshotItem(
             path: entity.path,
             platform: platform,
             game: game,
             capturedAt: _dateFromName(entity.path) ?? stat.modified,
+            thumbnailPath: thumbnailPath,
           ),
         );
       }
@@ -110,6 +119,10 @@ class LibraryScanner {
 
   bool _isImage(String path) {
     return _imageExtensions.contains(p.extension(path).toLowerCase());
+  }
+
+  bool _isThumbnail(String path) {
+    return p.basename(path).toLowerCase().endsWith('.thumb.jpg');
   }
 
   DateTime? _dateFromName(String path) {

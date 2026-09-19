@@ -5,6 +5,7 @@ import '../models/library.dart';
 import '../providers/screenshot_provider.dart';
 import '../services/config_store.dart';
 import '../services/library_scanner.dart';
+import '../services/screenshot_action_service.dart';
 
 enum LibraryView { timeline, platform, album, settings }
 
@@ -13,17 +14,20 @@ class LibraryController extends ChangeNotifier {
     required this.configStore,
     required this.scanner,
     required this.providers,
+    this.screenshotActions = const NativeScreenshotActionService(),
   });
 
   final ConfigStore configStore;
   final LibraryScanner scanner;
   final List<ScreenshotProvider> providers;
+  final ScreenshotActionService screenshotActions;
 
   AppSettings settings = const AppSettings.defaults();
   ScreenshotLibrary library = const ScreenshotLibrary.empty();
   LibraryView view = LibraryView.timeline;
   String? selectedPlatform;
   String? selectedGame;
+  ScreenshotItem? selectedScreenshot;
   bool isInitializing = true;
   bool isBusy = false;
   String? message;
@@ -77,6 +81,7 @@ class LibraryController extends ChangeNotifier {
   }
 
   void showTimeline() {
+    selectedScreenshot = null;
     view = LibraryView.timeline;
     selectedPlatform = null;
     selectedGame = null;
@@ -84,6 +89,7 @@ class LibraryController extends ChangeNotifier {
   }
 
   void showAlbum(String platform, String game) {
+    selectedScreenshot = null;
     view = LibraryView.album;
     selectedPlatform = platform;
     selectedGame = game;
@@ -91,6 +97,7 @@ class LibraryController extends ChangeNotifier {
   }
 
   void showPlatform(String platform) {
+    selectedScreenshot = null;
     view = LibraryView.platform;
     selectedPlatform = platform;
     selectedGame = null;
@@ -98,8 +105,43 @@ class LibraryController extends ChangeNotifier {
   }
 
   void showSettings() {
+    selectedScreenshot = null;
     view = LibraryView.settings;
     notifyListeners();
+  }
+
+  void showScreenshot(ScreenshotItem screenshot) {
+    selectedScreenshot = screenshot;
+    notifyListeners();
+  }
+
+  void closeScreenshot() {
+    selectedScreenshot = null;
+    notifyListeners();
+  }
+
+  Future<void> openScreenshotLocation(ScreenshotItem screenshot) async {
+    await _runScreenshotAction(
+      () => screenshotActions.openLocation(screenshot.path),
+      success: 'Opened in the file manager.',
+      failure: 'Could not open the file manager',
+    );
+  }
+
+  Future<void> copyScreenshotImage(ScreenshotItem screenshot) async {
+    await _runScreenshotAction(
+      () => screenshotActions.copyImage(screenshot.path),
+      success: 'Image copied.',
+      failure: 'Could not copy the image',
+    );
+  }
+
+  Future<void> copyScreenshotPath(ScreenshotItem screenshot) async {
+    await _runScreenshotAction(
+      () => screenshotActions.copyPath(screenshot.path),
+      success: 'Path copied.',
+      failure: 'Could not copy the path',
+    );
   }
 
   void previewTheme(AppThemeMode themeMode) {
@@ -178,6 +220,23 @@ class LibraryController extends ChangeNotifier {
   void _setProgress(String nextMessage, {double? value}) {
     progressMessage = nextMessage;
     progressValue = value;
+    notifyListeners();
+  }
+
+  Future<void> _runScreenshotAction(
+    Future<void> Function() action, {
+    required String success,
+    required String failure,
+  }) async {
+    message = null;
+    error = null;
+
+    try {
+      await action();
+      message = success;
+    } catch (exception) {
+      error = '$failure: $exception';
+    }
     notifyListeners();
   }
 }

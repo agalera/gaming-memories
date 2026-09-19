@@ -5,6 +5,7 @@ import '../controllers/library_controller.dart';
 import '../widgets/library_sidebar.dart';
 import '../widgets/screenshot_gallery.dart';
 import 'settings_page.dart';
+import 'screenshot_detail_page.dart';
 
 class LibraryShell extends StatefulWidget {
   const LibraryShell({required this.controller, super.key});
@@ -34,21 +35,7 @@ class _LibraryShellState extends State<LibraryShell> {
         return FScaffold(
           childPad: false,
           sidebar: LibrarySidebar(controller: controller),
-          header: FHeader(
-            title: Text(controller.pageTitle),
-            suffixes: [
-              FHeaderAction(
-                semanticsLabel: 'Refresh library',
-                icon: const Icon(FLucideIcons.refreshCw),
-                onPress: controller.isBusy ? null : controller.refresh,
-              ),
-              FHeaderAction(
-                semanticsLabel: 'Collect screenshots',
-                icon: const Icon(FLucideIcons.hardDriveDownload),
-                onPress: controller.isBusy ? null : controller.collect,
-              ),
-            ],
-          ),
+          header: _header(controller),
           child: Column(
             children: [
               if (controller.isBusy && controller.progressMessage != null)
@@ -69,6 +56,39 @@ class _LibraryShellState extends State<LibraryShell> {
     );
   }
 
+  Widget _header(LibraryController controller) {
+    final screenshot = controller.selectedScreenshot;
+    if (screenshot != null) {
+      return FHeader.nested(
+        title: Text(screenshot.game),
+        titleAlignment: Alignment.centerLeft,
+        prefixes: [
+          FHeaderAction.back(
+            key: const ValueKey('screenshot-back-button'),
+            semanticsLabel: 'Back to screenshots',
+            onPress: controller.closeScreenshot,
+          ),
+        ],
+      );
+    }
+
+    return FHeader(
+      title: Text(controller.pageTitle),
+      suffixes: [
+        FHeaderAction(
+          semanticsLabel: 'Refresh library',
+          icon: const Icon(FLucideIcons.refreshCw),
+          onPress: controller.isBusy ? null : controller.refresh,
+        ),
+        FHeaderAction(
+          semanticsLabel: 'Collect screenshots',
+          icon: const Icon(FLucideIcons.hardDriveDownload),
+          onPress: controller.isBusy ? null : controller.collect,
+        ),
+      ],
+    );
+  }
+
   Widget _content(LibraryController controller) {
     if (controller.isInitializing) {
       return const Center(child: FCircularProgress());
@@ -86,11 +106,28 @@ class _LibraryShellState extends State<LibraryShell> {
       );
     }
 
-    return ScreenshotGallery(
-      screenshots: controller.visibleScreenshots,
-      description: controller.pageDescription,
-      needsSetup: controller.settings.outputPath.trim().isEmpty,
-      onSetup: controller.showSettings,
+    final galleryKey = ValueKey(
+      'gallery-${controller.view.name}-'
+      '${controller.selectedPlatform}-${controller.selectedGame}',
+    );
+    final screenshot = controller.selectedScreenshot;
+
+    return IndexedStack(
+      index: screenshot == null ? 0 : 1,
+      children: [
+        ScreenshotGallery(
+          key: galleryKey,
+          screenshots: controller.visibleScreenshots,
+          description: controller.pageDescription,
+          needsSetup: controller.settings.outputPath.trim().isEmpty,
+          onSetup: controller.showSettings,
+          controller: controller,
+        ),
+        if (screenshot == null)
+          const SizedBox.shrink()
+        else
+          ScreenshotDetailPage(screenshot: screenshot, controller: controller),
+      ],
     );
   }
 }

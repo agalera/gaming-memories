@@ -1,5 +1,6 @@
 import 'dart:io';
 
+import 'package:flutter/gestures.dart';
 import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:forui/forui.dart';
@@ -9,6 +10,7 @@ import 'package:gaming_memories/models/app_settings.dart';
 import 'package:gaming_memories/models/library.dart';
 import 'package:gaming_memories/services/config_store.dart';
 import 'package:gaming_memories/services/library_scanner.dart';
+import 'package:gaming_memories/services/screenshot_action_service.dart';
 import 'package:path/path.dart' as p;
 
 void main() {
@@ -69,6 +71,7 @@ void main() {
           screenshots: [
             ScreenshotItem(
               path: p.join(directory.path, 'missing.jpg'),
+              thumbnailPath: p.join(directory.path, 'missing.jpg.thumb.jpg'),
               platform: 'PC',
               game: 'Diablo IV',
               capturedAt: DateTime(2026, 1, 1),
@@ -80,6 +83,12 @@ void main() {
 
     await tester.pumpWidget(GamingMemoriesApp(controller: controller));
     await tester.pump();
+
+    final galleryImage = tester.widget<Image>(find.byType(Image).first);
+    expect(
+      (galleryImage.image as FileImage).file.path,
+      p.join(directory.path, 'missing.jpg.thumb.jpg'),
+    );
 
     await tester.tap(find.text('PC'));
     await tester.pump(const Duration(milliseconds: 500));
@@ -126,6 +135,135 @@ void main() {
     expect(find.text('25%'), findsOneWidget);
 
     await tester.pumpWidget(const SizedBox.shrink());
+  });
+
+  testWidgets('opens a screenshot and restores the gallery scroll offset', (
+    tester,
+  ) async {
+    final actions = _MemoryScreenshotActions();
+    final screenshots = List.generate(
+      20,
+      (index) => ScreenshotItem(
+        path: '/library/PC/Game/screenshot-$index.jpg',
+        thumbnailPath: '/library/PC/Game/screenshot-$index.jpg.thumb.jpg',
+        platform: 'PC',
+        game: 'Game',
+        capturedAt: DateTime(2026, 1, 1).add(Duration(days: index)),
+      ),
+    );
+    final controller = LibraryController(
+      configStore: const ConfigStore(filePath: 'unused'),
+      scanner: const LibraryScanner(),
+      providers: const [],
+      screenshotActions: actions,
+    )..isInitializing = false;
+    controller.library = ScreenshotLibrary(
+      albums: [
+        GameAlbum(platform: 'PC', game: 'Game', screenshots: screenshots),
+      ],
+    );
+
+    await tester.pumpWidget(GamingMemoriesApp(controller: controller));
+    await tester.pump();
+
+    final target = find.byKey(
+      const ValueKey('screenshot-card-/library/PC/Game/screenshot-12.jpg'),
+    );
+    final galleryScroll = find.descendant(
+      of: find.byType(GridView),
+      matching: find.byType(Scrollable),
+    );
+    await tester.scrollUntilVisible(target, 350, scrollable: galleryScroll);
+    await tester.pump(const Duration(milliseconds: 200));
+    final scrollState = tester.state<ScrollableState>(galleryScroll);
+    final offset = scrollState.position.pixels;
+    expect(offset, greaterThan(0));
+
+    await tester.tap(target);
+    await tester.pump(const Duration(milliseconds: 200));
+
+    expect(controller.selectedScreenshot, same(screenshots[12]));
+    expect(find.text('Screenshot details'), findsOneWidget);
+    expect(find.text('screenshot-12.jpg'), findsOneWidget);
+    expect(
+      find.byKey(const ValueKey('screenshot-open-location')),
+      findsOneWidget,
+    );
+    expect(find.byKey(const ValueKey('screenshot-copy-image')), findsOneWidget);
+    expect(find.byKey(const ValueKey('screenshot-copy-path')), findsOneWidget);
+    final detailImage = tester.widget<Image>(
+      find.byKey(const ValueKey('screenshot-detail-image')),
+    );
+    expect((detailImage.image as FileImage).file.path, screenshots[12].path);
+    expect(scrollState.mounted, isTrue);
+    expect(scrollState.position.pixels, offset);
+
+    await tester.tap(find.byKey(const ValueKey('screenshot-copy-path')));
+    await tester.pump(const Duration(milliseconds: 200));
+    expect(actions.copiedPaths, [screenshots[12].path]);
+
+    await tester.tap(find.byKey(const ValueKey('screenshot-back-button')));
+    await tester.pump(const Duration(milliseconds: 200));
+
+    expect(controller.selectedScreenshot, isNull);
+    expect(find.text('Screenshot details'), findsNothing);
+    expect(scrollState.mounted, isTrue);
+    expect(scrollState.position.pixels, offset);
+
+    await tester.pumpWidget(const SizedBox.shrink());
+    await tester.pump(const Duration(milliseconds: 200));
+  });
+
+  testWidgets('shows screenshot actions in the gallery context menu', (
+    tester,
+  ) async {
+    final actions = _MemoryScreenshotActions();
+    final screenshot = ScreenshotItem(
+      path: '/library/PC/Game/screenshot.jpg',
+      thumbnailPath: '/library/PC/Game/screenshot.jpg.thumb.jpg',
+      platform: 'PC',
+      game: 'Game',
+      capturedAt: DateTime(2026, 1, 1),
+    );
+    final controller = LibraryController(
+      configStore: const ConfigStore(filePath: 'unused'),
+      scanner: const LibraryScanner(),
+      providers: const [],
+      screenshotActions: actions,
+    )..isInitializing = false;
+    controller.library = ScreenshotLibrary(
+      albums: [
+        GameAlbum(platform: 'PC', game: 'Game', screenshots: [screenshot]),
+      ],
+    );
+
+    await tester.pumpWidget(GamingMemoriesApp(controller: controller));
+    await tester.pump();
+
+    final card = find.byKey(
+      const ValueKey('screenshot-card-/library/PC/Game/screenshot.jpg'),
+    );
+    await tester.tapAt(tester.getCenter(card), buttons: kSecondaryMouseButton);
+    await tester.pumpAndSettle();
+
+    expect(find.text('Open in file manager'), findsOneWidget);
+    expect(find.text('Copy image'), findsOneWidget);
+    expect(find.text('Copy path'), findsOneWidget);
+
+    await tester.tap(
+      find.byKey(
+        const ValueKey(
+          'screenshot-menu-copy-image-/library/PC/Game/screenshot.jpg',
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(actions.copiedImages, [screenshot.path]);
+    expect(controller.selectedScreenshot, isNull);
+
+    await tester.pumpWidget(const SizedBox.shrink());
+    await tester.pump(const Duration(milliseconds: 200));
   });
 
   testWidgets('changes between dark and light modes', (tester) async {
@@ -287,4 +425,22 @@ class _MemoryConfigStore extends ConfigStore {
 
   @override
   Future<void> save(AppSettings settings) async {}
+}
+
+class _MemoryScreenshotActions implements ScreenshotActionService {
+  final openedPaths = <String>[];
+  final copiedImages = <String>[];
+  final copiedPaths = <String>[];
+
+  @override
+  String get openLocationLabel => 'Open in file manager';
+
+  @override
+  Future<void> openLocation(String path) async => openedPaths.add(path);
+
+  @override
+  Future<void> copyImage(String path) async => copiedImages.add(path);
+
+  @override
+  Future<void> copyPath(String path) async => copiedPaths.add(path);
 }
