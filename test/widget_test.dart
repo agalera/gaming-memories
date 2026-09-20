@@ -487,7 +487,9 @@ void main() {
     await tester.pump(const Duration(milliseconds: 200));
   });
 
-  testWidgets('shows collection progress with a percentage', (tester) async {
+  testWidgets('shows scan and refresh progress in sidebar buttons', (
+    tester,
+  ) async {
     final controller =
         LibraryController(
             configStore: const ConfigStore(filePath: 'unused'),
@@ -502,13 +504,34 @@ void main() {
     await tester.pumpWidget(GamingMemoriesApp(controller: controller));
     await tester.pump();
 
-    expect(find.text('Importing Steam screenshots…'), findsOneWidget);
-    expect(find.text('25%'), findsOneWidget);
-    final toast = find.byKey(const ValueKey('progress-toast'));
-    expect(toast, findsOneWidget);
-    final toastRect = tester.getRect(toast);
-    expect(toastRect.center.dx, greaterThan(400));
-    expect(toastRect.center.dy, greaterThan(300));
+    expect(find.byKey(const ValueKey('scan-button-progress')), findsOneWidget);
+    expect(find.text('Scan · 25%'), findsOneWidget);
+    expect(find.byKey(const ValueKey('refresh-button-progress')), findsNothing);
+    expect(find.byKey(const ValueKey('progress-toast')), findsNothing);
+    expect(
+      tester
+          .widget<FCircularProgress>(
+            find.byKey(const ValueKey('scan-button-progress')),
+          )
+          .semanticsLabel,
+      'Importing Steam screenshots…',
+    );
+
+    controller
+      ..isBusy = false
+      ..isTimelineRefreshing = true
+      ..progressMessage = 'Refreshing the timeline cache…'
+      ..progressValue = null
+      ..notifyListeners();
+    await tester.pump();
+
+    expect(find.byKey(const ValueKey('scan-button-progress')), findsNothing);
+    expect(
+      find.byKey(const ValueKey('refresh-button-progress')),
+      findsOneWidget,
+    );
+    expect(find.text('Refreshing…'), findsOneWidget);
+    expect(find.byKey(const ValueKey('progress-toast')), findsNothing);
 
     await tester.pumpWidget(const SizedBox.shrink());
   });
@@ -597,6 +620,8 @@ void main() {
     expect(find.byIcon(FLucideIcons.alertTriangle), findsNWidgets(2));
     expect(tester.widget<FToast>(firstToast).variant, FToastVariant.primary);
     expect(tester.widget<FToast>(secondToast).variant, FToastVariant.primary);
+    expect(tester.getRect(firstToast).center.dx, greaterThan(400));
+    expect(tester.getRect(secondToast).center.dx, greaterThan(400));
     final firstIcon = find.descendant(
       of: firstToast,
       matching: find.byIcon(FLucideIcons.alertTriangle),

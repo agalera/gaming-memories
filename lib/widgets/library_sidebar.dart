@@ -12,6 +12,11 @@ class LibrarySidebar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final refreshInProgress = controller.isTimelineRefreshing;
+    final scanInProgress = controller.isBusy;
+    final scanPercent = controller.progressValue == null
+        ? null
+        : (controller.progressValue! * 100).round();
     final albumGroups = controller.platformFolders.map((platform) {
       return _PlatformSidebarItem(
         key: ValueKey('platform-${platform.name}'),
@@ -73,11 +78,23 @@ class LibrarySidebar extends StatelessWidget {
                 variant: FButtonVariant.outline,
                 mainAxisSize: MainAxisSize.max,
                 mainAxisAlignment: MainAxisAlignment.start,
-                prefix: const Icon(FLucideIcons.refreshCw),
+                prefix: refreshInProgress
+                    ? FCircularProgress(
+                        key: const ValueKey('refresh-button-progress'),
+                        size: FCircularProgressSizeVariant.xs,
+                        semanticsLabel:
+                            controller.progressMessage ?? 'Library refresh',
+                      )
+                    : const Icon(FLucideIcons.refreshCw),
                 onPress: controller.isBusy || controller.isTimelineRefreshing
                     ? null
                     : controller.refresh,
-                child: const Expanded(child: Text('Refresh')),
+                child: Expanded(
+                  child: Text(
+                    refreshInProgress ? 'Refreshing…' : 'Refresh',
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
               ),
               const SizedBox(height: 8),
               FButton(
@@ -85,11 +102,27 @@ class LibrarySidebar extends StatelessWidget {
                 variant: FButtonVariant.outline,
                 mainAxisSize: MainAxisSize.max,
                 mainAxisAlignment: MainAxisAlignment.start,
-                prefix: const Icon(FLucideIcons.hardDriveDownload),
+                prefix: scanInProgress
+                    ? FCircularProgress(
+                        key: const ValueKey('scan-button-progress'),
+                        size: FCircularProgressSizeVariant.xs,
+                        semanticsLabel:
+                            controller.progressMessage ?? 'Library scan',
+                      )
+                    : const Icon(FLucideIcons.hardDriveDownload),
                 onPress: controller.isBusy || controller.isTimelineRefreshing
                     ? null
                     : controller.collect,
-                child: const Expanded(child: Text('Scan')),
+                child: Expanded(
+                  child: Text(
+                    scanInProgress
+                        ? scanPercent == null
+                              ? 'Scanning…'
+                              : 'Scan · $scanPercent%'
+                        : 'Scan',
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
               ),
               const SizedBox(height: 8),
               FButton(

@@ -24,7 +24,6 @@ class _LibraryShellState extends State<LibraryShell> {
   static const _minimumSidebarWidth = 220.0;
   static const _maximumSidebarWidth = 480.0;
 
-  FToasterEntry? _progressToast;
   final ScrollController _breadcrumbScrollController = ScrollController();
   int _lastNotificationRevision = -1;
   bool _toastSyncScheduled = false;
@@ -51,8 +50,6 @@ class _LibraryShellState extends State<LibraryShell> {
     }
 
     oldWidget.controller.removeListener(_scheduleToastSync);
-    _progressToast?.dismiss();
-    _progressToast = null;
     _lastNotificationRevision = -1;
     widget.controller.addListener(_scheduleToastSync);
     _scheduleToastSync();
@@ -61,7 +58,6 @@ class _LibraryShellState extends State<LibraryShell> {
   @override
   void dispose() {
     widget.controller.removeListener(_scheduleToastSync);
-    _progressToast = null;
     _breadcrumbScrollController.dispose();
     super.dispose();
   }
@@ -82,29 +78,6 @@ class _LibraryShellState extends State<LibraryShell> {
 
   void _syncToasts() {
     final controller = widget.controller;
-    final showProgress =
-        (controller.isBusy || controller.isTimelineRefreshing) &&
-        controller.progressMessage != null;
-
-    if (showProgress && _progressToast?.showing != true) {
-      _progressToast = showRawFToast(
-        context: context,
-        alignment: FToastAlignment.bottomRight,
-        duration: null,
-        swipeToDismiss: const [],
-        builder: (context, entry) => AnimatedBuilder(
-          animation: controller,
-          builder: (context, _) => _ProgressToast(
-            message: controller.progressMessage ?? 'Please wait…',
-            value: controller.progressValue,
-          ),
-        ),
-      );
-    } else if (!showProgress && _progressToast != null) {
-      _progressToast!.dismiss();
-      _progressToast = null;
-    }
-
     if (_lastNotificationRevision == controller.notificationRevision) {
       return;
     }
@@ -581,44 +554,6 @@ class _GalleryActions extends StatelessWidget {
           ),
         ),
       ],
-    );
-  }
-}
-
-class _ProgressToast extends StatelessWidget {
-  const _ProgressToast({required this.message, required this.value});
-
-  final String message;
-  final double? value;
-
-  @override
-  Widget build(BuildContext context) {
-    final progress = value;
-    final percent = progress == null ? null : (progress * 100).round();
-
-    return FToast(
-      key: const ValueKey('progress-toast'),
-      icon: const SizedBox.square(dimension: 18, child: FCircularProgress()),
-      title: Text(message),
-      description: SizedBox(
-        width: 280,
-        child: Row(
-          children: [
-            Expanded(
-              child: progress == null
-                  ? const FProgress(semanticsLabel: 'Task in progress')
-                  : FDeterminateProgress(
-                      value: progress,
-                      semanticsLabel: 'Task progress: $percent percent',
-                    ),
-            ),
-            if (percent != null) ...[
-              const SizedBox(width: 10),
-              Text('$percent%'),
-            ],
-          ],
-        ),
-      ),
     );
   }
 }
