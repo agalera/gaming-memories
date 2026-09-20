@@ -702,11 +702,57 @@ void main() {
       ),
       findsOneWidget,
     );
+    final lastFolderText = find.descendant(
+      of: find.byKey(
+        ValueKey('breadcrumb-folder-${p.join('Chapter One', 'Boss fights')}'),
+      ),
+      matching: find.text('Boss fights'),
+    );
+    expect(
+      tester.widget<Text>(lastFolderText).style?.fontWeight,
+      FontWeight.w700,
+    );
+    final mediaBreadcrumbText = find.descendant(
+      of: find.byKey(
+        const ValueKey('breadcrumb-media-/library/PC/Game/screenshot-12.jpg'),
+      ),
+      matching: find.text('screenshot-12.jpg'),
+    );
+    expect(
+      tester.widget<Text>(mediaBreadcrumbText).style?.fontWeight,
+      FontWeight.w400,
+    );
     expect(find.text('Image details'), findsOneWidget);
     expect(find.text('screenshot-12.jpg'), findsNWidgets(2));
     expect(find.byKey(const ValueKey('media-open-location')), findsOneWidget);
     expect(find.byKey(const ValueKey('media-copy-image')), findsOneWidget);
     expect(find.byKey(const ValueKey('media-copy-path')), findsOneWidget);
+    final copyPathButton = tester.widget<FButton>(
+      find.byKey(const ValueKey('media-copy-path')),
+    );
+    final copyPathContext = tester.element(
+      find.byKey(const ValueKey('media-copy-path')),
+    );
+    final baseButtonStyle = copyPathContext.theme.buttonStyles
+        .resolve({copyPathButton.variant, copyPathContext.platformVariant})
+        .resolve({copyPathButton.size, copyPathContext.platformVariant});
+    final copyPathDecoration = copyPathButton
+        .style(baseButtonStyle)
+        .decoration
+        .resolve({});
+    expect(copyPathDecoration, isA<BoxDecoration>());
+    expect(
+      (copyPathDecoration as BoxDecoration).borderRadius,
+      copyPathContext.theme.style.borderRadius.md,
+    );
+    expect(copyPathDecoration.border, isNotNull);
+    expect(
+      find.ancestor(
+        of: find.byKey(const ValueKey('media-copy-path')),
+        matching: find.byKey(const ValueKey('content-header')),
+      ),
+      findsOneWidget,
+    );
     final detailImage = tester.widget<Image>(
       find.byKey(const ValueKey('media-detail-image')),
     );
@@ -744,6 +790,104 @@ void main() {
 
     await tester.pumpWidget(const SizedBox.shrink());
     await tester.pump(const Duration(milliseconds: 200));
+  });
+
+  testWidgets('filters and sorts gallery media from the content header', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(1400, 800);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+    final media = [
+      MediaItem(
+        path: '/library/PC/Game/old.jpg',
+        platform: 'PC',
+        game: 'Game',
+        capturedAt: DateTime(2026, 1, 1),
+        kind: MediaKind.image,
+      ),
+      MediaItem(
+        path: '/library/PC/Game/middle.mp4',
+        platform: 'PC',
+        game: 'Game',
+        capturedAt: DateTime(2026, 1, 2),
+        kind: MediaKind.video,
+      ),
+      MediaItem(
+        path: '/library/PC/Game/new.jpg',
+        platform: 'PC',
+        game: 'Game',
+        capturedAt: DateTime(2026, 1, 3),
+        kind: MediaKind.image,
+      ),
+    ];
+    final controller = LibraryController(
+      configStore: const ConfigStore(filePath: 'unused'),
+      scanner: const LibraryScanner(),
+      providers: const [],
+    )..isInitializing = false;
+    controller.library = MediaLibrary(
+      albums: [GameAlbum(platform: 'PC', game: 'Game', media: media)],
+    );
+
+    await tester.pumpWidget(GamingMemoriesApp(controller: controller));
+    await tester.pump();
+
+    List<String> cardPaths() => find
+        .byWidgetPredicate((widget) {
+          final key = widget.key;
+          return key is ValueKey<String> && key.value.startsWith('media-card-');
+        })
+        .evaluate()
+        .map(
+          (element) => ((element.widget.key! as ValueKey<String>).value)
+              .substring('media-card-'.length),
+        )
+        .toList(growable: false);
+
+    expect(find.text('All (3)'), findsOneWidget);
+    expect(find.text('Descending'), findsOneWidget);
+    expect(find.text('Media'), findsNothing);
+    expect(cardPaths(), [media[2].path, media[1].path, media[0].path]);
+    expect(
+      tester.getCenter(find.byKey(const ValueKey('media-filter-control'))).dy,
+      closeTo(
+        tester.getCenter(find.byKey(const ValueKey('breadcrumb-library'))).dy,
+        1,
+      ),
+    );
+
+    await tester.tap(find.byKey(const ValueKey('media-filter-select')));
+    await tester.pumpAndSettle();
+    expect(find.text('All (3)'), findsWidgets);
+    expect(find.text('Screenshots (2)'), findsOneWidget);
+    expect(find.text('Clips (1)'), findsOneWidget);
+    await tester.tap(find.text('Screenshots (2)').last);
+    await tester.pumpAndSettle();
+    expect(cardPaths(), [media[2].path, media[0].path]);
+
+    await tester.tap(find.byKey(const ValueKey('media-sort-select')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Ascending').last);
+    await tester.pumpAndSettle();
+    expect(cardPaths(), [media[0].path, media[2].path]);
+
+    await tester.tap(find.byKey(const ValueKey('media-filter-select')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Clips (1)').last);
+    await tester.pumpAndSettle();
+    expect(cardPaths(), [media[1].path]);
+
+    tester.view.physicalSize = const Size(800, 700);
+    await tester.pump();
+    expect(
+      tester.getTopLeft(find.byKey(const ValueKey('media-filter-control'))).dy,
+      greaterThan(
+        tester.getTopLeft(find.byKey(const ValueKey('breadcrumb-library'))).dy,
+      ),
+    );
+
+    await tester.pumpWidget(const SizedBox.shrink());
   });
 
   testWidgets('zooms the detail image with a double tap and resets it', (

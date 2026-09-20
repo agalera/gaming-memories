@@ -120,23 +120,25 @@ class MediaGallery extends StatelessWidget {
                             ),
                           ],
                           if (media.isNotEmpty) ...[
-                            _sectionTitle(
-                              context,
-                              'Media',
-                              top: games.isNotEmpty || folders.isNotEmpty,
-                            ),
-                            SliverGrid.builder(
-                              itemCount: media.length,
-                              gridDelegate:
-                                  SliverGridDelegateWithFixedCrossAxisCount(
-                                    crossAxisCount: columns,
-                                    crossAxisSpacing: 16,
-                                    mainAxisSpacing: 16,
-                                    mainAxisExtent: 245,
-                                  ),
-                              itemBuilder: (context, index) => _MediaCard(
-                                media: media[index],
-                                controller: controller,
+                            SliverPadding(
+                              padding: EdgeInsets.only(
+                                top: games.isNotEmpty || folders.isNotEmpty
+                                    ? 24
+                                    : 0,
+                              ),
+                              sliver: SliverGrid.builder(
+                                itemCount: media.length,
+                                gridDelegate:
+                                    SliverGridDelegateWithFixedCrossAxisCount(
+                                      crossAxisCount: columns,
+                                      crossAxisSpacing: 16,
+                                      mainAxisSpacing: 16,
+                                      mainAxisExtent: 245,
+                                    ),
+                                itemBuilder: (context, index) => _MediaCard(
+                                  media: media[index],
+                                  controller: controller,
+                                ),
                               ),
                             ),
                           ],

@@ -63,9 +63,16 @@ class MediaActionButtons extends StatelessWidget {
   final LibraryController controller;
   final MediaItem media;
 
+  static final _outlineStyle = FButtonStyleDelta.delta(
+    decoration: FVariantsDelta.delta([
+      FVariantOperation.all(DecorationDelta.boxDelta()),
+    ]),
+  );
+
   @override
   Widget build(BuildContext context) {
     return Wrap(
+      alignment: WrapAlignment.end,
       spacing: 8,
       runSpacing: 8,
       children: [
@@ -73,14 +80,13 @@ class MediaActionButtons extends StatelessWidget {
           key: const ValueKey('media-open-location'),
           variant: FButtonVariant.outline,
           size: FButtonSizeVariant.sm,
+          style: _outlineStyle,
           mainAxisSize: MainAxisSize.min,
           prefix: const Icon(FLucideIcons.folderOpen),
           onPress: () => unawaited(controller.openMediaLocation(media)),
-          child: Flexible(
-            child: Text(
-              controller.screenshotActions.openLocationLabel,
-              overflow: TextOverflow.ellipsis,
-            ),
+          child: Text(
+            controller.screenshotActions.openLocationLabel,
+            overflow: TextOverflow.ellipsis,
           ),
         ),
         if (!media.isVideo)
@@ -88,23 +94,21 @@ class MediaActionButtons extends StatelessWidget {
             key: const ValueKey('media-copy-image'),
             variant: FButtonVariant.outline,
             size: FButtonSizeVariant.sm,
+            style: _outlineStyle,
             mainAxisSize: MainAxisSize.min,
             prefix: const Icon(FLucideIcons.fileImage),
             onPress: () => unawaited(controller.copyMediaImage(media)),
-            child: const Flexible(
-              child: Text('Copy image', overflow: TextOverflow.ellipsis),
-            ),
+            child: const Text('Copy image', overflow: TextOverflow.ellipsis),
           ),
         FButton(
           key: const ValueKey('media-copy-path'),
           variant: FButtonVariant.outline,
           size: FButtonSizeVariant.sm,
+          style: _outlineStyle,
           mainAxisSize: MainAxisSize.min,
           prefix: const Icon(FLucideIcons.copy),
           onPress: () => unawaited(controller.copyMediaPath(media)),
-          child: const Flexible(
-            child: Text('Copy path', overflow: TextOverflow.ellipsis),
-          ),
+          child: const Text('Copy path', overflow: TextOverflow.ellipsis),
         ),
       ],
     );

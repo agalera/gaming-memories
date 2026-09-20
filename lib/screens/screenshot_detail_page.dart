@@ -7,19 +7,12 @@ import 'package:media_kit/media_kit.dart';
 import 'package:media_kit_video/media_kit_video.dart';
 import 'package:path/path.dart' as p;
 
-import '../controllers/library_controller.dart';
 import '../models/library.dart';
-import '../widgets/screenshot_actions.dart';
 
 class MediaDetailPage extends StatelessWidget {
-  const MediaDetailPage({
-    required this.media,
-    required this.controller,
-    super.key,
-  });
+  const MediaDetailPage({required this.media, super.key});
 
   final MediaItem media;
-  final LibraryController controller;
 
   @override
   Widget build(BuildContext context) {
@@ -28,7 +21,7 @@ class MediaDetailPage extends StatelessWidget {
       child: LayoutBuilder(
         builder: (context, constraints) {
           final preview = _MediaPreview(media: media);
-          final details = _MediaDetails(media: media, controller: controller);
+          final details = _MediaDetails(media: media);
 
           if (constraints.maxWidth >= 900) {
             return Row(
@@ -244,10 +237,9 @@ class _VideoPreviewState extends State<_VideoPreview> {
 }
 
 class _MediaDetails extends StatelessWidget {
-  const _MediaDetails({required this.media, required this.controller});
+  const _MediaDetails({required this.media});
 
   final MediaItem media;
-  final LibraryController controller;
 
   @override
   Widget build(BuildContext context) {
@@ -265,8 +257,6 @@ class _MediaDetails extends StatelessWidget {
                 fontWeight: FontWeight.w700,
               ),
             ),
-            const SizedBox(height: 14),
-            MediaActionButtons(controller: controller, media: media),
             const SizedBox(height: 20),
             _DetailItem(label: 'Game', value: media.game),
             _DetailItem(label: 'Platform', value: media.platform),
