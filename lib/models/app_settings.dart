@@ -224,6 +224,8 @@ class AppSettings {
     this.guildWars2 = const ProviderSettings.disabled(),
     this.hytale = const ProviderSettings.disabled(),
     this.minecraft = const ProviderSettings.disabled(),
+    this.playStation4 = const ProviderSettings.disabled(),
+    this.playStation5 = const ProviderSettings.disabled(),
     this.steam = const SteamSettings.disabled(),
     this.themeMode = AppThemeMode.system,
     this.folderGrants = const {},
@@ -235,6 +237,8 @@ class AppSettings {
       guildWars2 = const ProviderSettings.disabled(),
       hytale = const ProviderSettings.disabled(),
       minecraft = const ProviderSettings.disabled(),
+      playStation4 = const ProviderSettings.disabled(),
+      playStation5 = const ProviderSettings.disabled(),
       steam = const SteamSettings.disabled(),
       themeMode = AppThemeMode.system,
       folderGrants = const {};
@@ -244,6 +248,8 @@ class AppSettings {
   final ProviderSettings guildWars2;
   final ProviderSettings hytale;
   final ProviderSettings minecraft;
+  final ProviderSettings playStation4;
+  final ProviderSettings playStation5;
   final SteamSettings steam;
   final AppThemeMode themeMode;
   final Map<String, FolderGrant> folderGrants;
@@ -254,6 +260,8 @@ class AppSettings {
     ProviderSettings? guildWars2,
     ProviderSettings? hytale,
     ProviderSettings? minecraft,
+    ProviderSettings? playStation4,
+    ProviderSettings? playStation5,
     SteamSettings? steam,
     AppThemeMode? themeMode,
     Map<String, FolderGrant>? folderGrants,
@@ -264,6 +272,8 @@ class AppSettings {
       guildWars2: guildWars2 ?? this.guildWars2,
       hytale: hytale ?? this.hytale,
       minecraft: minecraft ?? this.minecraft,
+      playStation4: playStation4 ?? this.playStation4,
+      playStation5: playStation5 ?? this.playStation5,
       steam: steam ?? this.steam,
       themeMode: themeMode ?? this.themeMode,
       folderGrants: folderGrants ?? this.folderGrants,
@@ -275,6 +285,8 @@ class AppSettings {
     final guildWars2Json = json['guildWars2'];
     final hytaleJson = json['hytale'];
     final minecraftJson = json['minecraft'];
+    final playStation4Json = json['playStation4'];
+    final playStation5Json = json['playStation5'];
     final steamJson = json['steam'];
     final grantsJson = json['folderGrants'];
     final grants = <String, FolderGrant>{};
@@ -303,6 +315,12 @@ class AppSettings {
       minecraft: minecraftJson is Map<String, Object?>
           ? ProviderSettings.fromJson(minecraftJson)
           : const ProviderSettings.disabled(),
+      playStation4: playStation4Json is Map<String, Object?>
+          ? ProviderSettings.fromJson(playStation4Json)
+          : const ProviderSettings.disabled(),
+      playStation5: playStation5Json is Map<String, Object?>
+          ? ProviderSettings.fromJson(playStation5Json)
+          : const ProviderSettings.disabled(),
       steam: steamJson is Map<String, Object?>
           ? SteamSettings.fromJson(steamJson)
           : const SteamSettings.disabled(),
@@ -312,13 +330,15 @@ class AppSettings {
   }
 
   Map<String, Object?> toJson() => {
-    'version': 8,
+    'version': 9,
     'outputPath': outputPath,
     'themeMode': themeMode.name,
     'diabloIV': diabloIV.toJson(),
     'guildWars2': guildWars2.toJson(),
     'hytale': hytale.toJson(),
     'minecraft': minecraft.toJson(),
+    'playStation4': playStation4.toJson(),
+    'playStation5': playStation5.toJson(),
     'steam': steam.toJson(),
     'folderGrants': {
       for (final entry in folderGrants.entries) entry.key: entry.value.toJson(),

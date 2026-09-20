@@ -32,6 +32,8 @@ enum SettingsFolderTarget {
   hytaleAutomatic,
   minecraftCustom,
   minecraftAutomatic,
+  playStation4Custom,
+  playStation5Custom,
   steamCustom,
   steamAutomatic,
 }
@@ -661,6 +663,30 @@ class LibraryController extends ChangeNotifier {
           pathMismatchMessage: 'Choose the Minecraft screenshots folder shown by Gaming Memories.',
           selectedPath: (_) => candidate,
         );
+      case SettingsFolderTarget.playStation4Custom:
+        return _FolderSpecification(
+          request: FolderAccessRequest(
+            id: FolderGrantIds.playStation4,
+            title: 'Choose the PlayStation 4 exported media folder',
+            access: FolderGrantAccess.readOnly,
+            initialPath:
+                _nonEmpty(initialPath) ??
+                _nonEmpty(settings.playStation4.sourcePath),
+          ),
+          selectedPath: (settings) => settings.playStation4.sourcePath,
+        );
+      case SettingsFolderTarget.playStation5Custom:
+        return _FolderSpecification(
+          request: FolderAccessRequest(
+            id: FolderGrantIds.playStation5,
+            title: 'Choose the PlayStation 5 exported media folder',
+            access: FolderGrantAccess.readOnly,
+            initialPath:
+                _nonEmpty(initialPath) ??
+                _nonEmpty(settings.playStation5.sourcePath),
+          ),
+          selectedPath: (settings) => settings.playStation5.sourcePath,
+        );
       case SettingsFolderTarget.steamCustom:
         return _FolderSpecification(
           request: FolderAccessRequest(
@@ -749,6 +775,20 @@ class LibraryController extends ChangeNotifier {
         minecraft: settings.minecraft.copyWith(
           enabled: true,
           useCustomPath: false,
+          sourcePath: path,
+        ),
+      ),
+      SettingsFolderTarget.playStation4Custom => settings.copyWith(
+        playStation4: settings.playStation4.copyWith(
+          enabled: true,
+          useCustomPath: true,
+          sourcePath: path,
+        ),
+      ),
+      SettingsFolderTarget.playStation5Custom => settings.copyWith(
+        playStation5: settings.playStation5.copyWith(
+          enabled: true,
+          useCustomPath: true,
           sourcePath: path,
         ),
       ),

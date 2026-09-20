@@ -8,7 +8,7 @@ The app includes these functions:
 - An album tree that groups media by platform, game, and nested folder.
 - Video thumbnails, duration details, and video playback.
 - Settings for the library folder and provider folder.
-- Diablo IV, Guild Wars 2, Hytale, Minecraft, and Steam providers.
+- Diablo IV, Guild Wars 2, Hytale, Minecraft, PlayStation 4, PlayStation 5, and Steam providers.
 - SHA-1 collision names that prevent file loss.
 
 ## Requirements
@@ -20,7 +20,9 @@ FFmpeg and FFprobe are optional command-line tools. The app uses them to create 
 
 The app can play videos without these tools. It uses a current `.thumb.jpg` sidecar when one is available.
 
-The Guild Wars 2 provider requires ExifTool. The provider uses it to read each screenshot date.
+The Guild Wars 2 and PlayStation 4 providers require ExifTool. They use it to read screenshot dates.
+
+PlayStation 4 and PlayStation 5 require a folder exported from the console. The PlayStation 5 provider uses FFprobe, when available, to date a clip from its start instead of the end time in its filename.
 
 ## Run the app
 

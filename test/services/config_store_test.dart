@@ -37,6 +37,16 @@ void main() {
         useCustomPath: true,
         sourcePath: '/minecraft/screenshots',
       ),
+      playStation4: ProviderSettings(
+        enabled: true,
+        useCustomPath: true,
+        sourcePath: '/playstation-4',
+      ),
+      playStation5: ProviderSettings(
+        enabled: true,
+        useCustomPath: true,
+        sourcePath: '/playstation-5',
+      ),
       steam: SteamSettings(
         enabled: true,
         useCustomPath: true,
@@ -79,6 +89,12 @@ void main() {
     expect(actual.minecraft.enabled, isTrue);
     expect(actual.minecraft.useCustomPath, isTrue);
     expect(actual.minecraft.sourcePath, '/minecraft/screenshots');
+    expect(actual.playStation4.enabled, isTrue);
+    expect(actual.playStation4.useCustomPath, isTrue);
+    expect(actual.playStation4.sourcePath, '/playstation-4');
+    expect(actual.playStation5.enabled, isTrue);
+    expect(actual.playStation5.useCustomPath, isTrue);
+    expect(actual.playStation5.sourcePath, '/playstation-5');
     expect(actual.steam.enabled, isTrue);
     expect(actual.steam.useCustomPath, isTrue);
     expect(actual.steam.userdataPath, '/steam');
@@ -91,7 +107,7 @@ void main() {
     expect(actual.folderGrants['library']?.path, '/screenshots');
     expect(actual.folderGrants['library']?.access, FolderGrantAccess.readWrite);
     final json = jsonDecode(await File(store.filePath).readAsString()) as Map;
-    expect(json['version'], 8);
+    expect(json['version'], 9);
     expect(File('${store.filePath}.tmp').existsSync(), isFalse);
   });
 

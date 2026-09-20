@@ -24,6 +24,8 @@ class _SettingsPageState extends State<SettingsPage> {
   late final TextEditingController _guildWars2Controller;
   late final TextEditingController _hytaleController;
   late final TextEditingController _minecraftController;
+  late final TextEditingController _playStation4Controller;
+  late final TextEditingController _playStation5Controller;
   late final TextEditingController _steamPathController;
   late final TextEditingController _steamUserController;
   late final TextEditingController _steamKeyController;
@@ -42,6 +44,8 @@ class _SettingsPageState extends State<SettingsPage> {
   late bool _hytaleDownloadCovers;
   late bool _minecraftEnabled;
   late bool _minecraftUseCustomPath;
+  late bool _playStation4Enabled;
+  late bool _playStation5Enabled;
   late bool _steamEnabled;
   late bool _steamUseCustomPath;
   late bool _steamOnlineGallery;
@@ -51,6 +55,8 @@ class _SettingsPageState extends State<SettingsPage> {
   String? _guildWars2PathError;
   String? _hytalePathError;
   String? _minecraftPathError;
+  String? _playStation4PathError;
+  String? _playStation5PathError;
   String? _steamPathError;
   Timer? _saveTimer;
   var _draftRevision = 0;
@@ -74,6 +80,14 @@ class _SettingsPageState extends State<SettingsPage> {
     _hytaleController = TextEditingController(text: hytale.sourcePath);
     final minecraft = widget.controller.settings.minecraft;
     _minecraftController = TextEditingController(text: minecraft.sourcePath);
+    final playStation4 = widget.controller.settings.playStation4;
+    _playStation4Controller = TextEditingController(
+      text: playStation4.sourcePath,
+    );
+    final playStation5 = widget.controller.settings.playStation5;
+    _playStation5Controller = TextEditingController(
+      text: playStation5.sourcePath,
+    );
     final steam = widget.controller.settings.steam;
     _steamPathController = TextEditingController(text: steam.userdataPath);
     _steamUserController = TextEditingController(text: steam.userId);
@@ -95,6 +109,8 @@ class _SettingsPageState extends State<SettingsPage> {
     _hytaleDownloadCovers = hytale.downloadCovers;
     _minecraftEnabled = minecraft.enabled;
     _minecraftUseCustomPath = minecraft.useCustomPath;
+    _playStation4Enabled = playStation4.enabled;
+    _playStation5Enabled = playStation5.enabled;
     _steamEnabled = steam.enabled;
     _steamUseCustomPath = steam.useCustomPath;
     _steamOnlineGallery = steam.onlineGallery;
@@ -107,6 +123,8 @@ class _SettingsPageState extends State<SettingsPage> {
       _guildWars2Controller,
       _hytaleController,
       _minecraftController,
+      _playStation4Controller,
+      _playStation5Controller,
       _steamPathController,
       _steamUserController,
       _steamKeyController,
@@ -140,6 +158,8 @@ class _SettingsPageState extends State<SettingsPage> {
     _guildWars2Controller.dispose();
     _hytaleController.dispose();
     _minecraftController.dispose();
+    _playStation4Controller.dispose();
+    _playStation5Controller.dispose();
     _steamPathController.dispose();
     _steamUserController.dispose();
     _steamKeyController.dispose();
@@ -459,6 +479,50 @@ class _SettingsPageState extends State<SettingsPage> {
                       ),
                     ],
                   ),
+                ),
+              ),
+              const SizedBox(height: 16),
+              _PlayStationProviderCard(
+                name: 'PlayStation 4',
+                description: 'Screenshots and 30-second clips',
+                fieldKey: const ValueKey('playstation-4-path-field'),
+                switchKey: const ValueKey('playstation-4-enabled'),
+                controller: _playStation4Controller,
+                enabled: _playStation4Enabled,
+                error: _playStation4PathError,
+                readOnly: widget.controller.usesPersistentFolderAccess,
+                buttonLabel: _playStation4Enabled
+                    ? _folderButtonLabel(FolderGrantIds.playStation4)
+                    : 'Select Folder',
+                requirement: 'Requires ExifTool to read screenshot dates.',
+                onEnabled: (value) => unawaited(
+                  _setProviderEnabled(_SettingsProvider.playStation4, value),
+                ),
+                onBrowse: () => _chooseDirectory(
+                  SettingsFolderTarget.playStation4Custom,
+                  initialPath: _playStation4Controller.text,
+                ),
+              ),
+              const SizedBox(height: 16),
+              _PlayStationProviderCard(
+                name: 'PlayStation 5',
+                description: 'Screenshots and 30-second clips',
+                fieldKey: const ValueKey('playstation-5-path-field'),
+                switchKey: const ValueKey('playstation-5-enabled'),
+                controller: _playStation5Controller,
+                enabled: _playStation5Enabled,
+                error: _playStation5PathError,
+                readOnly: widget.controller.usesPersistentFolderAccess,
+                buttonLabel: _playStation5Enabled
+                    ? _folderButtonLabel(FolderGrantIds.playStation5)
+                    : 'Select Folder',
+                requirement: 'FFprobe is optional. Without it, clips use the end time in their filename.',
+                onEnabled: (value) => unawaited(
+                  _setProviderEnabled(_SettingsProvider.playStation5, value),
+                ),
+                onBrowse: () => _chooseDirectory(
+                  SettingsFolderTarget.playStation5Custom,
+                  initialPath: _playStation5Controller.text,
                 ),
               ),
               const SizedBox(height: 16),
@@ -995,6 +1059,8 @@ class _SettingsPageState extends State<SettingsPage> {
     _guildWars2Controller.text = saved.guildWars2.sourcePath;
     _hytaleController.text = saved.hytale.sourcePath;
     _minecraftController.text = saved.minecraft.sourcePath;
+    _playStation4Controller.text = saved.playStation4.sourcePath;
+    _playStation5Controller.text = saved.playStation5.sourcePath;
     _steamPathController.text = saved.steam.userdataPath;
     _suppressAutosave = false;
     setState(() {
@@ -1006,6 +1072,8 @@ class _SettingsPageState extends State<SettingsPage> {
       _hytaleUseCustomPath = saved.hytale.useCustomPath;
       _minecraftEnabled = saved.minecraft.enabled;
       _minecraftUseCustomPath = saved.minecraft.useCustomPath;
+      _playStation4Enabled = saved.playStation4.enabled;
+      _playStation5Enabled = saved.playStation5.enabled;
       _steamEnabled = saved.steam.enabled;
       _steamUseCustomPath = saved.steam.useCustomPath;
       _setFolderError(target, null);
@@ -1126,6 +1194,10 @@ class _SettingsPageState extends State<SettingsPage> {
         SettingsFolderTarget.minecraftCustom,
       (_SettingsProvider.minecraft, false) =>
         SettingsFolderTarget.minecraftAutomatic,
+      (_SettingsProvider.playStation4, true) =>
+        SettingsFolderTarget.playStation4Custom,
+      (_SettingsProvider.playStation5, true) =>
+        SettingsFolderTarget.playStation5Custom,
       (_SettingsProvider.steam, true) => SettingsFolderTarget.steamCustom,
       (_SettingsProvider.steam, false) => SettingsFolderTarget.steamAutomatic,
       _ => null,
@@ -1162,6 +1234,10 @@ class _SettingsPageState extends State<SettingsPage> {
               SettingsFolderTarget.guildWars2Custom,
             _SettingsProvider.hytale => SettingsFolderTarget.hytaleCustom,
             _SettingsProvider.minecraft => SettingsFolderTarget.minecraftCustom,
+            _SettingsProvider.playStation4 =>
+              SettingsFolderTarget.playStation4Custom,
+            _SettingsProvider.playStation5 =>
+              SettingsFolderTarget.playStation5Custom,
             _SettingsProvider.steam => SettingsFolderTarget.steamCustom,
           }
         : switch (provider) {
@@ -1201,6 +1277,8 @@ class _SettingsPageState extends State<SettingsPage> {
     _SettingsProvider.guildWars2 => _guildWars2UseCustomPath,
     _SettingsProvider.hytale => _hytaleUseCustomPath,
     _SettingsProvider.minecraft => _minecraftUseCustomPath,
+    _SettingsProvider.playStation4 => true,
+    _SettingsProvider.playStation5 => true,
     _SettingsProvider.steam => _steamUseCustomPath,
   };
 
@@ -1209,6 +1287,8 @@ class _SettingsPageState extends State<SettingsPage> {
     _SettingsProvider.guildWars2 => _guildWars2Controller.text,
     _SettingsProvider.hytale => _hytaleController.text,
     _SettingsProvider.minecraft => _minecraftController.text,
+    _SettingsProvider.playStation4 => _playStation4Controller.text,
+    _SettingsProvider.playStation5 => _playStation5Controller.text,
     _SettingsProvider.steam => _steamPathController.text,
   };
 
@@ -1218,6 +1298,8 @@ class _SettingsPageState extends State<SettingsPage> {
       _SettingsProvider.guildWars2 => FolderGrantIds.guildWars2,
       _SettingsProvider.hytale => FolderGrantIds.hytale,
       _SettingsProvider.minecraft => FolderGrantIds.minecraft,
+      _SettingsProvider.playStation4 => FolderGrantIds.playStation4,
+      _SettingsProvider.playStation5 => FolderGrantIds.playStation5,
       _SettingsProvider.steam => FolderGrantIds.steam,
     };
     return widget.controller.folderAuthorization(id).isReady;
@@ -1236,6 +1318,12 @@ class _SettingsPageState extends State<SettingsPage> {
         break;
       case _SettingsProvider.minecraft:
         _minecraftEnabled = value;
+        break;
+      case _SettingsProvider.playStation4:
+        _playStation4Enabled = value;
+        break;
+      case _SettingsProvider.playStation5:
+        _playStation5Enabled = value;
         break;
       case _SettingsProvider.steam:
         _steamEnabled = value;
@@ -1257,6 +1345,9 @@ class _SettingsPageState extends State<SettingsPage> {
       case _SettingsProvider.minecraft:
         _minecraftUseCustomPath = value;
         break;
+      case _SettingsProvider.playStation4:
+      case _SettingsProvider.playStation5:
+        break;
       case _SettingsProvider.steam:
         _steamUseCustomPath = value;
         break;
@@ -1276,6 +1367,12 @@ class _SettingsPageState extends State<SettingsPage> {
         break;
       case _SettingsProvider.minecraft:
         _minecraftPathError = value;
+        break;
+      case _SettingsProvider.playStation4:
+        _playStation4PathError = value;
+        break;
+      case _SettingsProvider.playStation5:
+        _playStation5PathError = value;
         break;
       case _SettingsProvider.steam:
         _steamPathError = value;
@@ -1301,6 +1398,12 @@ class _SettingsPageState extends State<SettingsPage> {
       case SettingsFolderTarget.minecraftCustom:
       case SettingsFolderTarget.minecraftAutomatic:
         _minecraftPathError = value;
+        break;
+      case SettingsFolderTarget.playStation4Custom:
+        _playStation4PathError = value;
+        break;
+      case SettingsFolderTarget.playStation5Custom:
+        _playStation5PathError = value;
         break;
       case SettingsFolderTarget.steamCustom:
       case SettingsFolderTarget.steamAutomatic:
@@ -1435,6 +1538,16 @@ class _SettingsPageState extends State<SettingsPage> {
         useCustomPath: _minecraftUseCustomPath,
         sourcePath: _minecraftController.text.trim(),
       ),
+      playStation4: ProviderSettings(
+        enabled: _playStation4Enabled,
+        useCustomPath: true,
+        sourcePath: _playStation4Controller.text.trim(),
+      ),
+      playStation5: ProviderSettings(
+        enabled: _playStation5Enabled,
+        useCustomPath: true,
+        sourcePath: _playStation5Controller.text.trim(),
+      ),
       steam: SteamSettings(
         enabled: _steamEnabled,
         useCustomPath: _steamUseCustomPath,
@@ -1497,6 +1610,12 @@ class _SettingsPageState extends State<SettingsPage> {
       minecraft: errors.minecraft == null
           ? draft.minecraft
           : saved.minecraft.copyWith(enabled: draft.minecraft.enabled),
+      playStation4: errors.playStation4 == null
+          ? draft.playStation4
+          : saved.playStation4.copyWith(enabled: draft.playStation4.enabled),
+      playStation5: errors.playStation5 == null
+          ? draft.playStation5
+          : saved.playStation5.copyWith(enabled: draft.playStation5.enabled),
       steam: SteamSettings(
         enabled: draft.steam.enabled,
         useCustomPath: errors.steam == null
@@ -1574,6 +1693,20 @@ class _SettingsPageState extends State<SettingsPage> {
               ),
             )
           : Future.value(),
+      draft.playStation4.enabled
+          ? _directoryError(
+              draft.playStation4.sourcePath,
+              label: 'PlayStation 4 exported media folder',
+              grantId: FolderGrantIds.playStation4,
+            )
+          : Future.value(),
+      draft.playStation5.enabled
+          ? _directoryError(
+              draft.playStation5.sourcePath,
+              label: 'PlayStation 5 exported media folder',
+              grantId: FolderGrantIds.playStation5,
+            )
+          : Future.value(),
       draft.steam.useCustomPath
           ? _directoryError(
               draft.steam.userdataPath,
@@ -1597,7 +1730,9 @@ class _SettingsPageState extends State<SettingsPage> {
       guildWars2: results[2],
       hytale: results[3],
       minecraft: results[4],
-      steam: results[5],
+      playStation4: results[5],
+      playStation5: results[6],
+      steam: results[7],
     );
   }
 
@@ -1648,6 +1783,8 @@ class _SettingsPageState extends State<SettingsPage> {
       _guildWars2PathError = errors.guildWars2;
       _hytalePathError = errors.hytale;
       _minecraftPathError = errors.minecraft;
+      _playStation4PathError = errors.playStation4;
+      _playStation5PathError = errors.playStation5;
       _steamPathError = errors.steam;
     });
   }
@@ -1706,6 +1843,8 @@ class _PathErrors {
     required this.guildWars2,
     required this.hytale,
     required this.minecraft,
+    required this.playStation4,
+    required this.playStation5,
     required this.steam,
   });
 
@@ -1714,10 +1853,20 @@ class _PathErrors {
   final String? guildWars2;
   final String? hytale;
   final String? minecraft;
+  final String? playStation4;
+  final String? playStation5;
   final String? steam;
 }
 
-enum _SettingsProvider { diabloIV, guildWars2, hytale, minecraft, steam }
+enum _SettingsProvider {
+  diabloIV,
+  guildWars2,
+  hytale,
+  minecraft,
+  playStation4,
+  playStation5,
+  steam,
+}
 
 class _CustomGame {
   const _CustomGame(this.appId, this.name);
@@ -1931,6 +2080,109 @@ class _CustomGamesList extends StatelessWidget {
             ),
           ],
         ],
+      ),
+    );
+  }
+}
+
+class _PlayStationProviderCard extends StatelessWidget {
+  const _PlayStationProviderCard({
+    required this.name,
+    required this.description,
+    required this.fieldKey,
+    required this.switchKey,
+    required this.controller,
+    required this.enabled,
+    required this.error,
+    required this.readOnly,
+    required this.buttonLabel,
+    required this.requirement,
+    required this.onEnabled,
+    required this.onBrowse,
+  });
+
+  final String name;
+  final String description;
+  final Key fieldKey;
+  final Key switchKey;
+  final TextEditingController controller;
+  final bool enabled;
+  final String? error;
+  final bool readOnly;
+  final String buttonLabel;
+  final String requirement;
+  final ValueChanged<bool> onEnabled;
+  final VoidCallback onBrowse;
+
+  @override
+  Widget build(BuildContext context) {
+    return FCard(
+      child: Padding(
+        padding: const EdgeInsets.all(20),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Container(
+                  width: 44,
+                  height: 44,
+                  decoration: BoxDecoration(
+                    color: context.theme.colors.muted,
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: const Icon(FLucideIcons.gamepad2),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        name,
+                        style: context.theme.typography.body.lg.copyWith(
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        description,
+                        style: context.theme.typography.body.sm.copyWith(
+                          color: context.theme.colors.mutedForeground,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                FSwitch(
+                  key: switchKey,
+                  value: enabled,
+                  semanticsLabel: 'Enable $name',
+                  onChange: onEnabled,
+                ),
+              ],
+            ),
+            const SizedBox(height: 18),
+            _DirectoryField(
+              fieldKey: fieldKey,
+              controller: controller,
+              label: 'Exported media folder',
+              hint: '/path/to/$name/Captures',
+              error: error,
+              enabled: enabled,
+              readOnly: readOnly,
+              buttonLabel: buttonLabel,
+              onBrowse: onBrowse,
+            ),
+            const SizedBox(height: 10),
+            Text(
+              'Select the folder copied from your console. $requirement',
+              style: context.theme.typography.body.xs.copyWith(
+                color: context.theme.colors.mutedForeground,
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }

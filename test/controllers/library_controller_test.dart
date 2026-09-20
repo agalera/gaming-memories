@@ -463,6 +463,47 @@ void main() {
     expect(access.requests.single.message, contains('Click Allow Access'));
   });
 
+  test('saves PlayStation folder access as a custom provider path', () async {
+    final directory = await Directory.systemTemp.createTemp('gaming-memories-');
+    final captures = Directory(p.join(directory.path, 'PS5 captures'))
+      ..createSync();
+    addTearDown(() => directory.delete(recursive: true));
+    final access = _FakeFolderAccess(
+      chosen: FolderAccessLease(
+        grant: FolderGrant(
+          platform: 'macos',
+          path: captures.path,
+          access: FolderGrantAccess.readOnly,
+          bookmark: 'playstation-bookmark',
+        ),
+        token: 'playstation-lease',
+      ),
+    );
+    final store = ConfigStore(
+      filePath: p.join(directory.path, 'settings.json'),
+    );
+    final controller = LibraryController(
+      configStore: store,
+      scanner: const LibraryScanner(),
+      providers: const [],
+      folderAccess: access,
+    );
+
+    final result = await controller.chooseFolder(
+      SettingsFolderTarget.playStation5Custom,
+    );
+
+    expect(result.saved, isTrue);
+    expect(controller.settings.playStation5.enabled, isTrue);
+    expect(controller.settings.playStation5.useCustomPath, isTrue);
+    expect(controller.settings.playStation5.sourcePath, captures.path);
+    expect(
+      controller.settings.folderGrants[FolderGrantIds.playStation5]?.bookmark,
+      'playstation-bookmark',
+    );
+    expect((await store.load()).playStation5.sourcePath, captures.path);
+  });
+
   test(
     'saves automatic Hytale folder access without making it custom',
     () async {

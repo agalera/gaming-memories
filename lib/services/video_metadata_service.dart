@@ -1,10 +1,19 @@
 import 'dart:convert';
 import 'dart:io';
 
-class VideoMetadataService {
+abstract interface class VideoDurationReader {
+  Future<Duration?> duration(File source);
+}
+
+class VideoMetadataService implements VideoDurationReader {
   const VideoMetadataService();
 
   String pathFor(String sourcePath) => '$sourcePath.metadata.json';
+
+  @override
+  Future<Duration?> duration(File source) async {
+    return ensureDuration(source, await source.stat());
+  }
 
   Future<Duration?> ensureDuration(File source, FileStat sourceStat) async {
     final metadata = File(pathFor(source.path));
@@ -33,8 +42,15 @@ class VideoMetadataService {
         return cached;
       }
 
-      await _writeMetadata(metadata, seconds);
-      return Duration(milliseconds: (seconds * 1000).round());
+      final duration = Duration(milliseconds: (seconds * 1000).round());
+      try {
+        await _writeMetadata(metadata, seconds);
+      } on FileSystemException {
+        // Providers can read clips from a read-only folder. The probed
+        // duration is still useful even when its optional cache cannot be
+        // written beside the source file.
+      }
+      return duration;
     } on FileSystemException {
       return cached;
     } on ProcessException {

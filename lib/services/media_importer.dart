@@ -31,6 +31,20 @@ class MediaImporter {
     return result.imported;
   }
 
+  Future<bool> copyWithName(
+    File source,
+    Directory destination, {
+    required String baseName,
+  }) async {
+    final result = await _write(
+      await source.readAsBytes(),
+      destination,
+      baseName: baseName,
+      extension: p.extension(source.path).toLowerCase(),
+    );
+    return result.imported;
+  }
+
   Future<bool> writeBytes(
     List<int> bytes,
     Directory destination, {

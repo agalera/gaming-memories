@@ -11,6 +11,8 @@ import 'providers/diablo_iv_provider.dart';
 import 'providers/guild_wars_2_provider.dart';
 import 'providers/hytale_provider.dart';
 import 'providers/minecraft_provider.dart';
+import 'providers/playstation_4_provider.dart';
+import 'providers/playstation_5_provider.dart';
 import 'providers/steam_provider.dart';
 import 'services/config_store.dart';
 import 'services/file_cache.dart';
@@ -41,6 +43,8 @@ Future<void> main() async {
       const GuildWars2Provider(),
       HytaleProvider(providerPaths: providerPaths),
       MinecraftProvider(providerPaths: providerPaths),
+      const PlayStation4Provider(),
+      const PlayStation5Provider(),
       SteamProvider(
         providerPaths: providerPaths,
         api: SteamClient(
