@@ -35,6 +35,7 @@ class LibraryController extends ChangeNotifier {
   String? error;
   String? progressMessage;
   double? progressValue;
+  int notificationRevision = 0;
 
   List<MediaItem> get visibleMedia {
     if (view == LibraryView.platform && selectedPlatform != null) {
@@ -99,7 +100,7 @@ class LibraryController extends ChangeNotifier {
       settings = await configStore.load();
       library = await scanner.scan(settings.outputPath);
     } catch (exception) {
-      error = 'Could not load the library: $exception';
+      _setError('Could not load the library: $exception');
     } finally {
       isInitializing = false;
       notifyListeners();
@@ -194,7 +195,7 @@ class LibraryController extends ChangeNotifier {
       settings = next;
       _setProgress('Refreshing the library…');
       library = await scanner.scan(settings.outputPath);
-      message = 'Settings saved.';
+      _setMessage('Settings saved.');
     });
   }
 
@@ -202,7 +203,7 @@ class LibraryController extends ChangeNotifier {
     await _run(() async {
       _setProgress('Refreshing the library…');
       library = await scanner.scan(settings.outputPath);
-      message = 'Library refreshed.';
+      _setMessage('Library refreshed.');
     });
   }
 
@@ -228,11 +229,11 @@ class LibraryController extends ChangeNotifier {
       final imported = results.fold(0, (sum, result) => sum + result.imported);
       final skipped = results.fold(0, (sum, result) => sum + result.skipped);
       if (results.isEmpty) {
-        message = 'Enable a provider in Settings first.';
+        _setMessage('Enable a provider in Settings first.');
       } else if (imported == 0) {
-        message = 'No new media. $skipped already in the library.';
+        _setMessage('No new media. $skipped already in the library.');
       } else {
-        message = 'Imported $imported media files. Skipped $skipped.';
+        _setMessage('Imported $imported media files. Skipped $skipped.');
       }
     });
   }
@@ -246,7 +247,7 @@ class LibraryController extends ChangeNotifier {
     try {
       await action();
     } catch (exception) {
-      error = exception.toString().replaceFirst('FileSystemException: ', '');
+      _setError(exception.toString().replaceFirst('FileSystemException: ', ''));
     } finally {
       isBusy = false;
       progressMessage = null;
@@ -271,10 +272,22 @@ class LibraryController extends ChangeNotifier {
 
     try {
       await action();
-      message = success;
+      _setMessage(success);
     } catch (exception) {
-      error = '$failure: $exception';
+      _setError('$failure: $exception');
     }
     notifyListeners();
+  }
+
+  void _setMessage(String value) {
+    message = value;
+    error = null;
+    notificationRevision++;
+  }
+
+  void _setError(String value) {
+    error = value;
+    message = null;
+    notificationRevision++;
   }
 }

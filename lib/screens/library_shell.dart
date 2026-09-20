@@ -17,12 +17,120 @@ class LibraryShell extends StatefulWidget {
 }
 
 class _LibraryShellState extends State<LibraryShell> {
+  FToasterEntry? _progressToast;
+  int _lastNotificationRevision = -1;
+  bool _toastSyncScheduled = false;
+
   @override
   void initState() {
     super.initState();
+    widget.controller.addListener(_scheduleToastSync);
+    _scheduleToastSync();
     if (widget.controller.isInitializing) {
       widget.controller.initialize();
     }
+  }
+
+  @override
+  void didUpdateWidget(LibraryShell oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.controller == widget.controller) {
+      return;
+    }
+
+    oldWidget.controller.removeListener(_scheduleToastSync);
+    _progressToast?.dismiss();
+    _progressToast = null;
+    _lastNotificationRevision = -1;
+    widget.controller.addListener(_scheduleToastSync);
+    _scheduleToastSync();
+  }
+
+  @override
+  void dispose() {
+    widget.controller.removeListener(_scheduleToastSync);
+    _progressToast = null;
+    super.dispose();
+  }
+
+  void _scheduleToastSync() {
+    if (!mounted || _toastSyncScheduled) {
+      return;
+    }
+
+    _toastSyncScheduled = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _toastSyncScheduled = false;
+      if (mounted) {
+        _syncToasts();
+      }
+    });
+  }
+
+  void _syncToasts() {
+    final controller = widget.controller;
+    final showProgress =
+        controller.isBusy && controller.progressMessage != null;
+
+    if (showProgress && _progressToast?.showing != true) {
+      _progressToast = showRawFToast(
+        context: context,
+        alignment: FToastAlignment.bottomRight,
+        duration: null,
+        swipeToDismiss: const [],
+        builder: (context, entry) => AnimatedBuilder(
+          animation: controller,
+          builder: (context, _) => _ProgressToast(
+            message: controller.progressMessage ?? 'Please wait…',
+            value: controller.progressValue,
+          ),
+        ),
+      );
+    } else if (!showProgress && _progressToast != null) {
+      _progressToast!.dismiss();
+      _progressToast = null;
+    }
+
+    if (_lastNotificationRevision == controller.notificationRevision) {
+      return;
+    }
+
+    _lastNotificationRevision = controller.notificationRevision;
+    final error = controller.error;
+    final message = controller.message;
+    if (error != null) {
+      _showResultToast(error, isError: true);
+    } else if (message != null) {
+      _showResultToast(message, isError: false);
+    }
+  }
+
+  void _showResultToast(String message, {required bool isError}) {
+    final revision = widget.controller.notificationRevision;
+    showRawFToast(
+      context: context,
+      alignment: FToastAlignment.bottomRight,
+      variant: isError ? FToastVariant.destructive : FToastVariant.primary,
+      duration: isError ? null : const Duration(seconds: 5),
+      builder: (context, entry) => FToast(
+        key: ValueKey('notification-toast-$revision'),
+        variant: isError ? FToastVariant.destructive : FToastVariant.primary,
+        icon: Icon(
+          isError ? FLucideIcons.alertCircle : FLucideIcons.circleCheck,
+        ),
+        title: Text(message),
+        suffix: isError
+            ? FButton.icon(
+                key: ValueKey('notification-toast-close-$revision'),
+                variant: FButtonVariant.ghost,
+                size: FButtonSizeVariant.sm,
+                semanticsLabel: 'Close error notification',
+                onPress: entry.dismiss,
+                child: const Icon(FLucideIcons.x),
+              )
+            : null,
+      ),
+    );
   }
 
   @override
@@ -36,21 +144,7 @@ class _LibraryShellState extends State<LibraryShell> {
           childPad: false,
           sidebar: LibrarySidebar(controller: controller),
           header: _header(controller),
-          child: Column(
-            children: [
-              if (controller.isBusy && controller.progressMessage != null)
-                _ProgressBanner(
-                  message: controller.progressMessage!,
-                  value: controller.progressValue,
-                ),
-              if (controller.message != null || controller.error != null)
-                _StatusBanner(
-                  message: controller.error ?? controller.message!,
-                  isError: controller.error != null,
-                ),
-              Expanded(child: _content(controller)),
-            ],
-          ),
+          child: _content(controller),
         );
       },
     );
@@ -133,8 +227,8 @@ class _LibraryShellState extends State<LibraryShell> {
   }
 }
 
-class _ProgressBanner extends StatelessWidget {
-  const _ProgressBanner({required this.message, required this.value});
+class _ProgressToast extends StatelessWidget {
+  const _ProgressToast({required this.message, required this.value});
 
   final String message;
   final double? value;
@@ -144,78 +238,28 @@ class _ProgressBanner extends StatelessWidget {
     final progress = value;
     final percent = progress == null ? null : (progress * 100).round();
 
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.fromLTRB(24, 10, 24, 12),
-      color: context.theme.colors.muted,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Expanded(
-                child: Text(
-                  message,
-                  style: context.theme.typography.body.sm.copyWith(
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-              ),
-              if (percent != null)
-                Text(
-                  '$percent%',
-                  style: context.theme.typography.body.xs.copyWith(
-                    color: context.theme.colors.mutedForeground,
-                  ),
-                ),
+    return FToast(
+      key: const ValueKey('progress-toast'),
+      icon: const SizedBox.square(dimension: 18, child: FCircularProgress()),
+      title: Text(message),
+      description: SizedBox(
+        width: 280,
+        child: Row(
+          children: [
+            Expanded(
+              child: progress == null
+                  ? const FProgress(semanticsLabel: 'Task in progress')
+                  : FDeterminateProgress(
+                      value: progress,
+                      semanticsLabel: 'Task progress: $percent percent',
+                    ),
+            ),
+            if (percent != null) ...[
+              const SizedBox(width: 10),
+              Text('$percent%'),
             ],
-          ),
-          const SizedBox(height: 8),
-          if (progress == null)
-            const FProgress(semanticsLabel: 'Collection in progress')
-          else
-            FDeterminateProgress(
-              value: progress,
-              semanticsLabel: 'Collection progress: $percent percent',
-            ),
-        ],
-      ),
-    );
-  }
-}
-
-class _StatusBanner extends StatelessWidget {
-  const _StatusBanner({required this.message, required this.isError});
-
-  final String message;
-  final bool isError;
-
-  @override
-  Widget build(BuildContext context) {
-    final colors = context.theme.colors;
-    final color = isError ? colors.destructive : colors.primary;
-
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 10),
-      color: color.withValues(alpha: 0.14),
-      child: Row(
-        children: [
-          Icon(
-            isError ? FLucideIcons.alertCircle : FLucideIcons.circleCheck,
-            size: 16,
-            color: isError ? colors.destructive : colors.foreground,
-          ),
-          const SizedBox(width: 8),
-          Expanded(
-            child: Text(
-              message,
-              style: context.theme.typography.body.sm.copyWith(
-                color: isError ? colors.destructive : colors.foreground,
-              ),
-            ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }

@@ -192,8 +192,66 @@ void main() {
 
     expect(find.text('Importing Steam screenshots…'), findsOneWidget);
     expect(find.text('25%'), findsOneWidget);
+    final toast = find.byKey(const ValueKey('progress-toast'));
+    expect(toast, findsOneWidget);
+    final toastRect = tester.getRect(toast);
+    expect(toastRect.center.dx, greaterThan(400));
+    expect(toastRect.center.dy, greaterThan(300));
 
     await tester.pumpWidget(const SizedBox.shrink());
+  });
+
+  testWidgets('shows action results as bottom-right toasts', (tester) async {
+    final actions = _MemoryScreenshotActions();
+    final media = MediaItem(
+      path: '/library/PC/Game/screenshot.jpg',
+      platform: 'PC',
+      game: 'Game',
+      capturedAt: DateTime(2026, 1, 1),
+      kind: MediaKind.image,
+    );
+    final controller = LibraryController(
+      configStore: const ConfigStore(filePath: 'unused'),
+      scanner: const LibraryScanner(),
+      providers: const [],
+      screenshotActions: actions,
+    )..isInitializing = false;
+
+    await tester.pumpWidget(GamingMemoriesApp(controller: controller));
+    await tester.pump();
+
+    await controller.copyMediaPath(media);
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 100));
+
+    final success = find.byKey(const ValueKey('notification-toast-1'));
+    expect(success, findsOneWidget);
+    expect(find.text('Path copied.'), findsOneWidget);
+    final successRect = tester.getRect(success);
+    expect(successRect.center.dx, greaterThan(400));
+    expect(successRect.center.dy, greaterThan(300));
+
+    actions.failCopyPath = true;
+    await controller.copyMediaPath(media);
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 100));
+
+    final error = find.byKey(const ValueKey('notification-toast-2'));
+    expect(error, findsOneWidget);
+    expect(find.textContaining('Could not copy the path'), findsOneWidget);
+    expect(tester.widget<FToast>(error).variant, FToastVariant.destructive);
+    final close = find.byKey(const ValueKey('notification-toast-close-2'));
+    expect(close, findsOneWidget);
+
+    await tester.pump(const Duration(seconds: 6));
+    expect(error, findsOneWidget);
+
+    await tester.tap(close);
+    await tester.pumpAndSettle();
+    expect(error, findsNothing);
+
+    await tester.pumpWidget(const SizedBox.shrink());
+    await tester.pump(const Duration(milliseconds: 200));
   });
 
   testWidgets('opens media and restores the gallery scroll offset', (
@@ -485,6 +543,7 @@ class _MemoryScreenshotActions implements ScreenshotActionService {
   final openedPaths = <String>[];
   final copiedImages = <String>[];
   final copiedPaths = <String>[];
+  bool failCopyPath = false;
 
   @override
   String get openLocationLabel => 'Open in file manager';
@@ -496,5 +555,10 @@ class _MemoryScreenshotActions implements ScreenshotActionService {
   Future<void> copyImage(String path) async => copiedImages.add(path);
 
   @override
-  Future<void> copyPath(String path) async => copiedPaths.add(path);
+  Future<void> copyPath(String path) async {
+    if (failCopyPath) {
+      throw StateError('copy failed');
+    }
+    copiedPaths.add(path);
+  }
 }
