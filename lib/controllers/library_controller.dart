@@ -12,6 +12,7 @@ import '../services/folder_access_service.dart';
 import '../services/library_scanner.dart';
 import '../services/provider_paths.dart';
 import '../services/screenshot_action_service.dart';
+import '../services/timeline_cache.dart';
 
 enum LibraryView { timeline, platform, album, subAlbum, settings }
 
@@ -102,6 +103,7 @@ class LibraryController extends ChangeNotifier {
     required this.configStore,
     required this.scanner,
     required this.providers,
+    this.timelineCache = const TimelineCache.disabled(),
     this.folderAccess = const PathFolderAccessService(),
     this.providerPaths = const ProviderPathResolver(),
     this.screenshotActions = const NativeScreenshotActionService(),
@@ -110,12 +112,16 @@ class LibraryController extends ChangeNotifier {
   final ConfigStore configStore;
   final LibraryScanner scanner;
   final List<ScreenshotProvider> providers;
+  final TimelineCache timelineCache;
   final FolderAccessService folderAccess;
   final ProviderPathResolver providerPaths;
   final ScreenshotActionService screenshotActions;
 
   AppSettings settings = const AppSettings.defaults();
   MediaLibrary library = const MediaLibrary.empty();
+  List<MediaItem> timelineMedia = const [];
+  List<LibraryFolder> folderTree = const [];
+  FolderListing folderListing = const FolderListing.empty();
   LibraryView view = LibraryView.timeline;
   String? selectedPlatform;
   String? selectedGame;
@@ -123,6 +129,8 @@ class LibraryController extends ChangeNotifier {
   MediaItem? selectedMedia;
   bool isInitializing = true;
   bool isBusy = false;
+  bool isTimelineRefreshing = false;
+  bool isViewLoading = false;
   String? message;
   String? error;
   NotificationKind? notificationKind;
@@ -132,6 +140,10 @@ class LibraryController extends ChangeNotifier {
   final List<AppNotification> _notifications = [];
   final Map<String, FolderAuthorization> _folderAuthorizations = {};
   FolderAccessLease? _libraryLease;
+  Future<void>? _timelineRefresh;
+  String? _timelineRefreshPath;
+  int _folderRequest = 0;
+  bool _disposed = false;
 
   List<AppNotification> get notifications => List.unmodifiable(_notifications);
 
@@ -178,29 +190,33 @@ class LibraryController extends ChangeNotifier {
   }
 
   List<MediaItem> get visibleMedia {
-    if (view == LibraryView.platform && selectedPlatform != null) {
-      return library.platformTimeline(selectedPlatform!);
+    if (view == LibraryView.album || view == LibraryView.subAlbum) {
+      return folderListing.media;
     }
-
-    if (view == LibraryView.album &&
-        selectedPlatform != null &&
-        selectedGame != null) {
-      return library.album(selectedPlatform!, selectedGame!)?.allMedia ??
-          const [];
+    if (view == LibraryView.platform) {
+      return const [];
     }
+    return timelineMedia.isEmpty ? library.timeline : timelineMedia;
+  }
 
-    if (view == LibraryView.subAlbum &&
-        selectedPlatform != null &&
-        selectedGame != null &&
-        selectedSubAlbumPath != null) {
-      return library
-              .album(selectedPlatform!, selectedGame!)
-              ?.subAlbum(selectedSubAlbumPath!)
-              ?.allMedia ??
-          const [];
+  List<LibraryFolder> get platformFolders {
+    if (folderTree.isNotEmpty) {
+      return folderTree;
     }
+    return _foldersFromLibrary();
+  }
 
-    return library.timeline;
+  List<LibraryFolder> get gameFolders {
+    final platform = selectedPlatform;
+    if (platform == null) {
+      return const [];
+    }
+    for (final folder in platformFolders) {
+      if (folder.name == platform) {
+        return folder.children;
+      }
+    }
+    return const [];
   }
 
   String get pageTitle {
@@ -208,7 +224,11 @@ class LibraryController extends ChangeNotifier {
       LibraryView.timeline => 'Timeline',
       LibraryView.platform => selectedPlatform ?? 'Platform',
       LibraryView.album => selectedGame ?? 'Album',
-      LibraryView.subAlbum => _selectedSubAlbum?.name ?? 'Sub-album',
+      LibraryView.subAlbum =>
+        _selectedSubAlbum?.name ??
+            p
+                .basename(selectedSubAlbumPath ?? '')
+                .replaceAll(RegExp(r'[/\\]+$'), ''),
       LibraryView.settings => 'Settings',
     };
   }
@@ -216,9 +236,9 @@ class LibraryController extends ChangeNotifier {
   String get pageDescription {
     return switch (view) {
       LibraryView.timeline => 'All media, from newest to oldest',
-      LibraryView.platform => 'Platform timeline, from newest to oldest',
-      LibraryView.album => selectedPlatform ?? '',
-      LibraryView.subAlbum => [?selectedPlatform, ?selectedGame].join('  •  '),
+      LibraryView.platform => 'Games in this platform',
+      LibraryView.album => 'Media in this game',
+      LibraryView.subAlbum => 'Media in this folder',
       LibraryView.settings => 'Library and provider setup',
     };
   }
@@ -235,7 +255,125 @@ class LibraryController extends ChangeNotifier {
         ?.subAlbum(selectedSubAlbumPath!);
   }
 
+  List<LibraryFolder> _foldersFromLibrary() {
+    final groups = <String, List<LibraryFolder>>{};
+    for (final album in library.albums) {
+      groups
+          .putIfAbsent(album.platform, () => [])
+          .add(
+            LibraryFolder(
+              name: album.game,
+              path: p.join(settings.outputPath, album.platform, album.game),
+              relativePath: album.game,
+              children: album.subAlbums
+                  .map((folder) => _folderFromSubAlbum(album, folder))
+                  .toList(growable: false),
+            ),
+          );
+    }
+    return groups.entries
+        .map(
+          (entry) => LibraryFolder(
+            name: entry.key,
+            path: p.join(settings.outputPath, entry.key),
+            children: entry.value,
+          ),
+        )
+        .toList(growable: false);
+  }
+
+  LibraryFolder _folderFromSubAlbum(GameAlbum album, SubAlbum folder) {
+    return LibraryFolder(
+      name: folder.name,
+      path: p.join(
+        settings.outputPath,
+        album.platform,
+        album.game,
+        folder.relativePath,
+      ),
+      relativePath: folder.relativePath,
+      children: folder.children
+          .map((child) => _folderFromSubAlbum(album, child))
+          .toList(growable: false),
+    );
+  }
+
+  FolderListing _fallbackGameListing(String platform, String game) {
+    final album = library.album(platform, game);
+    final gameFolder = gameFolders
+        .where((folder) => folder.name == game)
+        .firstOrNull;
+    return FolderListing(
+      folders: gameFolder?.children ?? const [],
+      media: album?.media ?? const [],
+    );
+  }
+
+  FolderListing _fallbackSubAlbumListing(
+    String platform,
+    String game,
+    String relativePath,
+  ) {
+    final folder = library.album(platform, game)?.subAlbum(relativePath);
+    return FolderListing(
+      folders:
+          folder?.children
+              .map(
+                (child) => LibraryFolder(
+                  name: child.name,
+                  path: p.join(
+                    settings.outputPath,
+                    platform,
+                    game,
+                    child.relativePath,
+                  ),
+                  relativePath: child.relativePath,
+                ),
+              )
+              .toList(growable: false) ??
+          const [],
+      media: folder?.media ?? const [],
+    );
+  }
+
+  Future<void> _loadSelectedFolder() async {
+    if (settings.outputPath.trim().isEmpty ||
+        selectedPlatform == null ||
+        selectedGame == null ||
+        (view != LibraryView.album && view != LibraryView.subAlbum)) {
+      return;
+    }
+
+    final request = ++_folderRequest;
+    final platform = selectedPlatform!;
+    final game = selectedGame!;
+    final subAlbumPath = selectedSubAlbumPath ?? '';
+    isViewLoading = true;
+    notifyListeners();
+    try {
+      final listing = await scanner.folderContents(
+        settings.outputPath,
+        platform,
+        game,
+        subAlbumPath: subAlbumPath,
+      );
+      if (request == _folderRequest && !_disposed) {
+        folderListing = listing;
+      }
+    } catch (exception) {
+      if (request == _folderRequest && !_disposed) {
+        _setError('Could not load this folder: $exception');
+      }
+    } finally {
+      if (request == _folderRequest && !_disposed) {
+        isViewLoading = false;
+        notifyListeners();
+      }
+    }
+  }
+
   Future<void> initialize() async {
+    var canLoadLibrary = false;
     try {
       settings = await configStore.load();
       if (usesPersistentFolderAccess) {
@@ -247,9 +385,17 @@ class LibraryController extends ChangeNotifier {
       }
 
       if (!libraryNeedsAuthorization) {
-        library = await scanner.scan(settings.outputPath);
-      } else {
+        final results = await Future.wait<Object>([
+          scanner.folderTree(settings.outputPath),
+          timelineCache.load(settings.outputPath),
+        ]);
+        folderTree = results[0] as List<LibraryFolder>;
+        timelineMedia = results[1] as List<MediaItem>;
         library = const MediaLibrary.empty();
+        canLoadLibrary = settings.outputPath.trim().isNotEmpty;
+      } else {
+        timelineMedia = const [];
+        folderTree = const [];
         view = LibraryView.settings;
       }
     } catch (exception) {
@@ -257,6 +403,9 @@ class LibraryController extends ChangeNotifier {
     } finally {
       isInitializing = false;
       notifyListeners();
+    }
+    if (canLoadLibrary) {
+      unawaited(_refreshTimeline(showResult: false));
     }
   }
 
@@ -371,6 +520,8 @@ class LibraryController extends ChangeNotifier {
   }
 
   void showTimeline() {
+    _folderRequest++;
+    isViewLoading = false;
     selectedMedia = null;
     view = LibraryView.timeline;
     selectedPlatform = null;
@@ -385,7 +536,9 @@ class LibraryController extends ChangeNotifier {
     selectedPlatform = platform;
     selectedGame = game;
     selectedSubAlbumPath = null;
+    folderListing = _fallbackGameListing(platform, game);
     notifyListeners();
+    unawaited(_loadSelectedFolder());
   }
 
   void showSubAlbum(String platform, String game, String subAlbumPath) {
@@ -394,19 +547,26 @@ class LibraryController extends ChangeNotifier {
     selectedPlatform = platform;
     selectedGame = game;
     selectedSubAlbumPath = subAlbumPath;
+    folderListing = _fallbackSubAlbumListing(platform, game, subAlbumPath);
     notifyListeners();
+    unawaited(_loadSelectedFolder());
   }
 
   void showPlatform(String platform) {
+    _folderRequest++;
+    isViewLoading = false;
     selectedMedia = null;
     view = LibraryView.platform;
     selectedPlatform = platform;
     selectedGame = null;
     selectedSubAlbumPath = null;
+    folderListing = const FolderListing.empty();
     notifyListeners();
   }
 
   void showSettings() {
+    _folderRequest++;
+    isViewLoading = false;
     selectedMedia = null;
     view = LibraryView.settings;
     notifyListeners();
@@ -465,6 +625,10 @@ class LibraryController extends ChangeNotifier {
       }
       _refreshAuthorizationStates();
       notifyListeners();
+      if (outputChanged && !libraryNeedsAuthorization) {
+        await _loadLibrarySnapshot();
+        unawaited(_refreshTimeline(showResult: false));
+      }
       return true;
     } catch (exception) {
       _setError('Could not save settings: $exception');
@@ -520,18 +684,16 @@ class LibraryController extends ChangeNotifier {
         path: lease.grant.path,
       );
 
-      if (target == SettingsFolderTarget.library &&
-          usesPersistentFolderAccess) {
-        _libraryLease = lease;
-        lease = null;
-        if (oldLibraryLease != null) {
-          await folderAccess.release(oldLibraryLease);
+      if (target == SettingsFolderTarget.library) {
+        if (usesPersistentFolderAccess) {
+          _libraryLease = lease;
+          lease = null;
+          if (oldLibraryLease != null) {
+            await folderAccess.release(oldLibraryLease);
+          }
         }
-        try {
-          library = await scanner.scan(settings.outputPath);
-        } catch (_) {
-          library = const MediaLibrary.empty();
-        }
+        await _loadLibrarySnapshot();
+        unawaited(_refreshTimeline(showResult: false));
       }
       notifyListeners();
       return FolderChoiceResult.success(specification.selectedPath(settings));
@@ -871,17 +1033,15 @@ class LibraryController extends ChangeNotifier {
   }
 
   Future<void> refresh() async {
-    await _run(() async {
-      if (libraryNeedsAuthorization) {
-        _setWarning(
-          'Library folder access is required. Open Settings and allow access.',
-        );
-        return;
-      }
-      _setProgress('Refreshing the library…');
-      library = await scanner.scan(settings.outputPath);
-      _setMessage('Library refreshed.');
-    });
+    if (libraryNeedsAuthorization) {
+      _setWarning(
+        'Library folder access is required. Open Settings and allow access.',
+      );
+      notifyListeners();
+      return;
+    }
+    await _refreshFolderViews();
+    unawaited(_refreshTimeline(showResult: true));
   }
 
   Future<void> collect() async {
@@ -914,10 +1074,6 @@ class LibraryController extends ChangeNotifier {
         _setProgress('Preparing ${provider.name}…');
         results.add(await _collectProviderSafely(provider));
       }
-      if (!libraryNeedsAuthorization) {
-        _setProgress('Refreshing the library…');
-        library = await scanner.scan(settings.outputPath);
-      }
       final imported = results.fold(0, (sum, result) => sum + result.imported);
       final skipped = results.fold(0, (sum, result) => sum + result.skipped);
       final warnings = results
@@ -937,6 +1093,99 @@ class LibraryController extends ChangeNotifier {
         _setWarning(warning);
       }
     });
+    if (!libraryNeedsAuthorization) {
+      await _refreshFolderViews();
+      unawaited(_refreshTimeline(showResult: false));
+    }
+  }
+
+  Future<void> _loadLibrarySnapshot() async {
+    final results = await Future.wait<Object>([
+      scanner.folderTree(settings.outputPath),
+      timelineCache.load(settings.outputPath),
+    ]);
+    folderTree = results[0] as List<LibraryFolder>;
+    timelineMedia = results[1] as List<MediaItem>;
+    library = const MediaLibrary.empty();
+    folderListing = const FolderListing.empty();
+    showTimeline();
+  }
+
+  Future<void> _refreshFolderViews() async {
+    folderTree = await scanner.folderTree(settings.outputPath);
+    if (view == LibraryView.album || view == LibraryView.subAlbum) {
+      await _loadSelectedFolder();
+    } else if (!_disposed) {
+      notifyListeners();
+    }
+  }
+
+  Future<void> _refreshTimeline({required bool showResult}) async {
+    final requestedPath = settings.outputPath;
+    final active = _timelineRefresh;
+    if (active != null) {
+      final activePath = _timelineRefreshPath;
+      await active;
+      if (identical(_timelineRefresh, active)) {
+        _timelineRefresh = null;
+        _timelineRefreshPath = null;
+      }
+      if (!_disposed &&
+          activePath != null &&
+          !_samePath(activePath, requestedPath)) {
+        await _refreshTimeline(showResult: showResult);
+      }
+      return;
+    }
+
+    final operation = _performTimelineRefresh(showResult: showResult);
+    _timelineRefresh = operation;
+    _timelineRefreshPath = requestedPath;
+    try {
+      await operation;
+    } finally {
+      if (identical(_timelineRefresh, operation)) {
+        _timelineRefresh = null;
+        _timelineRefreshPath = null;
+      }
+    }
+  }
+
+  Future<void> _performTimelineRefresh({required bool showResult}) async {
+    final outputPath = settings.outputPath;
+    if (outputPath.trim().isEmpty || libraryNeedsAuthorization) {
+      return;
+    }
+
+    isTimelineRefreshing = true;
+    progressMessage = 'Refreshing the timeline cache…';
+    progressValue = null;
+    notifyListeners();
+    try {
+      await _ensureReadableDirectory(expandUserPath(outputPath));
+      final nextLibrary = await scanner.scan(outputPath);
+      if (_disposed || !_samePath(outputPath, settings.outputPath)) {
+        return;
+      }
+      timelineMedia = nextLibrary.timeline;
+      library = const MediaLibrary.empty();
+      await timelineCache.save(outputPath, timelineMedia);
+      folderTree = await scanner.folderTree(outputPath);
+      if (showResult) {
+        _setMessage('Timeline refreshed.');
+      }
+    } catch (exception) {
+      if (!_disposed) {
+        _setError('Could not refresh the timeline: $exception');
+      }
+    } finally {
+      if (!_disposed) {
+        isTimelineRefreshing = false;
+        progressMessage = null;
+        progressValue = null;
+        notifyListeners();
+      }
+    }
   }
 
   Future<ImportResult> _collectProviderSafely(
@@ -1257,6 +1506,7 @@ class LibraryController extends ChangeNotifier {
 
   @override
   void dispose() {
+    _disposed = true;
     unawaited(folderAccess.dispose());
     super.dispose();
   }

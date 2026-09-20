@@ -79,6 +79,102 @@ class LibraryScanner {
     return MediaLibrary(albums: albums);
   }
 
+  Future<List<LibraryFolder>> folderTree(String outputPath) async {
+    if (outputPath.trim().isEmpty) {
+      return const [];
+    }
+
+    final root = Directory(expandUserPath(outputPath.trim()));
+    if (!await root.exists()) {
+      return const [];
+    }
+
+    final platforms = <LibraryFolder>[];
+    for (final directory in await _directories(root)) {
+      platforms.add(await _folderNode(directory, directory));
+    }
+    return platforms;
+  }
+
+  Future<FolderListing> folderContents(
+    String outputPath,
+    String platform,
+    String game, {
+    String subAlbumPath = '',
+  }) async {
+    if (outputPath.trim().isEmpty) {
+      return const FolderListing.empty();
+    }
+
+    final rootPath = p.normalize(p.absolute(expandUserPath(outputPath.trim())));
+    final gameDirectory = Directory(p.join(rootPath, platform, game));
+    final directory = subAlbumPath.isEmpty
+        ? gameDirectory
+        : Directory(p.join(gameDirectory.path, subAlbumPath));
+    final normalizedGame = p.normalize(p.absolute(gameDirectory.path));
+    final normalizedDirectory = p.normalize(p.absolute(directory.path));
+    if (!p.isWithin(rootPath, normalizedGame) ||
+        (normalizedDirectory != normalizedGame &&
+            !p.isWithin(normalizedGame, normalizedDirectory))) {
+      return const FolderListing.empty();
+    }
+    if (!await directory.exists()) {
+      return const FolderListing.empty();
+    }
+
+    final folders = <LibraryFolder>[];
+    for (final child in await _directories(directory)) {
+      folders.add(
+        LibraryFolder(
+          name: p.basename(child.path),
+          path: child.path,
+          relativePath: p.relative(child.path, from: gameDirectory.path),
+        ),
+      );
+    }
+    return FolderListing(
+      folders: folders,
+      media: await _mediaFiles(directory, platform, game, subAlbumPath),
+    );
+  }
+
+  Future<LibraryFolder> _folderNode(
+    Directory directory,
+    Directory platformDirectory,
+  ) async {
+    final children = <LibraryFolder>[];
+    for (final child in await _directories(directory)) {
+      children.add(await _folderNode(child, platformDirectory));
+    }
+
+    String? coverPath;
+    final relativePath = p.relative(
+      directory.path,
+      from: platformDirectory.path,
+    );
+    final isGame = relativePath != '.' && p.split(relativePath).length == 1;
+    if (isGame) {
+      coverPath = await _coverPath(directory);
+    }
+    return LibraryFolder(
+      name: p.basename(directory.path),
+      path: directory.path,
+      relativePath: relativePath == '.' ? '' : relativePath,
+      coverPath: coverPath,
+      children: children,
+    );
+  }
+
+  Future<String?> _coverPath(Directory directory) async {
+    for (final extension in _imageExtensions) {
+      final file = File(p.join(directory.path, 'cover$extension'));
+      if (await file.exists()) {
+        return file.path;
+      }
+    }
+    return null;
+  }
+
   Future<List<Directory>> _directories(Directory parent) async {
     try {
       final directories = await parent

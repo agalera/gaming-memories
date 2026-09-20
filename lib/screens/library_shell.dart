@@ -1,5 +1,6 @@
 import 'package:forui/forui.dart';
 import 'package:material_ui/material_ui.dart';
+import 'package:path/path.dart' as p;
 
 import '../controllers/library_controller.dart';
 import '../widgets/library_sidebar.dart';
@@ -70,7 +71,8 @@ class _LibraryShellState extends State<LibraryShell> {
   void _syncToasts() {
     final controller = widget.controller;
     final showProgress =
-        controller.isBusy && controller.progressMessage != null;
+        (controller.isBusy || controller.isTimelineRefreshing) &&
+        controller.progressMessage != null;
 
     if (showProgress && _progressToast?.showing != true) {
       _progressToast = showRawFToast(
@@ -182,19 +184,73 @@ class _LibraryShellState extends State<LibraryShell> {
     }
 
     return FHeader(
-      title: Text(controller.pageTitle),
-      suffixes: [
-        FHeaderAction(
-          semanticsLabel: 'Refresh library',
-          icon: const Icon(FLucideIcons.refreshCw),
-          onPress: controller.isBusy ? null : controller.refresh,
+      title: controller.view == LibraryView.settings
+          ? const Text('Settings')
+          : _breadcrumb(controller),
+    );
+  }
+
+  Widget _breadcrumb(LibraryController controller) {
+    final items = <Widget>[
+      FBreadcrumbItem(
+        key: const ValueKey('breadcrumb-library'),
+        current: controller.view == LibraryView.timeline,
+        onPress: controller.view == LibraryView.timeline
+            ? null
+            : controller.showTimeline,
+        child: const Text('Library'),
+      ),
+    ];
+    final platform = controller.selectedPlatform;
+    if (platform != null) {
+      items.add(
+        FBreadcrumbItem(
+          key: ValueKey('breadcrumb-platform-$platform'),
+          current: controller.view == LibraryView.platform,
+          onPress: controller.view == LibraryView.platform
+              ? null
+              : () => controller.showPlatform(platform),
+          child: Text(platform),
         ),
-        FHeaderAction(
-          semanticsLabel: 'Collect media',
-          icon: const Icon(FLucideIcons.hardDriveDownload),
-          onPress: controller.isBusy ? null : controller.collect,
+      );
+    }
+    final game = controller.selectedGame;
+    if (platform != null && game != null) {
+      items.add(
+        FBreadcrumbItem(
+          key: ValueKey('breadcrumb-game-$game'),
+          current: controller.view == LibraryView.album,
+          onPress: controller.view == LibraryView.album
+              ? null
+              : () => controller.showAlbum(platform, game),
+          child: Text(game),
         ),
-      ],
+      );
+    }
+    final subAlbumPath = controller.selectedSubAlbumPath;
+    if (platform != null && game != null && subAlbumPath != null) {
+      var currentPath = '';
+      final segments = p.split(subAlbumPath);
+      for (final (index, segment) in segments.indexed) {
+        currentPath = currentPath.isEmpty
+            ? segment
+            : p.join(currentPath, segment);
+        final targetPath = currentPath;
+        items.add(
+          FBreadcrumbItem(
+            key: ValueKey('breadcrumb-folder-$targetPath'),
+            current: index == segments.length - 1,
+            onPress: index == segments.length - 1
+                ? null
+                : () => controller.showSubAlbum(platform, game, targetPath),
+            child: Text(segment),
+          ),
+        );
+      }
+    }
+    return SingleChildScrollView(
+      scrollDirection: Axis.horizontal,
+      child: FBreadcrumb(children: items),
     );
   }
 
@@ -223,7 +279,19 @@ class _LibraryShellState extends State<LibraryShell> {
         MediaGallery(
           key: galleryKey,
           media: controller.visibleMedia,
+          games: controller.view == LibraryView.platform
+              ? controller.gameFolders
+              : const [],
+          folders:
+              controller.view == LibraryView.album ||
+                  controller.view == LibraryView.subAlbum
+              ? controller.folderListing.folders
+              : const [],
           description: controller.pageDescription,
+          isLoading: controller.isViewLoading,
+          isTimelineRefreshing:
+              controller.view == LibraryView.timeline &&
+              controller.isTimelineRefreshing,
           needsSetup:
               controller.settings.outputPath.trim().isEmpty ||
               controller.libraryNeedsAuthorization,

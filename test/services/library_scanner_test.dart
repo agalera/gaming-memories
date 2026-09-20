@@ -58,6 +58,57 @@ void main() {
     expect((await thumbnail.stat()).modified, changedAt);
   });
 
+  test('reads the folder tree without creating media thumbnails', () async {
+    final output = await Directory.systemTemp.createTemp('gaming-memories-');
+    addTearDown(() => output.delete(recursive: true));
+    final game = Directory(p.join(output.path, 'PC', 'Diablo IV'));
+    final subAlbum = Directory(p.join(game.path, 'Boss fights'));
+    await subAlbum.create(recursive: true);
+    final screenshot = File(p.join(game.path, '2026-01-02_03-04-05.jpg'));
+    await screenshot.writeAsBytes(
+      image.encodeJpg(image.Image(width: 20, height: 10)),
+    );
+    final cover = File(p.join(game.path, 'cover.png'));
+    await cover.writeAsBytes(
+      image.encodePng(image.Image(width: 10, height: 20)),
+    );
+
+    final folders = await const LibraryScanner().folderTree(output.path);
+
+    expect(folders.single.name, 'PC');
+    expect(folders.single.children.single.name, 'Diablo IV');
+    expect(folders.single.children.single.coverPath, cover.path);
+    expect(folders.single.children.single.children.single.name, 'Boss fights');
+    expect(await File('${screenshot.path}.thumb.jpg').exists(), isFalse);
+  });
+
+  test('lists only direct folders and media for an open game', () async {
+    final output = await Directory.systemTemp.createTemp('gaming-memories-');
+    addTearDown(() => output.delete(recursive: true));
+    final game = Directory(p.join(output.path, 'PC', 'Diablo IV'));
+    final subAlbum = Directory(p.join(game.path, 'Boss fights'));
+    await subAlbum.create(recursive: true);
+    final direct = File(p.join(game.path, '2026-01-02_03-04-05.jpg'));
+    final nested = File(p.join(subAlbum.path, '2026-02-03_04-05-06.jpg'));
+    await direct.writeAsBytes(
+      image.encodeJpg(image.Image(width: 20, height: 10)),
+    );
+    await nested.writeAsBytes(
+      image.encodeJpg(image.Image(width: 20, height: 10)),
+    );
+
+    final listing = await const LibraryScanner().folderContents(
+      output.path,
+      'PC',
+      'Diablo IV',
+    );
+
+    expect(listing.folders.single.name, 'Boss fights');
+    expect(listing.media.single.path, direct.path);
+    expect(await File('${direct.path}.thumb.jpg').exists(), isTrue);
+    expect(await File('${nested.path}.thumb.jpg').exists(), isFalse);
+  });
+
   test('keeps sub-albums and scans video files', () async {
     final output = await Directory.systemTemp.createTemp('gaming-memories-');
     addTearDown(() => output.delete(recursive: true));

@@ -15,10 +15,75 @@ import 'package:gaming_memories/services/folder_access_service.dart';
 import 'package:gaming_memories/services/library_scanner.dart';
 import 'package:gaming_memories/services/provider_paths.dart';
 import 'package:gaming_memories/services/screenshot_action_service.dart';
+import 'package:gaming_memories/services/timeline_cache.dart';
 import 'package:path/path.dart' as p;
 
 void main() {
-  test('selects a platform and shows its media by date', () {
+  test(
+    'loads the timeline cache before its background scan completes',
+    () async {
+      final directory = await Directory.systemTemp.createTemp(
+        'gaming-memories-controller-',
+      );
+      addTearDown(() => directory.delete(recursive: true));
+      final store = ConfigStore(
+        filePath: p.join(directory.path, 'settings.json'),
+      );
+      await store.save(AppSettings(outputPath: directory.path));
+      final cache = TimelineCache(
+        filePath: p.join(directory.path, 'timeline-cache.json'),
+      );
+      final cached = MediaItem(
+        path: p.join(directory.path, 'PC', 'Game', 'cached.jpg'),
+        platform: 'PC',
+        game: 'Game',
+        capturedAt: DateTime(2026, 1, 1),
+        kind: MediaKind.image,
+      );
+      await cache.save(directory.path, [cached]);
+      final scanner = _BlockingScanner();
+      final controller = LibraryController(
+        configStore: store,
+        scanner: scanner,
+        timelineCache: cache,
+        providers: const [],
+      );
+
+      await controller.initialize();
+
+      expect(controller.isInitializing, isFalse);
+      expect(controller.timelineMedia.single.path, cached.path);
+      expect(controller.isTimelineRefreshing, isTrue);
+
+      final refreshed = MediaItem(
+        path: p.join(directory.path, 'PC', 'Game', 'refreshed.jpg'),
+        platform: 'PC',
+        game: 'Game',
+        capturedAt: DateTime(2026, 2, 1),
+        kind: MediaKind.image,
+      );
+      scanner.scanResult.complete(
+        MediaLibrary(
+          albums: [
+            GameAlbum(platform: 'PC', game: 'Game', media: [refreshed]),
+          ],
+        ),
+      );
+      for (
+        var attempt = 0;
+        attempt < 100 && controller.isTimelineRefreshing;
+        attempt++
+      ) {
+        await Future<void>.delayed(const Duration(milliseconds: 10));
+      }
+
+      expect(controller.isTimelineRefreshing, isFalse);
+      expect(controller.timelineMedia.single.path, refreshed.path);
+      expect((await cache.load(directory.path)).single.path, refreshed.path);
+    },
+  );
+
+  test('selects a platform and shows its games without media', () {
     final controller = LibraryController(
       configStore: const ConfigStore(filePath: 'unused'),
       scanner: const LibraryScanner(),
@@ -62,7 +127,11 @@ void main() {
     expect(controller.view, LibraryView.platform);
     expect(controller.pageTitle, 'PC');
     expect(controller.selectedGame, isNull);
-    expect(controller.visibleMedia, [newer, older]);
+    expect(controller.visibleMedia, isEmpty);
+    expect(controller.gameFolders.map((folder) => folder.name), [
+      'Diablo IV',
+      'Minecraft',
+    ]);
   });
 
   test('reports provider progress during collection', () async {
@@ -262,6 +331,11 @@ void main() {
 
     await controller.initialize();
 
+    expect(events, ['activate:${directory.path}']);
+    expect(controller.isInitializing, isFalse);
+    for (var attempt = 0; attempt < 100 && events.length < 2; attempt++) {
+      await Future<void>.delayed(const Duration(milliseconds: 10));
+    }
     expect(events, ['activate:${directory.path}', 'scan:${directory.path}']);
     expect(controller.libraryNeedsAuthorization, isFalse);
     expect(
@@ -732,6 +806,18 @@ class _RecordingScanner extends LibraryScanner {
     events.add('scan:$outputPath');
     return const MediaLibrary.empty();
   }
+}
+
+class _BlockingScanner extends LibraryScanner {
+  final scanResult = Completer<MediaLibrary>();
+
+  @override
+  Future<List<LibraryFolder>> folderTree(String outputPath) async {
+    return [LibraryFolder(name: 'PC', path: p.join(outputPath, 'PC'))];
+  }
+
+  @override
+  Future<MediaLibrary> scan(String outputPath) => scanResult.future;
 }
 
 class _FakeFolderAccess implements FolderAccessService {

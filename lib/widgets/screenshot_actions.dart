@@ -76,7 +76,12 @@ class MediaActionButtons extends StatelessWidget {
           mainAxisSize: MainAxisSize.min,
           prefix: const Icon(FLucideIcons.folderOpen),
           onPress: () => unawaited(controller.openMediaLocation(media)),
-          child: Text(controller.screenshotActions.openLocationLabel),
+          child: Flexible(
+            child: Text(
+              controller.screenshotActions.openLocationLabel,
+              overflow: TextOverflow.ellipsis,
+            ),
+          ),
         ),
         if (!media.isVideo)
           FButton(
@@ -86,7 +91,9 @@ class MediaActionButtons extends StatelessWidget {
             mainAxisSize: MainAxisSize.min,
             prefix: const Icon(FLucideIcons.fileImage),
             onPress: () => unawaited(controller.copyMediaImage(media)),
-            child: const Text('Copy image'),
+            child: const Flexible(
+              child: Text('Copy image', overflow: TextOverflow.ellipsis),
+            ),
           ),
         FButton(
           key: const ValueKey('media-copy-path'),
@@ -95,7 +102,9 @@ class MediaActionButtons extends StatelessWidget {
           mainAxisSize: MainAxisSize.min,
           prefix: const Icon(FLucideIcons.copy),
           onPress: () => unawaited(controller.copyMediaPath(media)),
-          child: const Text('Copy path'),
+          child: const Flexible(
+            child: Text('Copy path', overflow: TextOverflow.ellipsis),
+          ),
         ),
       ],
     );

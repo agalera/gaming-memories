@@ -11,34 +11,31 @@ class LibrarySidebar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final albumGroups = controller.library.albumsByPlatform.entries.map((
-      entry,
-    ) {
+    final albumGroups = controller.platformFolders.map((platform) {
       return _PlatformSidebarItem(
-        key: ValueKey('platform-${entry.key}'),
-        platform: entry.key,
+        key: ValueKey('platform-${platform.name}'),
+        platform: platform.name,
         selected:
             controller.view == LibraryView.platform &&
-            controller.selectedPlatform == entry.key,
-        onPress: () => controller.showPlatform(entry.key),
-        children: entry.value.map((album) {
+            controller.selectedPlatform == platform.name,
+        onPress: () => controller.showPlatform(platform.name),
+        children: platform.children.map((game) {
           final selected =
               controller.view == LibraryView.album &&
-              controller.selectedPlatform == album.platform &&
-              controller.selectedGame == album.game;
+              controller.selectedPlatform == platform.name &&
+              controller.selectedGame == game.name;
 
           return _AlbumSidebarItem(
-            key: ValueKey('game-${album.platform}-${album.game}'),
-            itemKey: 'game-${album.platform}-${album.game}',
-            name: album.game,
-            count: album.allMedia.length,
+            key: ValueKey('game-${platform.name}-${game.name}'),
+            itemKey: 'game-${platform.name}-${game.name}',
+            name: game.name,
             icon: FLucideIcons.gamepad2,
             selected: selected,
-            onPress: () => controller.showAlbum(album.platform, album.game),
-            children: album.subAlbums
+            onPress: () => controller.showAlbum(platform.name, game.name),
+            children: game.children
                 .map(
                   (subAlbum) =>
-                      _subAlbumItem(album.platform, album.game, subAlbum),
+                      _subAlbumItem(platform.name, game.name, subAlbum),
                 )
                 .toList(),
           );
@@ -76,20 +73,53 @@ class LibrarySidebar extends StatelessWidget {
           ],
         ),
       ),
-      footer: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 16),
-        child: FButton(
-          key: const ValueKey('settings-sidebar-button'),
-          variant: FButtonVariant.ghost,
-          selected: controller.view == LibraryView.settings,
-          mainAxisSize: MainAxisSize.max,
-          prefix: const Icon(FLucideIcons.settings),
-          onPress: controller.showSettings,
-          child: const Align(
-            alignment: Alignment.centerLeft,
-            child: Text('Settings'),
+      footer: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const FDivider(),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                FButton(
+                  key: const ValueKey('refresh-sidebar-button'),
+                  variant: FButtonVariant.outline,
+                  mainAxisSize: MainAxisSize.max,
+                  mainAxisAlignment: MainAxisAlignment.start,
+                  prefix: const Icon(FLucideIcons.refreshCw),
+                  onPress: controller.isBusy || controller.isTimelineRefreshing
+                      ? null
+                      : controller.refresh,
+                  child: const Expanded(child: Text('Refresh')),
+                ),
+                const SizedBox(height: 8),
+                FButton(
+                  key: const ValueKey('scan-sidebar-button'),
+                  variant: FButtonVariant.outline,
+                  mainAxisSize: MainAxisSize.max,
+                  mainAxisAlignment: MainAxisAlignment.start,
+                  prefix: const Icon(FLucideIcons.hardDriveDownload),
+                  onPress: controller.isBusy || controller.isTimelineRefreshing
+                      ? null
+                      : controller.collect,
+                  child: const Expanded(child: Text('Scan')),
+                ),
+                const SizedBox(height: 8),
+                FButton(
+                  key: const ValueKey('settings-sidebar-button'),
+                  variant: FButtonVariant.outline,
+                  selected: controller.view == LibraryView.settings,
+                  mainAxisSize: MainAxisSize.max,
+                  mainAxisAlignment: MainAxisAlignment.start,
+                  prefix: const Icon(FLucideIcons.settings),
+                  onPress: controller.showSettings,
+                  child: const Expanded(child: Text('Settings')),
+                ),
+              ],
+            ),
           ),
-        ),
+        ],
       ),
       children: [
         FSidebarGroup(
@@ -126,12 +156,11 @@ class LibrarySidebar extends StatelessWidget {
     );
   }
 
-  Widget _subAlbumItem(String platform, String game, SubAlbum subAlbum) {
+  Widget _subAlbumItem(String platform, String game, LibraryFolder subAlbum) {
     return _AlbumSidebarItem(
       key: ValueKey('sub-album-$platform-$game-${subAlbum.relativePath}'),
       itemKey: 'sub-album-$platform-$game-${subAlbum.relativePath}',
       name: subAlbum.name,
-      count: subAlbum.allMedia.length,
       icon: FLucideIcons.folderOpen,
       selected:
           controller.view == LibraryView.subAlbum &&
@@ -151,7 +180,6 @@ class _AlbumSidebarItem extends StatefulWidget {
   const _AlbumSidebarItem({
     required this.itemKey,
     required this.name,
-    required this.count,
     required this.icon,
     required this.selected,
     required this.onPress,
@@ -161,7 +189,6 @@ class _AlbumSidebarItem extends StatefulWidget {
 
   final String itemKey;
   final String name;
-  final int count;
   final IconData icon;
   final bool selected;
   final VoidCallback onPress;
@@ -176,8 +203,6 @@ class _AlbumSidebarItemState extends State<_AlbumSidebarItem> {
 
   @override
   Widget build(BuildContext context) {
-    final label = '${widget.name}  ${widget.count}';
-
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
@@ -195,7 +220,7 @@ class _AlbumSidebarItemState extends State<_AlbumSidebarItem> {
                 prefix: Icon(widget.icon),
                 onPress: widget.onPress,
                 child: Expanded(
-                  child: Text(label, overflow: TextOverflow.ellipsis),
+                  child: Text(widget.name, overflow: TextOverflow.ellipsis),
                 ),
               ),
             ),

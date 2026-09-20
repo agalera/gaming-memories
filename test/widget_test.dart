@@ -15,6 +15,7 @@ import 'package:gaming_memories/services/folder_access_service.dart';
 import 'package:gaming_memories/services/library_scanner.dart';
 import 'package:gaming_memories/services/provider_paths.dart';
 import 'package:gaming_memories/services/screenshot_action_service.dart';
+import 'package:image/image.dart' as image_lib;
 import 'package:path/path.dart' as p;
 
 void main() {
@@ -36,6 +37,17 @@ void main() {
 
     expect(find.text('Timeline'), findsWidgets);
     expect(find.text('Choose your library folder'), findsOneWidget);
+    for (final key in [
+      'refresh-sidebar-button',
+      'scan-sidebar-button',
+      'settings-sidebar-button',
+    ]) {
+      expect(
+        tester.widget<FButton>(find.byKey(ValueKey(key))).variant,
+        FButtonVariant.outline,
+      );
+    }
+    expect(find.byType(FDivider), findsOneWidget);
 
     await tester.tap(find.text('Settings'));
     await tester.pump();
@@ -69,6 +81,10 @@ void main() {
       providers: const [],
     );
     await tester.runAsync(controller.initialize);
+    final cover = File(p.join(directory.path, 'cover.png'));
+    cover.writeAsBytesSync(
+      image_lib.encodePng(image_lib.Image(width: 400, height: 200)),
+    );
     controller.library = MediaLibrary(
       albums: [
         GameAlbum(
@@ -84,9 +100,37 @@ void main() {
               kind: MediaKind.image,
             ),
           ],
+          subAlbums: const [
+            SubAlbum(
+              name: 'Boss fights',
+              relativePath: 'Boss fights',
+              media: [],
+            ),
+          ],
         ),
       ],
     );
+    controller.folderTree = [
+      LibraryFolder(
+        name: 'PC',
+        path: 'PC',
+        children: [
+          LibraryFolder(
+            name: 'Diablo IV',
+            path: 'PC/Diablo IV',
+            relativePath: 'Diablo IV',
+            coverPath: cover.path,
+            children: const [
+              LibraryFolder(
+                name: 'Boss fights',
+                path: 'PC/Diablo IV/Boss fights',
+                relativePath: 'Boss fights',
+              ),
+            ],
+          ),
+        ],
+      ),
+    ];
 
     await tester.pumpWidget(GamingMemoriesApp(controller: controller));
     await tester.pump();
@@ -98,24 +142,61 @@ void main() {
     );
 
     await tester.tap(find.text('PC'));
-    await tester.pump(const Duration(milliseconds: 500));
+    await tester.pumpAndSettle();
 
     expect(controller.view, LibraryView.platform);
     expect(controller.pageTitle, 'PC');
-    expect(controller.visibleMedia, hasLength(1));
+    expect(controller.visibleMedia, isEmpty);
+    expect(
+      find.byKey(const ValueKey('game-card-PC/Diablo IV')),
+      findsOneWidget,
+    );
+    final coverFinder = find.byKey(const ValueKey('game-cover-PC/Diablo IV'));
+    expect(tester.widget<Image>(coverFinder).fit, BoxFit.contain);
+    expect(find.byType(SliverGrid), findsNothing);
+    expect(
+      tester
+          .getSize(find.byKey(const ValueKey('game-card-PC/Diablo IV')))
+          .height,
+      isNot(closeTo(245, 0.1)),
+    );
     expect(find.text('Diablo IV  1'), findsNothing);
 
     await tester.tap(find.byKey(const ValueKey('platform-toggle-PC')));
     await tester.pump(const Duration(milliseconds: 300));
 
     expect(controller.view, LibraryView.platform);
-    expect(find.text('Diablo IV  1'), findsOneWidget);
+    expect(find.text('Diablo IV'), findsWidgets);
+    expect(find.text('Diablo IV  1'), findsNothing);
 
-    await tester.tap(find.text('Diablo IV  1'));
+    await tester.tap(find.byKey(const ValueKey('game-PC-Diablo IV-label')));
     await tester.pump();
 
     expect(controller.view, LibraryView.album);
     expect(controller.pageTitle, 'Diablo IV');
+    expect(
+      find.byKey(const ValueKey('folder-card-PC/Diablo IV/Boss fights')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const ValueKey('breadcrumb-game-Diablo IV')),
+      findsOneWidget,
+    );
+
+    await tester.tap(
+      find.byKey(const ValueKey('folder-card-PC/Diablo IV/Boss fights')),
+    );
+    await tester.pump();
+
+    expect(controller.view, LibraryView.subAlbum);
+    expect(
+      find.byKey(const ValueKey('breadcrumb-folder-Boss fights')),
+      findsOneWidget,
+    );
+
+    await tester.tap(find.byKey(const ValueKey('breadcrumb-game-Diablo IV')));
+    await tester.pump();
+    expect(controller.view, LibraryView.album);
 
     await tester.pumpWidget(const SizedBox.shrink());
     await tester.pump(const Duration(milliseconds: 200));
@@ -163,14 +244,22 @@ void main() {
       find.byKey(const ValueKey('platform-toggle-PlayStation 5')),
     );
     await tester.pump(const Duration(milliseconds: 200));
-    expect(find.text('Game  1'), findsOneWidget);
+    expect(
+      find.byKey(const ValueKey('game-PlayStation 5-Game-label')),
+      findsOneWidget,
+    );
+    expect(find.text('Game  1'), findsNothing);
     expect(find.text('Other  1'), findsNothing);
 
     await tester.tap(
       find.byKey(const ValueKey('game-PlayStation 5-Game-toggle')),
     );
     await tester.pump(const Duration(milliseconds: 200));
-    expect(find.text('Other  1'), findsOneWidget);
+    expect(
+      find.byKey(const ValueKey('sub-album-PlayStation 5-Game-Other-label')),
+      findsOneWidget,
+    );
+    expect(find.text('Other  1'), findsNothing);
 
     await tester.tap(
       find.byKey(const ValueKey('sub-album-PlayStation 5-Game-Other-label')),
@@ -362,7 +451,7 @@ void main() {
       const ValueKey('media-card-/library/PC/Game/screenshot-12.jpg'),
     );
     final galleryScroll = find.descendant(
-      of: find.byType(GridView),
+      of: find.byKey(const ValueKey('media-scroll-view')),
       matching: find.byType(Scrollable),
     );
     await tester.scrollUntilVisible(target, 350, scrollable: galleryScroll);

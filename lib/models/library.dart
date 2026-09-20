@@ -28,6 +28,45 @@ class MediaItem {
   File get galleryFile => File(thumbnailPath ?? path);
 }
 
+class LibraryFolder {
+  const LibraryFolder({
+    required this.name,
+    required this.path,
+    this.relativePath = '',
+    this.coverPath,
+    this.children = const [],
+  });
+
+  final String name;
+  final String path;
+  final String relativePath;
+  final String? coverPath;
+  final List<LibraryFolder> children;
+
+  LibraryFolder? find(String relativePath) {
+    if (this.relativePath == relativePath) {
+      return this;
+    }
+
+    for (final child in children) {
+      final match = child.find(relativePath);
+      if (match != null) {
+        return match;
+      }
+    }
+    return null;
+  }
+}
+
+class FolderListing {
+  const FolderListing({required this.folders, required this.media});
+
+  const FolderListing.empty() : folders = const [], media = const [];
+
+  final List<LibraryFolder> folders;
+  final List<MediaItem> media;
+}
+
 class SubAlbum {
   const SubAlbum({
     required this.name,

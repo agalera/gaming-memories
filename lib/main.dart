@@ -21,6 +21,7 @@ import 'services/folder_access_service.dart';
 import 'services/library_scanner.dart';
 import 'services/provider_paths.dart';
 import 'services/steam_client.dart';
+import 'services/timeline_cache.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -37,6 +38,9 @@ Future<void> main() async {
       filePath: p.join(supportDirectory.path, 'gaming-memories.json'),
     ),
     scanner: const LibraryScanner(),
+    timelineCache: TimelineCache(
+      filePath: p.join(supportDirectory.path, 'timeline-cache.json'),
+    ),
     folderAccess: folderAccess,
     providerPaths: providerPaths,
     providers: [
