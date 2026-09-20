@@ -110,6 +110,7 @@ class AppSettings {
   const AppSettings({
     required this.outputPath,
     required this.diabloIV,
+    this.guildWars2 = const ProviderSettings.disabled(),
     this.steam = const SteamSettings.disabled(),
     this.themeMode = AppThemeMode.system,
   });
@@ -117,23 +118,27 @@ class AppSettings {
   const AppSettings.defaults()
     : outputPath = '',
       diabloIV = const ProviderSettings.disabled(),
+      guildWars2 = const ProviderSettings.disabled(),
       steam = const SteamSettings.disabled(),
       themeMode = AppThemeMode.system;
 
   final String outputPath;
   final ProviderSettings diabloIV;
+  final ProviderSettings guildWars2;
   final SteamSettings steam;
   final AppThemeMode themeMode;
 
   AppSettings copyWith({
     String? outputPath,
     ProviderSettings? diabloIV,
+    ProviderSettings? guildWars2,
     SteamSettings? steam,
     AppThemeMode? themeMode,
   }) {
     return AppSettings(
       outputPath: outputPath ?? this.outputPath,
       diabloIV: diabloIV ?? this.diabloIV,
+      guildWars2: guildWars2 ?? this.guildWars2,
       steam: steam ?? this.steam,
       themeMode: themeMode ?? this.themeMode,
     );
@@ -141,12 +146,16 @@ class AppSettings {
 
   factory AppSettings.fromJson(Map<String, Object?> json) {
     final providerJson = json['diabloIV'];
+    final guildWars2Json = json['guildWars2'];
     final steamJson = json['steam'];
 
     return AppSettings(
       outputPath: json['outputPath'] as String? ?? '',
       diabloIV: providerJson is Map<String, Object?>
           ? ProviderSettings.fromJson(providerJson)
+          : const ProviderSettings.disabled(),
+      guildWars2: guildWars2Json is Map<String, Object?>
+          ? ProviderSettings.fromJson(guildWars2Json)
           : const ProviderSettings.disabled(),
       steam: steamJson is Map<String, Object?>
           ? SteamSettings.fromJson(steamJson)
@@ -156,10 +165,11 @@ class AppSettings {
   }
 
   Map<String, Object?> toJson() => {
-    'version': 3,
+    'version': 4,
     'outputPath': outputPath,
     'themeMode': themeMode.name,
     'diabloIV': diabloIV.toJson(),
+    'guildWars2': guildWars2.toJson(),
     'steam': steam.toJson(),
   };
 }

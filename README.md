@@ -8,7 +8,7 @@ The app includes these functions:
 - An album tree that groups media by platform, game, and nested folder.
 - Video thumbnails, duration details, and video playback.
 - Settings for the library folder and provider folder.
-- Diablo IV and Steam providers.
+- Diablo IV, Guild Wars 2, and Steam providers.
 - SHA-1 collision names that prevent file loss.
 
 ## Requirements
@@ -19,6 +19,8 @@ The app includes these functions:
 FFmpeg and FFprobe are optional command-line tools. The app uses them to create video thumbnails and read video duration.
 
 The app can play videos without these tools. It uses a current `.thumb.jpg` sidecar when one is available.
+
+The Guild Wars 2 provider requires ExifTool. The provider uses it to read each screenshot date.
 
 ## Run the app
 

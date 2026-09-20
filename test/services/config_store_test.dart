@@ -16,6 +16,7 @@ void main() {
       outputPath: '/screenshots',
       themeMode: AppThemeMode.dark,
       diabloIV: ProviderSettings(enabled: true, sourcePath: '/diablo'),
+      guildWars2: ProviderSettings(enabled: true, sourcePath: '/guild-wars-2'),
       steam: SteamSettings(
         enabled: true,
         userdataPath: '/steam',
@@ -35,6 +36,8 @@ void main() {
     expect(actual.themeMode, AppThemeMode.dark);
     expect(actual.diabloIV.enabled, isTrue);
     expect(actual.diabloIV.sourcePath, expected.diabloIV.sourcePath);
+    expect(actual.guildWars2.enabled, isTrue);
+    expect(actual.guildWars2.sourcePath, '/guild-wars-2');
     expect(actual.steam.enabled, isTrue);
     expect(actual.steam.userdataPath, '/steam');
     expect(actual.steam.onlineGallery, isTrue);

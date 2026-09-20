@@ -17,6 +17,7 @@ class SettingsPage extends StatefulWidget {
 class _SettingsPageState extends State<SettingsPage> {
   late final TextEditingController _outputController;
   late final TextEditingController _diabloController;
+  late final TextEditingController _guildWars2Controller;
   late final TextEditingController _steamPathController;
   late final TextEditingController _steamUserController;
   late final TextEditingController _steamKeyController;
@@ -27,6 +28,7 @@ class _SettingsPageState extends State<SettingsPage> {
   late final List<_CustomGame> _steamCustomGames;
   late AppThemeMode _themeMode;
   late bool _diabloEnabled;
+  late bool _guildWars2Enabled;
   late bool _steamEnabled;
   late bool _steamOnlineGallery;
   late bool _steamDownloadCovers;
@@ -40,6 +42,9 @@ class _SettingsPageState extends State<SettingsPage> {
     _diabloController = TextEditingController(
       text: widget.controller.settings.diabloIV.sourcePath,
     );
+    _guildWars2Controller = TextEditingController(
+      text: widget.controller.settings.guildWars2.sourcePath,
+    );
     final steam = widget.controller.settings.steam;
     _steamPathController = TextEditingController(text: steam.userdataPath);
     _steamUserController = TextEditingController(text: steam.userId);
@@ -52,6 +57,7 @@ class _SettingsPageState extends State<SettingsPage> {
         .map((entry) => _CustomGame(entry.key, entry.value))
         .toList();
     _diabloEnabled = widget.controller.settings.diabloIV.enabled;
+    _guildWars2Enabled = widget.controller.settings.guildWars2.enabled;
     _steamEnabled = steam.enabled;
     _steamOnlineGallery = steam.onlineGallery;
     _steamDownloadCovers = steam.downloadCovers;
@@ -62,6 +68,7 @@ class _SettingsPageState extends State<SettingsPage> {
   void dispose() {
     _outputController.dispose();
     _diabloController.dispose();
+    _guildWars2Controller.dispose();
     _steamPathController.dispose();
     _steamUserController.dispose();
     _steamKeyController.dispose();
@@ -225,6 +232,80 @@ class _SettingsPageState extends State<SettingsPage> {
                       const SizedBox(height: 10),
                       Text(
                         'On Windows, leave this field empty to scan both default folders.',
+                        style: context.theme.typography.body.xs.copyWith(
+                          color: context.theme.colors.mutedForeground,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+              const SizedBox(height: 16),
+              FCard(
+                child: Padding(
+                  padding: const EdgeInsets.all(20),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          Container(
+                            width: 44,
+                            height: 44,
+                            decoration: BoxDecoration(
+                              color: context.theme.colors.muted,
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            child: const Icon(FLucideIcons.gamepad2),
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  'Guild Wars 2',
+                                  style: context.theme.typography.body.lg
+                                      .copyWith(fontWeight: FontWeight.w700),
+                                ),
+                                const SizedBox(height: 2),
+                                Text(
+                                  'PC · Screenshots',
+                                  style: context.theme.typography.body.sm
+                                      .copyWith(
+                                        color: context
+                                            .theme
+                                            .colors
+                                            .mutedForeground,
+                                      ),
+                                ),
+                              ],
+                            ),
+                          ),
+                          FSwitch(
+                            key: const ValueKey('guild-wars-2-enabled'),
+                            value: _guildWars2Enabled,
+                            semanticsLabel: 'Enable Guild Wars 2',
+                            onChange: (value) {
+                              setState(() => _guildWars2Enabled = value);
+                            },
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 20),
+                      _DirectoryField(
+                        controller: _guildWars2Controller,
+                        label: 'Screenshot folder',
+                        hint: 'auto or /path/to/Guild Wars 2/Screens',
+                        enabled: _guildWars2Enabled,
+                        onBrowse: () => _chooseDirectory(
+                          controller: _guildWars2Controller,
+                          title: 'Choose the Guild Wars 2 screenshot folder',
+                        ),
+                      ),
+                      const SizedBox(height: 10),
+                      Text(
+                        'Requires ExifTool. On Windows, leave this field empty to use the default folder.',
                         style: context.theme.typography.body.xs.copyWith(
                           color: context.theme.colors.mutedForeground,
                         ),
@@ -573,6 +654,10 @@ class _SettingsPageState extends State<SettingsPage> {
       diabloIV: ProviderSettings(
         enabled: _diabloEnabled,
         sourcePath: _diabloController.text.trim(),
+      ),
+      guildWars2: ProviderSettings(
+        enabled: _guildWars2Enabled,
+        sourcePath: _guildWars2Controller.text.trim(),
       ),
       steam: SteamSettings(
         enabled: _steamEnabled,

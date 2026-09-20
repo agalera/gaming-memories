@@ -8,16 +8,24 @@ class MediaImporter {
 
   Future<bool> copyByModifiedDate(File source, Directory destination) async {
     final stat = await source.stat();
+    return copyAtDate(source, destination, stat.modified);
+  }
+
+  Future<bool> copyAtDate(
+    File source,
+    Directory destination,
+    DateTime capturedAt,
+  ) async {
     final bytes = await source.readAsBytes();
     final result = await _write(
       bytes,
       destination,
-      baseName: formatDate(stat.modified),
+      baseName: formatDate(capturedAt),
       extension: p.extension(source.path).toLowerCase(),
     );
 
     if (result.imported) {
-      await result.target.setLastModified(stat.modified);
+      await result.target.setLastModified(capturedAt);
     }
 
     return result.imported;

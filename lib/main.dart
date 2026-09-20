@@ -8,6 +8,7 @@ import 'package:path_provider/path_provider.dart';
 import 'app.dart';
 import 'controllers/library_controller.dart';
 import 'providers/diablo_iv_provider.dart';
+import 'providers/guild_wars_2_provider.dart';
 import 'providers/steam_provider.dart';
 import 'services/config_store.dart';
 import 'services/file_cache.dart';
@@ -26,6 +27,7 @@ Future<void> main() async {
     scanner: const LibraryScanner(),
     providers: [
       const DiabloIVProvider(),
+      const GuildWars2Provider(),
       SteamProvider(
         api: SteamClient(
           cache: FileCache(Directory(p.join(supportDirectory.path, 'cache'))),

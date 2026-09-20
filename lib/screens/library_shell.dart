@@ -194,6 +194,8 @@ class _LibraryShellState extends State<LibraryShell> {
           '${controller.settings.outputPath}|'
           '${controller.settings.diabloIV.enabled}|'
           '${controller.settings.diabloIV.sourcePath}|'
+          '${controller.settings.guildWars2.enabled}|'
+          '${controller.settings.guildWars2.sourcePath}|'
           '${controller.settings.steam.toJson()}',
         ),
         controller: controller,

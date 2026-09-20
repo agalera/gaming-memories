@@ -40,6 +40,7 @@ void main() {
     expect(find.text('Media library'), findsOneWidget);
     expect(find.text('Color mode'), findsOneWidget);
     expect(find.text('Diablo IV'), findsOneWidget);
+    expect(find.text('Guild Wars 2'), findsOneWidget);
     expect(
       tester
           .widget<FButton>(
