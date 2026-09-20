@@ -35,6 +35,7 @@ class LibraryFolder {
     this.relativePath = '',
     this.coverPath,
     this.children = const [],
+    this.childrenLoaded = true,
   });
 
   final String name;
@@ -42,6 +43,7 @@ class LibraryFolder {
   final String relativePath;
   final String? coverPath;
   final List<LibraryFolder> children;
+  final bool childrenLoaded;
 
   LibraryFolder? find(String relativePath) {
     if (this.relativePath == relativePath) {

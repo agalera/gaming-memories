@@ -19,6 +19,46 @@ import 'package:gaming_memories/services/timeline_cache.dart';
 import 'package:path/path.dart' as p;
 
 void main() {
+  test(
+    'publishes the album tree before the timeline cache completes',
+    () async {
+      final directory = await Directory.systemTemp.createTemp(
+        'gaming-memories-controller-',
+      );
+      addTearDown(() => directory.delete(recursive: true));
+      final store = ConfigStore(
+        filePath: p.join(directory.path, 'settings.json'),
+      );
+      await store.save(AppSettings(outputPath: directory.path));
+      final timelineCache = _BlockingLoadTimelineCache();
+      final controller = LibraryController(
+        configStore: store,
+        scanner: _StartupFolderScanner(directory.path),
+        timelineCache: timelineCache,
+        providers: const [],
+      );
+
+      final initialization = controller.initialize();
+      await timelineCache.started.future;
+      for (
+        var attempt = 0;
+        attempt < 100 && controller.isAlbumTreeLoading;
+        attempt++
+      ) {
+        await Future<void>.delayed(const Duration(milliseconds: 10));
+      }
+
+      expect(controller.isAlbumTreeLoading, isFalse);
+      expect(controller.isInitializing, isTrue);
+      expect(controller.folderTree.single.name, 'PC');
+
+      timelineCache.result.complete(const []);
+      await initialization;
+
+      expect(controller.isInitializing, isFalse);
+    },
+  );
+
   test('shows game media before preview preparation completes', () async {
     final scanner = _ProgressiveFolderScanner();
     final controller =
@@ -161,6 +201,48 @@ void main() {
       'Diablo IV',
       'Minecraft',
     ]);
+  });
+
+  test('loads sidebar sub-albums only after a game expands', () async {
+    final directory = await Directory.systemTemp.createTemp(
+      'gaming-memories-controller-',
+    );
+    addTearDown(() => directory.delete(recursive: true));
+    final subAlbum = Directory(
+      p.join(directory.path, 'PC', 'Game', 'Boss fights'),
+    );
+    await subAlbum.create(recursive: true);
+    final controller =
+        LibraryController(
+            configStore: const ConfigStore(filePath: 'unused'),
+            scanner: const LibraryScanner(),
+            providers: const [],
+          )
+          ..isInitializing = false
+          ..settings = AppSettings(outputPath: directory.path)
+          ..folderTree = [
+            LibraryFolder(
+              name: 'PC',
+              path: p.join(directory.path, 'PC'),
+              children: [
+                LibraryFolder(
+                  name: 'Game',
+                  path: p.join(directory.path, 'PC', 'Game'),
+                  relativePath: 'Game',
+                  childrenLoaded: false,
+                ),
+              ],
+            ),
+          ];
+
+    expect(controller.folderTree.single.children.single.children, isEmpty);
+
+    await controller.loadSubAlbums('PC', 'Game');
+
+    final game = controller.folderTree.single.children.single;
+    expect(game.childrenLoaded, isTrue);
+    expect(game.children.single.name, 'Boss fights');
+    expect(game.children.single.relativePath, 'Boss fights');
   });
 
   test('reports provider progress during collection', () async {
@@ -847,6 +929,35 @@ class _BlockingScanner extends LibraryScanner {
 
   @override
   Future<MediaLibrary> scan(String outputPath) => scanResult.future;
+}
+
+class _StartupFolderScanner extends LibraryScanner {
+  _StartupFolderScanner(this.outputPath);
+
+  final String outputPath;
+
+  @override
+  Future<List<LibraryFolder>> folderTree(String path) async {
+    return [LibraryFolder(name: 'PC', path: p.join(outputPath, 'PC'))];
+  }
+
+  @override
+  Future<MediaLibrary> scan(String outputPath) async {
+    return const MediaLibrary.empty();
+  }
+}
+
+class _BlockingLoadTimelineCache extends TimelineCache {
+  _BlockingLoadTimelineCache() : super.disabled();
+
+  final started = Completer<void>();
+  final result = Completer<List<MediaItem>>();
+
+  @override
+  Future<List<MediaItem>> load(String libraryPath) {
+    started.complete();
+    return result.future;
+  }
 }
 
 class _ProgressiveFolderScanner extends LibraryScanner {

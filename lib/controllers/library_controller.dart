@@ -128,6 +128,7 @@ class LibraryController extends ChangeNotifier {
   String? selectedSubAlbumPath;
   MediaItem? selectedMedia;
   bool isInitializing = true;
+  bool isAlbumTreeLoading = false;
   bool isBusy = false;
   bool isTimelineRefreshing = false;
   bool isViewLoading = false;
@@ -395,6 +396,7 @@ class LibraryController extends ChangeNotifier {
 
   Future<void> initialize() async {
     var canLoadLibrary = false;
+    isAlbumTreeLoading = true;
     try {
       settings = await configStore.load();
       if (usesPersistentFolderAccess) {
@@ -407,7 +409,7 @@ class LibraryController extends ChangeNotifier {
 
       if (!libraryNeedsAuthorization) {
         final results = await Future.wait<Object>([
-          scanner.folderTree(settings.outputPath),
+          _loadInitialFolderTree(settings.outputPath),
           timelineCache.load(settings.outputPath),
         ]);
         folderTree = results[0] as List<LibraryFolder>;
@@ -417,17 +419,29 @@ class LibraryController extends ChangeNotifier {
       } else {
         timelineMedia = const [];
         folderTree = const [];
+        isAlbumTreeLoading = false;
         view = LibraryView.settings;
       }
     } catch (exception) {
       _setError('Could not load the library: $exception');
     } finally {
+      isAlbumTreeLoading = false;
       isInitializing = false;
       notifyListeners();
     }
     if (canLoadLibrary) {
       unawaited(_refreshTimeline(showResult: false));
     }
+  }
+
+  Future<List<LibraryFolder>> _loadInitialFolderTree(String outputPath) async {
+    final folders = await scanner.folderTree(outputPath);
+    if (!_disposed) {
+      folderTree = folders;
+      isAlbumTreeLoading = false;
+      notifyListeners();
+    }
+    return folders;
   }
 
   Future<bool> _restoreLibraryGrant() async {
@@ -549,6 +563,60 @@ class LibraryController extends ChangeNotifier {
     selectedGame = null;
     selectedSubAlbumPath = null;
     notifyListeners();
+  }
+
+  Future<void> loadSubAlbums(String platform, String game) async {
+    final gameFolder = folderTree
+        .where((folder) => folder.name == platform)
+        .expand((folder) => folder.children)
+        .where((folder) => folder.name == game)
+        .firstOrNull;
+    if (gameFolder == null || gameFolder.childrenLoaded) {
+      return;
+    }
+
+    try {
+      final children = await scanner.subAlbumTree(
+        settings.outputPath,
+        platform,
+        game,
+      );
+      if (_disposed) {
+        return;
+      }
+      folderTree = [
+        for (final platformFolder in folderTree)
+          if (platformFolder.name == platform)
+            LibraryFolder(
+              name: platformFolder.name,
+              path: platformFolder.path,
+              relativePath: platformFolder.relativePath,
+              coverPath: platformFolder.coverPath,
+              childrenLoaded: platformFolder.childrenLoaded,
+              children: [
+                for (final folder in platformFolder.children)
+                  if (folder.name == game)
+                    LibraryFolder(
+                      name: folder.name,
+                      path: folder.path,
+                      relativePath: folder.relativePath,
+                      coverPath: folder.coverPath,
+                      children: children,
+                    )
+                  else
+                    folder,
+              ],
+            )
+          else
+            platformFolder,
+      ];
+      notifyListeners();
+    } catch (exception) {
+      if (!_disposed) {
+        _setError('Could not load sub-albums: $exception');
+        notifyListeners();
+      }
+    }
   }
 
   void showAlbum(String platform, String game) {

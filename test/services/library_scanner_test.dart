@@ -78,8 +78,18 @@ void main() {
     expect(folders.single.name, 'PC');
     expect(folders.single.children.single.name, 'Diablo IV');
     expect(folders.single.children.single.coverPath, cover.path);
-    expect(folders.single.children.single.children.single.name, 'Boss fights');
+    expect(folders.single.children.single.children, isEmpty);
+    expect(folders.single.children.single.childrenLoaded, isFalse);
     expect(await File('${screenshot.path}.thumb.jpg').exists(), isFalse);
+
+    final subAlbums = await const LibraryScanner().subAlbumTree(
+      output.path,
+      'PC',
+      'Diablo IV',
+    );
+
+    expect(subAlbums.single.name, 'Boss fights');
+    expect(subAlbums.single.relativePath, 'Boss fights');
   });
 
   test('lists only direct folders and media for an open game', () async {

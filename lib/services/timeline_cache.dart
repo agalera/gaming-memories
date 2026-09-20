@@ -22,32 +22,10 @@ class TimelineCache {
 
     try {
       final source = await File(path).readAsString();
-      final payload = await Isolate.run(() => jsonDecode(source));
-      if (payload is! Map<String, dynamic> ||
-          payload['version'] != 1 ||
-          payload['libraryPath'] != _normalizedPath(libraryPath)) {
-        return const [];
-      }
-
-      final rawItems = payload['items'];
-      if (rawItems is! List) {
-        return const [];
-      }
-
-      final items = <MediaItem>[];
-      for (final value in rawItems) {
-        try {
-          if (value is Map<String, dynamic>) {
-            items.add(_itemFromJson(value));
-          } else if (value is Map) {
-            items.add(_itemFromJson(Map<String, dynamic>.from(value)));
-          }
-        } on Object {
-          // Ignore one invalid entry and retain the rest of the cache.
-        }
-      }
-      items.sort((left, right) => right.capturedAt.compareTo(left.capturedAt));
-      return items;
+      final expectedLibraryPath = _normalizedPath(libraryPath);
+      return await Isolate.run(
+        () => _decodeTimeline(source, expectedLibraryPath),
+      );
     } on Object {
       return const [];
     }
@@ -97,7 +75,39 @@ class TimelineCache {
     };
   }
 
-  MediaItem _itemFromJson(Map<String, dynamic> value) {
+  static List<MediaItem> _decodeTimeline(
+    String source,
+    String expectedLibraryPath,
+  ) {
+    final payload = jsonDecode(source);
+    if (payload is! Map<String, dynamic> ||
+        payload['version'] != 1 ||
+        payload['libraryPath'] != expectedLibraryPath) {
+      return const [];
+    }
+
+    final rawItems = payload['items'];
+    if (rawItems is! List) {
+      return const [];
+    }
+
+    final items = <MediaItem>[];
+    for (final value in rawItems) {
+      try {
+        if (value is Map<String, dynamic>) {
+          items.add(_itemFromJson(value));
+        } else if (value is Map) {
+          items.add(_itemFromJson(Map<String, dynamic>.from(value)));
+        }
+      } on Object {
+        // Ignore one invalid entry and retain the rest of the cache.
+      }
+    }
+    items.sort((left, right) => right.capturedAt.compareTo(left.capturedAt));
+    return items;
+  }
+
+  static MediaItem _itemFromJson(Map<String, dynamic> value) {
     final kind = value['kind'] == MediaKind.video.name
         ? MediaKind.video
         : MediaKind.image;

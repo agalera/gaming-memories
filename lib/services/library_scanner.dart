@@ -92,10 +92,52 @@ class LibraryScanner {
     }
 
     final platforms = <LibraryFolder>[];
-    for (final directory in await _directories(root)) {
-      platforms.add(await _folderNode(directory, directory));
+    for (final platformDirectory in await _directories(root)) {
+      final games = <LibraryFolder>[];
+      for (final gameDirectory in await _directories(platformDirectory)) {
+        games.add(
+          LibraryFolder(
+            name: p.basename(gameDirectory.path),
+            path: gameDirectory.path,
+            relativePath: p.basename(gameDirectory.path),
+            coverPath: await _coverPath(gameDirectory),
+            childrenLoaded: false,
+          ),
+        );
+      }
+      platforms.add(
+        LibraryFolder(
+          name: p.basename(platformDirectory.path),
+          path: platformDirectory.path,
+          children: games,
+        ),
+      );
     }
     return platforms;
+  }
+
+  Future<List<LibraryFolder>> subAlbumTree(
+    String outputPath,
+    String platform,
+    String game,
+  ) async {
+    if (outputPath.trim().isEmpty) {
+      return const [];
+    }
+
+    final rootPath = p.normalize(p.absolute(expandUserPath(outputPath.trim())));
+    final gameDirectory = Directory(p.join(rootPath, platform, game));
+    final normalizedGame = p.normalize(p.absolute(gameDirectory.path));
+    if (!p.isWithin(rootPath, normalizedGame) ||
+        !await gameDirectory.exists()) {
+      return const [];
+    }
+
+    final folders = <LibraryFolder>[];
+    for (final directory in await _directories(gameDirectory)) {
+      folders.add(await _subAlbumFolderNode(directory, gameDirectory));
+    }
+    return folders;
   }
 
   Future<FolderListing> folderContents(
@@ -242,29 +284,20 @@ class LibraryScanner {
     );
   }
 
-  Future<LibraryFolder> _folderNode(
+  Future<LibraryFolder> _subAlbumFolderNode(
     Directory directory,
-    Directory platformDirectory,
+    Directory gameDirectory,
   ) async {
     final children = <LibraryFolder>[];
     for (final child in await _directories(directory)) {
-      children.add(await _folderNode(child, platformDirectory));
+      children.add(await _subAlbumFolderNode(child, gameDirectory));
     }
 
-    String? coverPath;
-    final relativePath = p.relative(
-      directory.path,
-      from: platformDirectory.path,
-    );
-    final isGame = relativePath != '.' && p.split(relativePath).length == 1;
-    if (isGame) {
-      coverPath = await _coverPath(directory);
-    }
+    final relativePath = p.relative(directory.path, from: gameDirectory.path);
     return LibraryFolder(
       name: p.basename(directory.path),
       path: directory.path,
-      relativePath: relativePath == '.' ? '' : relativePath,
-      coverPath: coverPath,
+      relativePath: relativePath,
       children: children,
     );
   }

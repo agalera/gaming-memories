@@ -32,6 +32,9 @@ class LibrarySidebar extends StatelessWidget {
             icon: FLucideIcons.gamepad2,
             selected: selected,
             onPress: () => controller.showAlbum(platform.name, game.name),
+            onExpand: game.childrenLoaded
+                ? null
+                : () => controller.loadSubAlbums(platform.name, game.name),
             children: game.children
                 .map(
                   (subAlbum) =>
@@ -135,7 +138,20 @@ class LibrarySidebar extends StatelessWidget {
         ),
         FSidebarGroup(
           label: const Text('ALBUMS'),
-          children: albumGroups.isEmpty
+          children: controller.isAlbumTreeLoading
+              ? const [
+                  Padding(
+                    padding: EdgeInsets.symmetric(vertical: 12),
+                    child: Center(
+                      child: SizedBox.square(
+                        key: ValueKey('albums-loading-spinner'),
+                        dimension: 18,
+                        child: FCircularProgress(),
+                      ),
+                    ),
+                  ),
+                ]
+              : albumGroups.isEmpty
               ? [
                   Padding(
                     padding: const EdgeInsets.symmetric(
@@ -184,6 +200,7 @@ class _AlbumSidebarItem extends StatefulWidget {
     required this.selected,
     required this.onPress,
     required this.children,
+    this.onExpand,
     super.key,
   });
 
@@ -193,6 +210,7 @@ class _AlbumSidebarItem extends StatefulWidget {
   final bool selected;
   final VoidCallback onPress;
   final List<Widget> children;
+  final Future<void> Function()? onExpand;
 
   @override
   State<_AlbumSidebarItem> createState() => _AlbumSidebarItemState();
@@ -200,6 +218,27 @@ class _AlbumSidebarItem extends StatefulWidget {
 
 class _AlbumSidebarItemState extends State<_AlbumSidebarItem> {
   bool _expanded = false;
+  bool _isLoading = false;
+
+  Future<void> _toggle() async {
+    if (_expanded) {
+      setState(() => _expanded = false);
+      return;
+    }
+
+    final onExpand = widget.onExpand;
+    if (onExpand != null) {
+      setState(() => _isLoading = true);
+      await onExpand();
+      if (!mounted) {
+        return;
+      }
+    }
+    setState(() {
+      _isLoading = false;
+      _expanded = true;
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -224,7 +263,7 @@ class _AlbumSidebarItemState extends State<_AlbumSidebarItem> {
                 ),
               ),
             ),
-            if (widget.children.isNotEmpty) ...[
+            if (widget.children.isNotEmpty || widget.onExpand != null) ...[
               const SizedBox(width: 2),
               FButton.icon(
                 key: ValueKey('${widget.itemKey}-toggle'),
@@ -234,12 +273,17 @@ class _AlbumSidebarItemState extends State<_AlbumSidebarItem> {
                 semanticsLabel: _expanded
                     ? 'Collapse ${widget.name} sub-albums'
                     : 'Expand ${widget.name} sub-albums',
-                onPress: () => setState(() => _expanded = !_expanded),
-                child: AnimatedRotation(
-                  turns: _expanded ? 0.25 : 0,
-                  duration: const Duration(milliseconds: 150),
-                  child: const Icon(FLucideIcons.chevronRight),
-                ),
+                onPress: _isLoading ? null : _toggle,
+                child: _isLoading
+                    ? const SizedBox.square(
+                        dimension: 16,
+                        child: FCircularProgress(),
+                      )
+                    : AnimatedRotation(
+                        turns: _expanded ? 0.25 : 0,
+                        duration: const Duration(milliseconds: 150),
+                        child: const Icon(FLucideIcons.chevronRight),
+                      ),
               ),
             ],
           ],

@@ -19,6 +19,79 @@ import 'package:image/image.dart' as image_lib;
 import 'package:path/path.dart' as p;
 
 void main() {
+  testWidgets('shows progress while the startup album tree loads', (
+    tester,
+  ) async {
+    final controller =
+        LibraryController(
+            configStore: const ConfigStore(filePath: 'unused'),
+            scanner: const LibraryScanner(),
+            providers: const [],
+          )
+          ..isInitializing = false
+          ..isAlbumTreeLoading = true;
+
+    await tester.pumpWidget(GamingMemoriesApp(controller: controller));
+    await tester.pump();
+
+    expect(
+      find.byKey(const ValueKey('albums-loading-spinner')),
+      findsOneWidget,
+    );
+    expect(find.text('Your albums will appear here.'), findsNothing);
+
+    controller.folderTree = const [LibraryFolder(name: 'PC', path: '/PC')];
+    controller.isAlbumTreeLoading = false;
+    controller.notifyListeners();
+    await tester.pump();
+
+    expect(find.byKey(const ValueKey('albums-loading-spinner')), findsNothing);
+    expect(find.byKey(const ValueKey('platform-PC')), findsOneWidget);
+
+    await tester.pumpWidget(const SizedBox.shrink());
+  });
+
+  testWidgets('loads game sub-albums after the game expands', (tester) async {
+    final scanner = _LazySubAlbumScanner();
+    final controller =
+        LibraryController(
+            configStore: const ConfigStore(filePath: 'unused'),
+            scanner: scanner,
+            providers: const [],
+          )
+          ..isInitializing = false
+          ..settings = const AppSettings(outputPath: '/library')
+          ..folderTree = const [
+            LibraryFolder(
+              name: 'PC',
+              path: '/library/PC',
+              children: [
+                LibraryFolder(
+                  name: 'Game',
+                  path: '/library/PC/Game',
+                  relativePath: 'Game',
+                  childrenLoaded: false,
+                ),
+              ],
+            ),
+          ];
+
+    await tester.pumpWidget(GamingMemoriesApp(controller: controller));
+    await tester.pump();
+    await tester.tap(find.byKey(const ValueKey('platform-toggle-PC')));
+    await tester.pump(const Duration(milliseconds: 200));
+    await tester.tap(find.byKey(const ValueKey('game-PC-Game-toggle')));
+    await tester.pumpAndSettle();
+
+    expect(scanner.calls, 1);
+    expect(
+      find.byKey(const ValueKey('sub-album-PC-Game-Boss fights-label')),
+      findsOneWidget,
+    );
+
+    await tester.pumpWidget(const SizedBox.shrink());
+  });
+
   testWidgets('shows the timeline and opens settings', (tester) async {
     final directory = Directory.systemTemp.createTempSync('gaming-memories-');
     addTearDown(() => directory.deleteSync(recursive: true));
@@ -1221,6 +1294,26 @@ void main() {
     await tester.pumpWidget(const SizedBox.shrink());
     await tester.pump(const Duration(milliseconds: 200));
   });
+}
+
+class _LazySubAlbumScanner extends LibraryScanner {
+  int calls = 0;
+
+  @override
+  Future<List<LibraryFolder>> subAlbumTree(
+    String outputPath,
+    String platform,
+    String game,
+  ) async {
+    calls++;
+    return const [
+      LibraryFolder(
+        name: 'Boss fights',
+        path: '/library/PC/Game/Boss fights',
+        relativePath: 'Boss fights',
+      ),
+    ];
+  }
 }
 
 class _MemoryConfigStore extends ConfigStore {
