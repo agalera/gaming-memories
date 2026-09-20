@@ -2,20 +2,22 @@ import 'dart:io';
 
 import 'package:forui/forui.dart';
 import 'package:material_ui/material_ui.dart';
+import 'package:media_kit/media_kit.dart';
+import 'package:media_kit_video/media_kit_video.dart';
 import 'package:path/path.dart' as p;
 
 import '../controllers/library_controller.dart';
 import '../models/library.dart';
 import '../widgets/screenshot_actions.dart';
 
-class ScreenshotDetailPage extends StatelessWidget {
-  const ScreenshotDetailPage({
-    required this.screenshot,
+class MediaDetailPage extends StatelessWidget {
+  const MediaDetailPage({
+    required this.media,
     required this.controller,
     super.key,
   });
 
-  final ScreenshotItem screenshot;
+  final MediaItem media;
   final LibraryController controller;
 
   @override
@@ -24,17 +26,14 @@ class ScreenshotDetailPage extends StatelessWidget {
       padding: const EdgeInsets.fromLTRB(24, 10, 24, 24),
       child: LayoutBuilder(
         builder: (context, constraints) {
-          final image = _FullImage(screenshot: screenshot);
-          final details = _ScreenshotDetails(
-            screenshot: screenshot,
-            controller: controller,
-          );
+          final preview = _MediaPreview(media: media);
+          final details = _MediaDetails(media: media, controller: controller);
 
           if (constraints.maxWidth >= 900) {
             return Row(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                Expanded(child: image),
+                Expanded(child: preview),
                 const SizedBox(width: 20),
                 SizedBox(width: 320, child: details),
               ],
@@ -43,7 +42,7 @@ class ScreenshotDetailPage extends StatelessWidget {
 
           return ListView(
             children: [
-              SizedBox(height: constraints.maxHeight * 0.62, child: image),
+              SizedBox(height: constraints.maxHeight * 0.62, child: preview),
               const SizedBox(height: 16),
               details,
             ],
@@ -54,10 +53,10 @@ class ScreenshotDetailPage extends StatelessWidget {
   }
 }
 
-class _FullImage extends StatelessWidget {
-  const _FullImage({required this.screenshot});
+class _MediaPreview extends StatelessWidget {
+  const _MediaPreview({required this.media});
 
-  final ScreenshotItem screenshot;
+  final MediaItem media;
 
   @override
   Widget build(BuildContext context) {
@@ -65,44 +64,80 @@ class _FullImage extends StatelessWidget {
       clipBehavior: Clip.antiAlias,
       child: ColoredBox(
         color: context.theme.colors.muted,
-        child: Padding(
-          padding: const EdgeInsets.all(12),
-          child: InteractiveViewer(
-            minScale: 0.5,
-            maxScale: 5,
-            child: Center(
-              child: Image.file(
-                screenshot.file,
-                key: const ValueKey('screenshot-detail-image'),
-                fit: BoxFit.contain,
-                errorBuilder: (context, error, stackTrace) => Center(
-                  child: Icon(
-                    FLucideIcons.imageOff,
-                    size: 44,
-                    color: context.theme.colors.mutedForeground,
+        child: media.isVideo
+            ? _VideoPreview(media: media)
+            : Padding(
+                padding: const EdgeInsets.all(12),
+                child: InteractiveViewer(
+                  minScale: 0.5,
+                  maxScale: 5,
+                  child: Center(
+                    child: Image.file(
+                      media.file,
+                      key: const ValueKey('media-detail-image'),
+                      fit: BoxFit.contain,
+                      errorBuilder: (context, error, stackTrace) => Center(
+                        child: Icon(
+                          FLucideIcons.imageOff,
+                          size: 44,
+                          color: context.theme.colors.mutedForeground,
+                        ),
+                      ),
+                    ),
                   ),
                 ),
               ),
-            ),
-          ),
-        ),
       ),
     );
   }
 }
 
-class _ScreenshotDetails extends StatelessWidget {
-  const _ScreenshotDetails({
-    required this.screenshot,
-    required this.controller,
-  });
+class _VideoPreview extends StatefulWidget {
+  const _VideoPreview({required this.media});
 
-  final ScreenshotItem screenshot;
+  final MediaItem media;
+
+  @override
+  State<_VideoPreview> createState() => _VideoPreviewState();
+}
+
+class _VideoPreviewState extends State<_VideoPreview> {
+  late final Player _player;
+  late final VideoController _videoController;
+
+  @override
+  void initState() {
+    super.initState();
+    _player = Player();
+    _videoController = VideoController(_player);
+    _player.open(Media(widget.media.path), play: false);
+  }
+
+  @override
+  void dispose() {
+    _player.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Video(
+      key: const ValueKey('media-detail-video'),
+      controller: _videoController,
+      fit: BoxFit.contain,
+    );
+  }
+}
+
+class _MediaDetails extends StatelessWidget {
+  const _MediaDetails({required this.media, required this.controller});
+
+  final MediaItem media;
   final LibraryController controller;
 
   @override
   Widget build(BuildContext context) {
-    final extension = p.extension(screenshot.path);
+    final extension = p.extension(media.path);
 
     return FCard(
       child: SingleChildScrollView(
@@ -111,24 +146,28 @@ class _ScreenshotDetails extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(
-              'Screenshot details',
+              media.isVideo ? 'Video details' : 'Image details',
               style: context.theme.typography.display.lg.copyWith(
                 fontWeight: FontWeight.w700,
               ),
             ),
             const SizedBox(height: 14),
-            ScreenshotActionButtons(
-              controller: controller,
-              screenshot: screenshot,
-            ),
+            MediaActionButtons(controller: controller, media: media),
             const SizedBox(height: 20),
-            _DetailItem(label: 'Game', value: screenshot.game),
-            _DetailItem(label: 'Platform', value: screenshot.platform),
+            _DetailItem(label: 'Game', value: media.game),
+            _DetailItem(label: 'Platform', value: media.platform),
+            if (media.subAlbumPath.isNotEmpty)
+              _DetailItem(label: 'Sub-album', value: media.subAlbumPath),
             _DetailItem(
               label: 'Captured',
-              value: _formatDate(screenshot.capturedAt),
+              value: _formatDate(media.capturedAt),
             ),
-            _DetailItem(label: 'File name', value: p.basename(screenshot.path)),
+            if (media.duration != null)
+              _DetailItem(
+                label: 'Duration',
+                value: _formatDuration(media.duration!),
+              ),
+            _DetailItem(label: 'File name', value: p.basename(media.path)),
             _DetailItem(
               label: 'File type',
               value: extension.isEmpty
@@ -136,7 +175,7 @@ class _ScreenshotDetails extends StatelessWidget {
                   : extension.substring(1).toUpperCase(),
             ),
             FutureBuilder<FileStat>(
-              future: screenshot.file.stat(),
+              future: media.file.stat(),
               builder: (context, snapshot) => _DetailItem(
                 label: 'File size',
                 value: snapshot.hasData
@@ -146,7 +185,7 @@ class _ScreenshotDetails extends StatelessWidget {
             ),
             _DetailItem(
               label: 'Path',
-              value: screenshot.path,
+              value: media.path,
               selectable: true,
               last: true,
             ),
@@ -220,4 +259,11 @@ String _formatBytes(int bytes) {
   }
 
   return '${(megabytes / 1024).toStringAsFixed(1)} GB';
+}
+
+String _formatDuration(Duration value) {
+  final hours = value.inHours;
+  final minutes = value.inMinutes.remainder(60).toString().padLeft(2, '0');
+  final seconds = value.inSeconds.remainder(60).toString().padLeft(2, '0');
+  return hours > 0 ? '$hours:$minutes:$seconds' : '$minutes:$seconds';
 }

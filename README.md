@@ -1,19 +1,24 @@
 # Gaming Memories
 
-Gaming Memories is a desktop screenshot library for video games. It collects screenshots from provider folders and stores them in platform and game albums.
+Gaming Memories is a desktop media library for video games. It collects images and videos into platform and game albums.
 
-This first version supports the Diablo IV provider. The app includes these functions:
+The app includes these functions:
 
-- A timeline that shows all screenshots by date.
-- An album tree that groups screenshots by platform and game.
+- A timeline that shows all media by date.
+- An album tree that groups media by platform, game, and nested folder.
+- Video thumbnails, duration details, and video playback.
 - Settings for the library folder and provider folder.
-- A Diablo IV import that uses the file modification date for each name.
-- SHA-1 collision names that prevent screenshot loss.
+- Diablo IV and Steam providers.
+- SHA-1 collision names that prevent file loss.
 
 ## Requirements
 
 - Flutter 3.47.0 or later.
 - Linux, macOS, or Windows.
+
+FFmpeg and FFprobe are optional command-line tools. The app uses them to create video thumbnails and read video duration.
+
+The app can play videos without these tools. It uses a current `.thumb.jpg` sidecar when one is available.
 
 ## Run the app
 
@@ -32,7 +37,7 @@ On Windows, you can leave the Diablo IV folder empty. The provider scans these d
 - `Pictures\Diablo IV`
 - `Documents\Diablo IV\Screenshots`
 
-Select the collect action in the page header to import screenshots.
+Select the collect action in the page header to import media.
 
 ## Verify the project
 

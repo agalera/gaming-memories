@@ -2,6 +2,7 @@ import 'package:forui/forui.dart';
 import 'package:material_ui/material_ui.dart';
 
 import '../controllers/library_controller.dart';
+import '../models/library.dart';
 
 class LibrarySidebar extends StatelessWidget {
   const LibrarySidebar({required this.controller, super.key});
@@ -26,11 +27,20 @@ class LibrarySidebar extends StatelessWidget {
               controller.selectedPlatform == album.platform &&
               controller.selectedGame == album.game;
 
-          return FSidebarItem(
-            icon: const Icon(FLucideIcons.gamepad2),
-            label: Text('${album.game}  ${album.screenshots.length}'),
+          return _AlbumSidebarItem(
+            key: ValueKey('game-${album.platform}-${album.game}'),
+            itemKey: 'game-${album.platform}-${album.game}',
+            name: album.game,
+            count: album.allMedia.length,
+            icon: FLucideIcons.gamepad2,
             selected: selected,
             onPress: () => controller.showAlbum(album.platform, album.game),
+            children: album.subAlbums
+                .map(
+                  (subAlbum) =>
+                      _subAlbumItem(album.platform, album.game, subAlbum),
+                )
+                .toList(),
           );
         }).toList(),
       );
@@ -115,6 +125,120 @@ class LibrarySidebar extends StatelessWidget {
       ],
     );
   }
+
+  Widget _subAlbumItem(String platform, String game, SubAlbum subAlbum) {
+    return _AlbumSidebarItem(
+      key: ValueKey('sub-album-$platform-$game-${subAlbum.relativePath}'),
+      itemKey: 'sub-album-$platform-$game-${subAlbum.relativePath}',
+      name: subAlbum.name,
+      count: subAlbum.allMedia.length,
+      icon: FLucideIcons.folderOpen,
+      selected:
+          controller.view == LibraryView.subAlbum &&
+          controller.selectedPlatform == platform &&
+          controller.selectedGame == game &&
+          controller.selectedSubAlbumPath == subAlbum.relativePath,
+      onPress: () =>
+          controller.showSubAlbum(platform, game, subAlbum.relativePath),
+      children: subAlbum.children
+          .map((child) => _subAlbumItem(platform, game, child))
+          .toList(),
+    );
+  }
+}
+
+class _AlbumSidebarItem extends StatefulWidget {
+  const _AlbumSidebarItem({
+    required this.itemKey,
+    required this.name,
+    required this.count,
+    required this.icon,
+    required this.selected,
+    required this.onPress,
+    required this.children,
+    super.key,
+  });
+
+  final String itemKey;
+  final String name;
+  final int count;
+  final IconData icon;
+  final bool selected;
+  final VoidCallback onPress;
+  final List<Widget> children;
+
+  @override
+  State<_AlbumSidebarItem> createState() => _AlbumSidebarItemState();
+}
+
+class _AlbumSidebarItemState extends State<_AlbumSidebarItem> {
+  bool _expanded = true;
+
+  @override
+  Widget build(BuildContext context) {
+    final label = '${widget.name}  ${widget.count}';
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Row(
+          children: [
+            Expanded(
+              child: FButton(
+                key: ValueKey('${widget.itemKey}-label'),
+                variant: FButtonVariant.ghost,
+                size: FButtonSizeVariant.sm,
+                selected: widget.selected,
+                mainAxisSize: MainAxisSize.max,
+                mainAxisAlignment: MainAxisAlignment.start,
+                semanticsLabel: 'Show ${widget.name} album',
+                prefix: Icon(widget.icon),
+                onPress: widget.onPress,
+                child: Expanded(
+                  child: Text(label, overflow: TextOverflow.ellipsis),
+                ),
+              ),
+            ),
+            if (widget.children.isNotEmpty) ...[
+              const SizedBox(width: 2),
+              FButton.icon(
+                key: ValueKey('${widget.itemKey}-toggle'),
+                variant: FButtonVariant.ghost,
+                size: FButtonSizeVariant.sm,
+                selected: widget.selected,
+                semanticsLabel: _expanded
+                    ? 'Collapse ${widget.name} sub-albums'
+                    : 'Expand ${widget.name} sub-albums',
+                onPress: () => setState(() => _expanded = !_expanded),
+                child: AnimatedRotation(
+                  turns: _expanded ? 0.25 : 0,
+                  duration: const Duration(milliseconds: 150),
+                  child: const Icon(FLucideIcons.chevronRight),
+                ),
+              ),
+            ],
+          ],
+        ),
+        if (_expanded && widget.children.isNotEmpty)
+          Padding(
+            padding: const EdgeInsets.only(left: 20, top: 4),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                for (
+                  var index = 0;
+                  index < widget.children.length;
+                  index++
+                ) ...[
+                  if (index > 0) const SizedBox(height: 4),
+                  widget.children[index],
+                ],
+              ],
+            ),
+          ),
+      ],
+    );
+  }
 }
 
 class _PlatformSidebarItem extends StatefulWidget {
@@ -156,7 +280,9 @@ class _PlatformSidebarItemState extends State<_PlatformSidebarItem> {
                 semanticsLabel: 'Show ${widget.platform} timeline',
                 prefix: const Icon(FLucideIcons.monitor),
                 onPress: widget.onPress,
-                child: Text(widget.platform),
+                child: Expanded(
+                  child: Text(widget.platform, overflow: TextOverflow.ellipsis),
+                ),
               ),
             ),
             const SizedBox(width: 2),

@@ -4,25 +4,34 @@ import 'package:path/path.dart' as p;
 
 import '../models/library.dart';
 import 'thumbnail_service.dart';
+import 'video_metadata_service.dart';
 
 class LibraryScanner {
-  const LibraryScanner({this.thumbnailService = const ThumbnailService()});
+  const LibraryScanner({
+    this.thumbnailService = const ThumbnailService(),
+    this.videoMetadataService = const VideoMetadataService(),
+  });
 
   final ThumbnailService thumbnailService;
+  final VideoMetadataService videoMetadataService;
 
   static const _imageExtensions = {'.jpg', '.jpeg', '.png', '.webp'};
+  static const _videoExtensions = {'.mp4', '.avi', '.mkv', '.webm'};
   static final _datePattern = RegExp(
     r'^(\d{4})-(\d{2})-(\d{2})_(\d{2})-(\d{2})-(\d{2})',
   );
+  static final _compactDatePattern = RegExp(
+    r'^(\d{4})(\d{2})(\d{2})(\d{2})(\d{2})(\d{2})',
+  );
 
-  Future<ScreenshotLibrary> scan(String outputPath) async {
+  Future<MediaLibrary> scan(String outputPath) async {
     if (outputPath.trim().isEmpty) {
-      return const ScreenshotLibrary.empty();
+      return const MediaLibrary.empty();
     }
 
     final root = Directory(expandUserPath(outputPath.trim()));
     if (!await root.exists()) {
-      return const ScreenshotLibrary.empty();
+      return const MediaLibrary.empty();
     }
 
     final albums = <GameAlbum>[];
@@ -31,18 +40,29 @@ class LibraryScanner {
     for (final platformDirectory in platformDirectories) {
       final gameDirectories = await _directories(platformDirectory);
       for (final gameDirectory in gameDirectories) {
-        final screenshots = await _screenshots(
-          gameDirectory,
-          p.basename(platformDirectory.path),
-          p.basename(gameDirectory.path),
-        );
+        final platform = p.basename(platformDirectory.path);
+        final game = p.basename(gameDirectory.path);
+        final media = await _mediaFiles(gameDirectory, platform, game, '');
+        final subAlbums = <SubAlbum>[];
+        for (final child in await _directories(gameDirectory)) {
+          final subAlbum = await _subAlbum(
+            child,
+            gameDirectory,
+            platform,
+            game,
+          );
+          if (subAlbum != null) {
+            subAlbums.add(subAlbum);
+          }
+        }
 
-        if (screenshots.isNotEmpty) {
+        if (media.isNotEmpty || subAlbums.isNotEmpty) {
           albums.add(
             GameAlbum(
-              platform: p.basename(platformDirectory.path),
-              game: p.basename(gameDirectory.path),
-              screenshots: screenshots,
+              platform: platform,
+              game: game,
+              media: media,
+              subAlbums: subAlbums,
             ),
           );
         }
@@ -56,7 +76,7 @@ class LibraryScanner {
           : platformOrder;
     });
 
-    return ScreenshotLibrary(albums: albums);
+    return MediaLibrary(albums: albums);
   }
 
   Future<List<Directory>> _directories(Directory parent) async {
@@ -73,60 +93,103 @@ class LibraryScanner {
     }
   }
 
-  Future<List<ScreenshotItem>> _screenshots(
+  Future<SubAlbum?> _subAlbum(
     Directory directory,
+    Directory gameDirectory,
     String platform,
     String game,
   ) async {
-    final screenshots = <ScreenshotItem>[];
+    final relativePath = p.relative(directory.path, from: gameDirectory.path);
+    final media = await _mediaFiles(directory, platform, game, relativePath);
+    final children = <SubAlbum>[];
+
+    for (final child in await _directories(directory)) {
+      final subAlbum = await _subAlbum(child, gameDirectory, platform, game);
+      if (subAlbum != null) {
+        children.add(subAlbum);
+      }
+    }
+
+    if (media.isEmpty && children.isEmpty) {
+      return null;
+    }
+
+    return SubAlbum(
+      name: p.basename(directory.path),
+      relativePath: relativePath,
+      media: media,
+      children: children,
+    );
+  }
+
+  Future<List<MediaItem>> _mediaFiles(
+    Directory directory,
+    String platform,
+    String game,
+    String subAlbumPath,
+  ) async {
+    final media = <MediaItem>[];
 
     try {
-      await for (final entity in directory.list(
-        recursive: true,
-        followLinks: false,
-      )) {
+      await for (final entity in directory.list(followLinks: false)) {
         if (entity is! File ||
-            !_isImage(entity.path) ||
+            !_isMedia(entity.path) ||
             _isThumbnail(entity.path) ||
-            p.basename(entity.path).toLowerCase() == 'cover.jpg') {
+            _isCover(entity.path)) {
           continue;
         }
 
         final stat = await entity.stat();
-        final thumbnailPath = await thumbnailService.ensureThumbnail(
-          entity,
-          stat,
-        );
-        screenshots.add(
-          ScreenshotItem(
+        final isVideo = _isVideo(entity.path);
+        final thumbnailPath = isVideo
+            ? await thumbnailService.ensureVideoThumbnail(entity, stat)
+            : await thumbnailService.ensureImageThumbnail(entity, stat);
+        final duration = isVideo
+            ? await videoMetadataService.ensureDuration(entity, stat)
+            : null;
+        media.add(
+          MediaItem(
             path: entity.path,
             platform: platform,
             game: game,
             capturedAt: _dateFromName(entity.path) ?? stat.modified,
+            kind: isVideo ? MediaKind.video : MediaKind.image,
+            subAlbumPath: subAlbumPath,
             thumbnailPath: thumbnailPath,
+            duration: duration,
           ),
         );
       }
     } on FileSystemException {
-      return screenshots;
+      return media;
     }
 
-    screenshots.sort(
-      (left, right) => right.capturedAt.compareTo(left.capturedAt),
-    );
-    return screenshots;
+    media.sort((left, right) => right.capturedAt.compareTo(left.capturedAt));
+    return media;
   }
 
-  bool _isImage(String path) {
-    return _imageExtensions.contains(p.extension(path).toLowerCase());
+  bool _isMedia(String path) {
+    final extension = p.extension(path).toLowerCase();
+    return _imageExtensions.contains(extension) ||
+        _videoExtensions.contains(extension);
+  }
+
+  bool _isVideo(String path) {
+    return _videoExtensions.contains(p.extension(path).toLowerCase());
   }
 
   bool _isThumbnail(String path) {
     return p.basename(path).toLowerCase().endsWith('.thumb.jpg');
   }
 
+  bool _isCover(String path) {
+    return p.basenameWithoutExtension(path).toLowerCase() == 'cover';
+  }
+
   DateTime? _dateFromName(String path) {
-    final match = _datePattern.firstMatch(p.basename(path));
+    final name = p.basename(path);
+    final match =
+        _datePattern.firstMatch(name) ?? _compactDatePattern.firstMatch(name);
     if (match == null) {
       return null;
     }

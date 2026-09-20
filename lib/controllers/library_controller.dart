@@ -7,7 +7,7 @@ import '../services/config_store.dart';
 import '../services/library_scanner.dart';
 import '../services/screenshot_action_service.dart';
 
-enum LibraryView { timeline, platform, album, settings }
+enum LibraryView { timeline, platform, album, subAlbum, settings }
 
 class LibraryController extends ChangeNotifier {
   LibraryController({
@@ -23,11 +23,12 @@ class LibraryController extends ChangeNotifier {
   final ScreenshotActionService screenshotActions;
 
   AppSettings settings = const AppSettings.defaults();
-  ScreenshotLibrary library = const ScreenshotLibrary.empty();
+  MediaLibrary library = const MediaLibrary.empty();
   LibraryView view = LibraryView.timeline;
   String? selectedPlatform;
   String? selectedGame;
-  ScreenshotItem? selectedScreenshot;
+  String? selectedSubAlbumPath;
+  MediaItem? selectedMedia;
   bool isInitializing = true;
   bool isBusy = false;
   String? message;
@@ -35,7 +36,7 @@ class LibraryController extends ChangeNotifier {
   String? progressMessage;
   double? progressValue;
 
-  List<ScreenshotItem> get visibleScreenshots {
+  List<MediaItem> get visibleMedia {
     if (view == LibraryView.platform && selectedPlatform != null) {
       return library.platformTimeline(selectedPlatform!);
     }
@@ -43,7 +44,18 @@ class LibraryController extends ChangeNotifier {
     if (view == LibraryView.album &&
         selectedPlatform != null &&
         selectedGame != null) {
-      return library.album(selectedPlatform!, selectedGame!)?.screenshots ??
+      return library.album(selectedPlatform!, selectedGame!)?.allMedia ??
+          const [];
+    }
+
+    if (view == LibraryView.subAlbum &&
+        selectedPlatform != null &&
+        selectedGame != null &&
+        selectedSubAlbumPath != null) {
+      return library
+              .album(selectedPlatform!, selectedGame!)
+              ?.subAlbum(selectedSubAlbumPath!)
+              ?.allMedia ??
           const [];
     }
 
@@ -55,17 +67,31 @@ class LibraryController extends ChangeNotifier {
       LibraryView.timeline => 'Timeline',
       LibraryView.platform => selectedPlatform ?? 'Platform',
       LibraryView.album => selectedGame ?? 'Album',
+      LibraryView.subAlbum => _selectedSubAlbum?.name ?? 'Sub-album',
       LibraryView.settings => 'Settings',
     };
   }
 
   String get pageDescription {
     return switch (view) {
-      LibraryView.timeline => 'All screenshots, from newest to oldest',
+      LibraryView.timeline => 'All media, from newest to oldest',
       LibraryView.platform => 'Platform timeline, from newest to oldest',
       LibraryView.album => selectedPlatform ?? '',
+      LibraryView.subAlbum => [?selectedPlatform, ?selectedGame].join('  •  '),
       LibraryView.settings => 'Library and provider setup',
     };
+  }
+
+  SubAlbum? get _selectedSubAlbum {
+    if (selectedPlatform == null ||
+        selectedGame == null ||
+        selectedSubAlbumPath == null) {
+      return null;
+    }
+
+    return library
+        .album(selectedPlatform!, selectedGame!)
+        ?.subAlbum(selectedSubAlbumPath!);
   }
 
   Future<void> initialize() async {
@@ -81,64 +107,76 @@ class LibraryController extends ChangeNotifier {
   }
 
   void showTimeline() {
-    selectedScreenshot = null;
+    selectedMedia = null;
     view = LibraryView.timeline;
     selectedPlatform = null;
     selectedGame = null;
+    selectedSubAlbumPath = null;
     notifyListeners();
   }
 
   void showAlbum(String platform, String game) {
-    selectedScreenshot = null;
+    selectedMedia = null;
     view = LibraryView.album;
     selectedPlatform = platform;
     selectedGame = game;
+    selectedSubAlbumPath = null;
+    notifyListeners();
+  }
+
+  void showSubAlbum(String platform, String game, String subAlbumPath) {
+    selectedMedia = null;
+    view = LibraryView.subAlbum;
+    selectedPlatform = platform;
+    selectedGame = game;
+    selectedSubAlbumPath = subAlbumPath;
     notifyListeners();
   }
 
   void showPlatform(String platform) {
-    selectedScreenshot = null;
+    selectedMedia = null;
     view = LibraryView.platform;
     selectedPlatform = platform;
     selectedGame = null;
+    selectedSubAlbumPath = null;
     notifyListeners();
   }
 
   void showSettings() {
-    selectedScreenshot = null;
+    selectedMedia = null;
     view = LibraryView.settings;
     notifyListeners();
   }
 
-  void showScreenshot(ScreenshotItem screenshot) {
-    selectedScreenshot = screenshot;
+  void showMedia(MediaItem media) {
+    selectedMedia = media;
     notifyListeners();
   }
 
-  void closeScreenshot() {
-    selectedScreenshot = null;
+  void closeMedia() {
+    selectedMedia = null;
     notifyListeners();
   }
 
-  Future<void> openScreenshotLocation(ScreenshotItem screenshot) async {
+  Future<void> openMediaLocation(MediaItem media) async {
     await _runScreenshotAction(
-      () => screenshotActions.openLocation(screenshot.path),
+      () => screenshotActions.openLocation(media.path),
       success: 'Opened in the file manager.',
       failure: 'Could not open the file manager',
     );
   }
 
-  Future<void> copyScreenshotImage(ScreenshotItem screenshot) async {
+  Future<void> copyMediaImage(MediaItem media) async {
     await _runScreenshotAction(
-      () => screenshotActions.copyImage(screenshot.path),
+      () => screenshotActions.copyImage(media.path),
       success: 'Image copied.',
       failure: 'Could not copy the image',
     );
   }
 
-  Future<void> copyScreenshotPath(ScreenshotItem screenshot) async {
+  Future<void> copyMediaPath(MediaItem media) async {
     await _runScreenshotAction(
-      () => screenshotActions.copyPath(screenshot.path),
+      () => screenshotActions.copyPath(media.path),
       success: 'Path copied.',
       failure: 'Could not copy the path',
     );
@@ -192,9 +230,9 @@ class LibraryController extends ChangeNotifier {
       if (results.isEmpty) {
         message = 'Enable a provider in Settings first.';
       } else if (imported == 0) {
-        message = 'No new screenshots. $skipped already in the library.';
+        message = 'No new media. $skipped already in the library.';
       } else {
-        message = 'Imported $imported screenshots. Skipped $skipped.';
+        message = 'Imported $imported media files. Skipped $skipped.';
       }
     });
   }

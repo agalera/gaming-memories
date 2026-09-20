@@ -10,38 +10,41 @@ import 'package:gaming_memories/services/library_scanner.dart';
 import 'package:gaming_memories/services/screenshot_action_service.dart';
 
 void main() {
-  test('selects a platform and shows its screenshots by date', () {
+  test('selects a platform and shows its media by date', () {
     final controller = LibraryController(
       configStore: const ConfigStore(filePath: 'unused'),
       scanner: const LibraryScanner(),
       providers: const [],
     );
-    final older = ScreenshotItem(
+    final older = MediaItem(
       path: '/pc-old.jpg',
       platform: 'PC',
       game: 'Diablo IV',
       capturedAt: DateTime(2026, 1, 1),
+      kind: MediaKind.image,
     );
-    final newer = ScreenshotItem(
+    final newer = MediaItem(
       path: '/pc-new.jpg',
       platform: 'PC',
       game: 'Minecraft',
       capturedAt: DateTime(2026, 2, 1),
+      kind: MediaKind.image,
     );
-    final console = ScreenshotItem(
+    final console = MediaItem(
       path: '/console.jpg',
       platform: 'PlayStation 5',
       game: 'Astro Bot',
       capturedAt: DateTime(2026, 3, 1),
+      kind: MediaKind.image,
     );
-    controller.library = ScreenshotLibrary(
+    controller.library = MediaLibrary(
       albums: [
-        GameAlbum(platform: 'PC', game: 'Diablo IV', screenshots: [older]),
-        GameAlbum(platform: 'PC', game: 'Minecraft', screenshots: [newer]),
+        GameAlbum(platform: 'PC', game: 'Diablo IV', media: [older]),
+        GameAlbum(platform: 'PC', game: 'Minecraft', media: [newer]),
         GameAlbum(
           platform: 'PlayStation 5',
           game: 'Astro Bot',
-          screenshots: [console],
+          media: [console],
         ),
       ],
     );
@@ -51,7 +54,7 @@ void main() {
     expect(controller.view, LibraryView.platform);
     expect(controller.pageTitle, 'PC');
     expect(controller.selectedGame, isNull);
-    expect(controller.visibleScreenshots, [newer, older]);
+    expect(controller.visibleMedia, [newer, older]);
   });
 
   test('reports provider progress during collection', () async {
@@ -77,34 +80,35 @@ void main() {
     expect(controller.progressValue, isNull);
   });
 
-  test('returns from a screenshot to the same library view', () {
+  test('returns from media details to the same library view', () {
     final controller = LibraryController(
       configStore: const ConfigStore(filePath: 'unused'),
       scanner: const LibraryScanner(),
       providers: const [],
     );
-    final screenshot = ScreenshotItem(
+    final media = MediaItem(
       path: '/pc.jpg',
       platform: 'PC',
       game: 'Diablo IV',
       capturedAt: DateTime(2026, 1, 1),
+      kind: MediaKind.image,
     );
 
     controller.showPlatform('PC');
-    controller.showScreenshot(screenshot);
+    controller.showMedia(media);
 
     expect(controller.view, LibraryView.platform);
     expect(controller.selectedPlatform, 'PC');
-    expect(controller.selectedScreenshot, same(screenshot));
+    expect(controller.selectedMedia, same(media));
 
-    controller.closeScreenshot();
+    controller.closeMedia();
 
     expect(controller.view, LibraryView.platform);
     expect(controller.selectedPlatform, 'PC');
-    expect(controller.selectedScreenshot, isNull);
+    expect(controller.selectedMedia, isNull);
   });
 
-  test('runs screenshot file actions and reports success', () async {
+  test('runs media file actions and reports success', () async {
     final actions = _FakeScreenshotActions();
     final controller = LibraryController(
       configStore: const ConfigStore(filePath: 'unused'),
@@ -112,22 +116,57 @@ void main() {
       providers: const [],
       screenshotActions: actions,
     );
-    final screenshot = ScreenshotItem(
+    final media = MediaItem(
       path: '/pc.jpg',
       platform: 'PC',
       game: 'Diablo IV',
       capturedAt: DateTime(2026, 1, 1),
+      kind: MediaKind.image,
     );
 
-    await controller.openScreenshotLocation(screenshot);
-    await controller.copyScreenshotImage(screenshot);
-    await controller.copyScreenshotPath(screenshot);
+    await controller.openMediaLocation(media);
+    await controller.copyMediaImage(media);
+    await controller.copyMediaPath(media);
 
     expect(actions.openedPaths, ['/pc.jpg']);
     expect(actions.copiedImages, ['/pc.jpg']);
     expect(actions.copiedPaths, ['/pc.jpg']);
     expect(controller.message, 'Path copied.');
     expect(controller.error, isNull);
+  });
+
+  test('selects a nested sub-album', () {
+    final controller = LibraryController(
+      configStore: const ConfigStore(filePath: 'unused'),
+      scanner: const LibraryScanner(),
+      providers: const [],
+    );
+    final video = MediaItem(
+      path: '/PS5/Game/Other/clip.webm',
+      platform: 'PlayStation 5',
+      game: 'Game',
+      subAlbumPath: 'Other',
+      capturedAt: DateTime(2026, 1, 1),
+      kind: MediaKind.video,
+    );
+    controller.library = MediaLibrary(
+      albums: [
+        GameAlbum(
+          platform: 'PlayStation 5',
+          game: 'Game',
+          media: const [],
+          subAlbums: [
+            SubAlbum(name: 'Other', relativePath: 'Other', media: [video]),
+          ],
+        ),
+      ],
+    );
+
+    controller.showSubAlbum('PlayStation 5', 'Game', 'Other');
+
+    expect(controller.view, LibraryView.subAlbum);
+    expect(controller.pageTitle, 'Other');
+    expect(controller.visibleMedia, [video]);
   });
 }
 

@@ -37,7 +37,7 @@ void main() {
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 200));
 
-    expect(find.text('Screenshot library'), findsOneWidget);
+    expect(find.text('Media library'), findsOneWidget);
     expect(find.text('Color mode'), findsOneWidget);
     expect(find.text('Diablo IV'), findsOneWidget);
     expect(
@@ -63,18 +63,19 @@ void main() {
       providers: const [],
     );
     await tester.runAsync(controller.initialize);
-    controller.library = ScreenshotLibrary(
+    controller.library = MediaLibrary(
       albums: [
         GameAlbum(
           platform: 'PC',
           game: 'Diablo IV',
-          screenshots: [
-            ScreenshotItem(
+          media: [
+            MediaItem(
               path: p.join(directory.path, 'missing.jpg'),
               thumbnailPath: p.join(directory.path, 'missing.jpg.thumb.jpg'),
               platform: 'PC',
               game: 'Diablo IV',
               capturedAt: DateTime(2026, 1, 1),
+              kind: MediaKind.image,
             ),
           ],
         ),
@@ -95,7 +96,7 @@ void main() {
 
     expect(controller.view, LibraryView.platform);
     expect(controller.pageTitle, 'PC');
-    expect(controller.visibleScreenshots, hasLength(1));
+    expect(controller.visibleMedia, hasLength(1));
     expect(find.text('Diablo IV  1'), findsOneWidget);
 
     await tester.tap(find.byKey(const ValueKey('platform-toggle-PC')));
@@ -111,6 +112,64 @@ void main() {
 
     expect(controller.view, LibraryView.album);
     expect(controller.pageTitle, 'Diablo IV');
+
+    await tester.pumpWidget(const SizedBox.shrink());
+    await tester.pump(const Duration(milliseconds: 200));
+  });
+
+  testWidgets('selects a sub-album and marks its video', (tester) async {
+    const path = '/library/PlayStation 5/Game/Other/clip.webm';
+    final video = MediaItem(
+      path: path,
+      thumbnailPath: '$path.thumb.jpg',
+      platform: 'PlayStation 5',
+      game: 'Game',
+      subAlbumPath: 'Other',
+      capturedAt: DateTime(2026, 1, 1),
+      kind: MediaKind.video,
+      duration: Duration(seconds: 30),
+    );
+    final controller = LibraryController(
+      configStore: const ConfigStore(filePath: 'unused'),
+      scanner: const LibraryScanner(),
+      providers: const [],
+    )..isInitializing = false;
+    controller.library = MediaLibrary(
+      albums: [
+        GameAlbum(
+          platform: 'PlayStation 5',
+          game: 'Game',
+          media: const [],
+          subAlbums: [
+            SubAlbum(name: 'Other', relativePath: 'Other', media: [video]),
+          ],
+        ),
+      ],
+    );
+
+    await tester.pumpWidget(GamingMemoriesApp(controller: controller));
+    await tester.pump();
+
+    expect(find.text('Game  1'), findsOneWidget);
+    expect(find.text('Other  1'), findsOneWidget);
+    expect(find.byKey(const ValueKey('video-indicator-$path')), findsOneWidget);
+    expect(find.text('00:30'), findsOneWidget);
+
+    await tester.tap(
+      find.byKey(const ValueKey('sub-album-PlayStation 5-Game-Other-label')),
+    );
+    await tester.pump(const Duration(milliseconds: 200));
+
+    expect(controller.view, LibraryView.subAlbum);
+    expect(controller.pageTitle, 'Other');
+    expect(controller.visibleMedia, [video]);
+
+    final card = find.byKey(const ValueKey('media-card-$path'));
+    await tester.tapAt(tester.getCenter(card), buttons: kSecondaryMouseButton);
+    await tester.pumpAndSettle();
+
+    expect(find.text('Copy image'), findsNothing);
+    expect(find.text('Copy path'), findsOneWidget);
 
     await tester.pumpWidget(const SizedBox.shrink());
     await tester.pump(const Duration(milliseconds: 200));
@@ -137,18 +196,19 @@ void main() {
     await tester.pumpWidget(const SizedBox.shrink());
   });
 
-  testWidgets('opens a screenshot and restores the gallery scroll offset', (
+  testWidgets('opens media and restores the gallery scroll offset', (
     tester,
   ) async {
     final actions = _MemoryScreenshotActions();
-    final screenshots = List.generate(
+    final media = List.generate(
       20,
-      (index) => ScreenshotItem(
+      (index) => MediaItem(
         path: '/library/PC/Game/screenshot-$index.jpg',
         thumbnailPath: '/library/PC/Game/screenshot-$index.jpg.thumb.jpg',
         platform: 'PC',
         game: 'Game',
         capturedAt: DateTime(2026, 1, 1).add(Duration(days: index)),
+        kind: MediaKind.image,
       ),
     );
     final controller = LibraryController(
@@ -157,17 +217,15 @@ void main() {
       providers: const [],
       screenshotActions: actions,
     )..isInitializing = false;
-    controller.library = ScreenshotLibrary(
-      albums: [
-        GameAlbum(platform: 'PC', game: 'Game', screenshots: screenshots),
-      ],
+    controller.library = MediaLibrary(
+      albums: [GameAlbum(platform: 'PC', game: 'Game', media: media)],
     );
 
     await tester.pumpWidget(GamingMemoriesApp(controller: controller));
     await tester.pump();
 
     final target = find.byKey(
-      const ValueKey('screenshot-card-/library/PC/Game/screenshot-12.jpg'),
+      const ValueKey('media-card-/library/PC/Game/screenshot-12.jpg'),
     );
     final galleryScroll = find.descendant(
       of: find.byType(GridView),
@@ -182,31 +240,28 @@ void main() {
     await tester.tap(target);
     await tester.pump(const Duration(milliseconds: 200));
 
-    expect(controller.selectedScreenshot, same(screenshots[12]));
-    expect(find.text('Screenshot details'), findsOneWidget);
+    expect(controller.selectedMedia, same(media[12]));
+    expect(find.text('Image details'), findsOneWidget);
     expect(find.text('screenshot-12.jpg'), findsOneWidget);
-    expect(
-      find.byKey(const ValueKey('screenshot-open-location')),
-      findsOneWidget,
-    );
-    expect(find.byKey(const ValueKey('screenshot-copy-image')), findsOneWidget);
-    expect(find.byKey(const ValueKey('screenshot-copy-path')), findsOneWidget);
+    expect(find.byKey(const ValueKey('media-open-location')), findsOneWidget);
+    expect(find.byKey(const ValueKey('media-copy-image')), findsOneWidget);
+    expect(find.byKey(const ValueKey('media-copy-path')), findsOneWidget);
     final detailImage = tester.widget<Image>(
-      find.byKey(const ValueKey('screenshot-detail-image')),
+      find.byKey(const ValueKey('media-detail-image')),
     );
-    expect((detailImage.image as FileImage).file.path, screenshots[12].path);
+    expect((detailImage.image as FileImage).file.path, media[12].path);
     expect(scrollState.mounted, isTrue);
     expect(scrollState.position.pixels, offset);
 
-    await tester.tap(find.byKey(const ValueKey('screenshot-copy-path')));
+    await tester.tap(find.byKey(const ValueKey('media-copy-path')));
     await tester.pump(const Duration(milliseconds: 200));
-    expect(actions.copiedPaths, [screenshots[12].path]);
+    expect(actions.copiedPaths, [media[12].path]);
 
-    await tester.tap(find.byKey(const ValueKey('screenshot-back-button')));
+    await tester.tap(find.byKey(const ValueKey('media-back-button')));
     await tester.pump(const Duration(milliseconds: 200));
 
-    expect(controller.selectedScreenshot, isNull);
-    expect(find.text('Screenshot details'), findsNothing);
+    expect(controller.selectedMedia, isNull);
+    expect(find.text('Image details'), findsNothing);
     expect(scrollState.mounted, isTrue);
     expect(scrollState.position.pixels, offset);
 
@@ -214,16 +269,17 @@ void main() {
     await tester.pump(const Duration(milliseconds: 200));
   });
 
-  testWidgets('shows screenshot actions in the gallery context menu', (
+  testWidgets('shows image actions in the gallery context menu', (
     tester,
   ) async {
     final actions = _MemoryScreenshotActions();
-    final screenshot = ScreenshotItem(
+    final media = MediaItem(
       path: '/library/PC/Game/screenshot.jpg',
       thumbnailPath: '/library/PC/Game/screenshot.jpg.thumb.jpg',
       platform: 'PC',
       game: 'Game',
       capturedAt: DateTime(2026, 1, 1),
+      kind: MediaKind.image,
     );
     final controller = LibraryController(
       configStore: const ConfigStore(filePath: 'unused'),
@@ -231,9 +287,9 @@ void main() {
       providers: const [],
       screenshotActions: actions,
     )..isInitializing = false;
-    controller.library = ScreenshotLibrary(
+    controller.library = MediaLibrary(
       albums: [
-        GameAlbum(platform: 'PC', game: 'Game', screenshots: [screenshot]),
+        GameAlbum(platform: 'PC', game: 'Game', media: [media]),
       ],
     );
 
@@ -241,7 +297,7 @@ void main() {
     await tester.pump();
 
     final card = find.byKey(
-      const ValueKey('screenshot-card-/library/PC/Game/screenshot.jpg'),
+      const ValueKey('media-card-/library/PC/Game/screenshot.jpg'),
     );
     await tester.tapAt(tester.getCenter(card), buttons: kSecondaryMouseButton);
     await tester.pumpAndSettle();
@@ -252,15 +308,13 @@ void main() {
 
     await tester.tap(
       find.byKey(
-        const ValueKey(
-          'screenshot-menu-copy-image-/library/PC/Game/screenshot.jpg',
-        ),
+        const ValueKey('media-menu-copy-image-/library/PC/Game/screenshot.jpg'),
       ),
     );
     await tester.pumpAndSettle();
 
-    expect(actions.copiedImages, [screenshot.path]);
-    expect(controller.selectedScreenshot, isNull);
+    expect(actions.copiedImages, [media.path]);
+    expect(controller.selectedMedia, isNull);
 
     await tester.pumpWidget(const SizedBox.shrink());
     await tester.pump(const Duration(milliseconds: 200));

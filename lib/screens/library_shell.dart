@@ -57,16 +57,16 @@ class _LibraryShellState extends State<LibraryShell> {
   }
 
   Widget _header(LibraryController controller) {
-    final screenshot = controller.selectedScreenshot;
-    if (screenshot != null) {
+    final media = controller.selectedMedia;
+    if (media != null) {
       return FHeader.nested(
-        title: Text(screenshot.game),
+        title: Text(media.game),
         titleAlignment: Alignment.centerLeft,
         prefixes: [
           FHeaderAction.back(
-            key: const ValueKey('screenshot-back-button'),
-            semanticsLabel: 'Back to screenshots',
-            onPress: controller.closeScreenshot,
+            key: const ValueKey('media-back-button'),
+            semanticsLabel: 'Back to media',
+            onPress: controller.closeMedia,
           ),
         ],
       );
@@ -81,7 +81,7 @@ class _LibraryShellState extends State<LibraryShell> {
           onPress: controller.isBusy ? null : controller.refresh,
         ),
         FHeaderAction(
-          semanticsLabel: 'Collect screenshots',
+          semanticsLabel: 'Collect media',
           icon: const Icon(FLucideIcons.hardDriveDownload),
           onPress: controller.isBusy ? null : controller.collect,
         ),
@@ -108,25 +108,26 @@ class _LibraryShellState extends State<LibraryShell> {
 
     final galleryKey = ValueKey(
       'gallery-${controller.view.name}-'
-      '${controller.selectedPlatform}-${controller.selectedGame}',
+      '${controller.selectedPlatform}-${controller.selectedGame}-'
+      '${controller.selectedSubAlbumPath}',
     );
-    final screenshot = controller.selectedScreenshot;
+    final media = controller.selectedMedia;
 
     return IndexedStack(
-      index: screenshot == null ? 0 : 1,
+      index: media == null ? 0 : 1,
       children: [
-        ScreenshotGallery(
+        MediaGallery(
           key: galleryKey,
-          screenshots: controller.visibleScreenshots,
+          media: controller.visibleMedia,
           description: controller.pageDescription,
           needsSetup: controller.settings.outputPath.trim().isEmpty,
           onSetup: controller.showSettings,
           controller: controller,
         ),
-        if (screenshot == null)
+        if (media == null)
           const SizedBox.shrink()
         else
-          ScreenshotDetailPage(screenshot: screenshot, controller: controller),
+          MediaDetailPage(media: media, controller: controller),
       ],
     );
   }

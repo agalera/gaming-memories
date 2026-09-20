@@ -132,7 +132,7 @@ class _SettingsPageState extends State<SettingsPage> {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        'Screenshot library',
+                        'Media library',
                         style: context.theme.typography.body.lg.copyWith(
                           fontWeight: FontWeight.w700,
                         ),
@@ -148,10 +148,10 @@ class _SettingsPageState extends State<SettingsPage> {
                       _DirectoryField(
                         controller: _outputController,
                         label: 'Library folder',
-                        hint: '/path/to/screenshots',
+                        hint: '/path/to/media',
                         onBrowse: () => _chooseDirectory(
                           controller: _outputController,
-                          title: 'Choose the screenshot library',
+                          title: 'Choose the media library',
                         ),
                       ),
                     ],

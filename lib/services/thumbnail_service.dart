@@ -11,7 +11,7 @@ class ThumbnailService {
 
   String pathFor(String sourcePath) => '$sourcePath.thumb.jpg';
 
-  Future<String?> ensureThumbnail(File source, FileStat sourceStat) async {
+  Future<String?> ensureImageThumbnail(File source, FileStat sourceStat) async {
     final thumbnailPath = pathFor(source.path);
     final thumbnail = File(thumbnailPath);
 
@@ -33,6 +33,55 @@ class ThumbnailService {
       return null;
     } on StateError {
       return null;
+    }
+  }
+
+  Future<String?> ensureVideoThumbnail(File source, FileStat sourceStat) async {
+    final thumbnailPath = pathFor(source.path);
+    final thumbnail = File(thumbnailPath);
+    final frame = File('$thumbnailPath.frame.jpg');
+
+    try {
+      if (await _isCurrent(thumbnail, sourceStat)) {
+        return thumbnailPath;
+      }
+
+      final result = await Process.run('ffmpeg', [
+        '-hide_banner',
+        '-loglevel',
+        'error',
+        '-y',
+        '-i',
+        source.path,
+        '-frames:v',
+        '1',
+        '-q:v',
+        '3',
+        frame.path,
+      ]);
+      if (result.exitCode != 0 || !await frame.exists()) {
+        return null;
+      }
+
+      await Isolate.run(
+        () =>
+            _generateThumbnail(frame.path, thumbnailPath, sourceStat.modified),
+      );
+      return thumbnailPath;
+    } on FileSystemException {
+      return null;
+    } on ProcessException {
+      return null;
+    } on FormatException {
+      return null;
+    } on image.ImageException {
+      return null;
+    } on StateError {
+      return null;
+    } finally {
+      if (await frame.exists()) {
+        await frame.delete();
+      }
     }
   }
 
