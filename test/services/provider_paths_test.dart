@@ -24,6 +24,7 @@ void main() {
 
     expect(resolver.steamUserdataCandidates(), isEmpty);
     expect(resolver.hytaleScreenshots(), isNull);
+    expect(resolver.minecraftScreenshots(), isEmpty);
   }, skip: !Platform.isMacOS);
 
   test('Hytale discovery uses the real macOS account home', () {
@@ -34,4 +35,63 @@ void main() {
       p.join('/Users/alice', 'Pictures', 'Hytale Screenshots'),
     );
   }, skip: !Platform.isMacOS);
+
+  test('Minecraft discovery includes launcher and Flatpak Linux folders', () {
+    expect(
+      ProviderPaths.minecraftScreenshots(
+        operatingSystem: 'linux',
+        userHomeDirectory: '/home/alice',
+      ),
+      [
+        p.join('/home/alice', '.minecraft', 'screenshots'),
+        p.join(
+          '/home/alice',
+          '.var',
+          'app',
+          'com.mojang.Minecraft',
+          '.minecraft',
+          'screenshots',
+        ),
+        p.join(
+          '/home/alice',
+          '.var',
+          'app',
+          'com.mojang.Minecraft',
+          'data',
+          'minecraft',
+          'screenshots',
+        ),
+      ],
+    );
+  });
+
+  test('Minecraft discovery uses the real macOS account home', () {
+    expect(
+      ProviderPaths.minecraftScreenshots(
+        operatingSystem: 'macos',
+        userHomeDirectory: '/Users/alice',
+      ),
+      [
+        p.join(
+          '/Users/alice',
+          'Library',
+          'Application Support',
+          'minecraft',
+          'screenshots',
+        ),
+      ],
+    );
+  });
+
+  test('Minecraft discovery uses the Windows roaming data folder', () {
+    const appData = r'C:\Users\alice\AppData\Roaming';
+
+    expect(
+      ProviderPaths.minecraftScreenshots(
+        operatingSystem: 'windows',
+        windowsAppDataDirectory: appData,
+      ),
+      [p.join(appData, '.minecraft', 'screenshots')],
+    );
+  });
 }

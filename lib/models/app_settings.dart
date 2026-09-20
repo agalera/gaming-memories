@@ -223,6 +223,7 @@ class AppSettings {
     required this.diabloIV,
     this.guildWars2 = const ProviderSettings.disabled(),
     this.hytale = const ProviderSettings.disabled(),
+    this.minecraft = const ProviderSettings.disabled(),
     this.steam = const SteamSettings.disabled(),
     this.themeMode = AppThemeMode.system,
     this.folderGrants = const {},
@@ -233,6 +234,7 @@ class AppSettings {
       diabloIV = const ProviderSettings.disabled(),
       guildWars2 = const ProviderSettings.disabled(),
       hytale = const ProviderSettings.disabled(),
+      minecraft = const ProviderSettings.disabled(),
       steam = const SteamSettings.disabled(),
       themeMode = AppThemeMode.system,
       folderGrants = const {};
@@ -241,6 +243,7 @@ class AppSettings {
   final ProviderSettings diabloIV;
   final ProviderSettings guildWars2;
   final ProviderSettings hytale;
+  final ProviderSettings minecraft;
   final SteamSettings steam;
   final AppThemeMode themeMode;
   final Map<String, FolderGrant> folderGrants;
@@ -250,6 +253,7 @@ class AppSettings {
     ProviderSettings? diabloIV,
     ProviderSettings? guildWars2,
     ProviderSettings? hytale,
+    ProviderSettings? minecraft,
     SteamSettings? steam,
     AppThemeMode? themeMode,
     Map<String, FolderGrant>? folderGrants,
@@ -259,6 +263,7 @@ class AppSettings {
       diabloIV: diabloIV ?? this.diabloIV,
       guildWars2: guildWars2 ?? this.guildWars2,
       hytale: hytale ?? this.hytale,
+      minecraft: minecraft ?? this.minecraft,
       steam: steam ?? this.steam,
       themeMode: themeMode ?? this.themeMode,
       folderGrants: folderGrants ?? this.folderGrants,
@@ -269,6 +274,7 @@ class AppSettings {
     final providerJson = json['diabloIV'];
     final guildWars2Json = json['guildWars2'];
     final hytaleJson = json['hytale'];
+    final minecraftJson = json['minecraft'];
     final steamJson = json['steam'];
     final grantsJson = json['folderGrants'];
     final grants = <String, FolderGrant>{};
@@ -294,6 +300,9 @@ class AppSettings {
       hytale: hytaleJson is Map<String, Object?>
           ? ProviderSettings.fromJson(hytaleJson)
           : const ProviderSettings.disabled(),
+      minecraft: minecraftJson is Map<String, Object?>
+          ? ProviderSettings.fromJson(minecraftJson)
+          : const ProviderSettings.disabled(),
       steam: steamJson is Map<String, Object?>
           ? SteamSettings.fromJson(steamJson)
           : const SteamSettings.disabled(),
@@ -303,12 +312,13 @@ class AppSettings {
   }
 
   Map<String, Object?> toJson() => {
-    'version': 7,
+    'version': 8,
     'outputPath': outputPath,
     'themeMode': themeMode.name,
     'diabloIV': diabloIV.toJson(),
     'guildWars2': guildWars2.toJson(),
     'hytale': hytale.toJson(),
+    'minecraft': minecraft.toJson(),
     'steam': steam.toJson(),
     'folderGrants': {
       for (final entry in folderGrants.entries) entry.key: entry.value.toJson(),

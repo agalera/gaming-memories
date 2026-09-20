@@ -32,6 +32,11 @@ void main() {
         sourcePath: '/Users/alice/Pictures/Hytale Screenshots',
         downloadCovers: true,
       ),
+      minecraft: ProviderSettings(
+        enabled: true,
+        useCustomPath: true,
+        sourcePath: '/minecraft/screenshots',
+      ),
       steam: SteamSettings(
         enabled: true,
         useCustomPath: true,
@@ -71,6 +76,9 @@ void main() {
       '/Users/alice/Pictures/Hytale Screenshots',
     );
     expect(actual.hytale.downloadCovers, isTrue);
+    expect(actual.minecraft.enabled, isTrue);
+    expect(actual.minecraft.useCustomPath, isTrue);
+    expect(actual.minecraft.sourcePath, '/minecraft/screenshots');
     expect(actual.steam.enabled, isTrue);
     expect(actual.steam.useCustomPath, isTrue);
     expect(actual.steam.userdataPath, '/steam');
@@ -83,7 +91,7 @@ void main() {
     expect(actual.folderGrants['library']?.path, '/screenshots');
     expect(actual.folderGrants['library']?.access, FolderGrantAccess.readWrite);
     final json = jsonDecode(await File(store.filePath).readAsString()) as Map;
-    expect(json['version'], 7);
+    expect(json['version'], 8);
     expect(File('${store.filePath}.tmp').existsSync(), isFalse);
   });
 
@@ -97,6 +105,7 @@ void main() {
   "diabloIV": {"enabled": true, "sourcePath": "auto"},
   "guildWars2": {"enabled": true, "sourcePath": "/legacy/gw2"},
   "hytale": {"enabled": true, "sourcePath": "auto", "downloadCovers": true},
+  "minecraft": {"enabled": true, "sourcePath": "/legacy/minecraft"},
   "steam": {"enabled": true, "userdataPath": "auto"}
 }
 ''');
@@ -110,6 +119,8 @@ void main() {
     expect(settings.hytale.useCustomPath, isFalse);
     expect(settings.hytale.sourcePath, isEmpty);
     expect(settings.hytale.downloadCovers, isTrue);
+    expect(settings.minecraft.useCustomPath, isTrue);
+    expect(settings.minecraft.sourcePath, '/legacy/minecraft');
     expect(settings.steam.useCustomPath, isFalse);
     expect(settings.steam.userdataPath, isEmpty);
   });

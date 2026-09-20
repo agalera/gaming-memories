@@ -23,6 +23,7 @@ class _SettingsPageState extends State<SettingsPage> {
   late final TextEditingController _diabloController;
   late final TextEditingController _guildWars2Controller;
   late final TextEditingController _hytaleController;
+  late final TextEditingController _minecraftController;
   late final TextEditingController _steamPathController;
   late final TextEditingController _steamUserController;
   late final TextEditingController _steamKeyController;
@@ -39,6 +40,8 @@ class _SettingsPageState extends State<SettingsPage> {
   late bool _hytaleEnabled;
   late bool _hytaleUseCustomPath;
   late bool _hytaleDownloadCovers;
+  late bool _minecraftEnabled;
+  late bool _minecraftUseCustomPath;
   late bool _steamEnabled;
   late bool _steamUseCustomPath;
   late bool _steamOnlineGallery;
@@ -47,6 +50,7 @@ class _SettingsPageState extends State<SettingsPage> {
   String? _diabloPathError;
   String? _guildWars2PathError;
   String? _hytalePathError;
+  String? _minecraftPathError;
   String? _steamPathError;
   Timer? _saveTimer;
   var _draftRevision = 0;
@@ -68,6 +72,8 @@ class _SettingsPageState extends State<SettingsPage> {
     );
     final hytale = widget.controller.settings.hytale;
     _hytaleController = TextEditingController(text: hytale.sourcePath);
+    final minecraft = widget.controller.settings.minecraft;
+    _minecraftController = TextEditingController(text: minecraft.sourcePath);
     final steam = widget.controller.settings.steam;
     _steamPathController = TextEditingController(text: steam.userdataPath);
     _steamUserController = TextEditingController(text: steam.userId);
@@ -87,6 +93,8 @@ class _SettingsPageState extends State<SettingsPage> {
     _hytaleEnabled = hytale.enabled;
     _hytaleUseCustomPath = hytale.useCustomPath;
     _hytaleDownloadCovers = hytale.downloadCovers;
+    _minecraftEnabled = minecraft.enabled;
+    _minecraftUseCustomPath = minecraft.useCustomPath;
     _steamEnabled = steam.enabled;
     _steamUseCustomPath = steam.useCustomPath;
     _steamOnlineGallery = steam.onlineGallery;
@@ -98,6 +106,7 @@ class _SettingsPageState extends State<SettingsPage> {
       _diabloController,
       _guildWars2Controller,
       _hytaleController,
+      _minecraftController,
       _steamPathController,
       _steamUserController,
       _steamKeyController,
@@ -130,6 +139,7 @@ class _SettingsPageState extends State<SettingsPage> {
     _diabloController.dispose();
     _guildWars2Controller.dispose();
     _hytaleController.dispose();
+    _minecraftController.dispose();
     _steamPathController.dispose();
     _steamUserController.dispose();
     _steamKeyController.dispose();
@@ -447,6 +457,115 @@ class _SettingsPageState extends State<SettingsPage> {
                           _scheduleAutosave();
                         },
                       ),
+                    ],
+                  ),
+                ),
+              ),
+              const SizedBox(height: 16),
+              FCard(
+                child: Padding(
+                  padding: const EdgeInsets.all(20),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          Container(
+                            width: 44,
+                            height: 44,
+                            decoration: BoxDecoration(
+                              color: context.theme.colors.muted,
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            child: const Icon(FLucideIcons.gamepad2),
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  'Minecraft',
+                                  style: context.theme.typography.body.lg
+                                      .copyWith(fontWeight: FontWeight.w700),
+                                ),
+                                const SizedBox(height: 2),
+                                Text(
+                                  'PC · Launcher and Flatpak screenshots',
+                                  style: context.theme.typography.body.sm
+                                      .copyWith(
+                                        color: context
+                                            .theme
+                                            .colors
+                                            .mutedForeground,
+                                      ),
+                                ),
+                              ],
+                            ),
+                          ),
+                          FSwitch(
+                            key: const ValueKey('minecraft-enabled'),
+                            value: _minecraftEnabled,
+                            semanticsLabel: 'Enable Minecraft',
+                            onChange: (value) => unawaited(
+                              _setProviderEnabled(
+                                _SettingsProvider.minecraft,
+                                value,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 18),
+                      FCheckbox(
+                        key: const ValueKey('minecraft-custom-path'),
+                        label: const Text('Use custom folder'),
+                        description: const Text(
+                          'Otherwise, launcher and Flatpak folders are discovered automatically.',
+                        ),
+                        value: _minecraftUseCustomPath,
+                        enabled: _minecraftEnabled,
+                        onChange: (value) => unawaited(
+                          _setCustomPath(_SettingsProvider.minecraft, value),
+                        ),
+                      ),
+                      if (_minecraftUseCustomPath) ...[
+                        const SizedBox(height: 16),
+                        _DirectoryField(
+                          fieldKey: const ValueKey('minecraft-path-field'),
+                          controller: _minecraftController,
+                          label: 'Screenshot folder',
+                          hint: '/path/to/.minecraft/screenshots',
+                          error: _minecraftPathError,
+                          enabled: _minecraftEnabled,
+                          readOnly:
+                              widget.controller.usesPersistentFolderAccess,
+                          buttonLabel: _folderButtonLabel(
+                            FolderGrantIds.minecraft,
+                          ),
+                          onBrowse: () => _chooseDirectory(
+                            SettingsFolderTarget.minecraftCustom,
+                            initialPath: _minecraftController.text,
+                          ),
+                        ),
+                      ] else if (_minecraftEnabled &&
+                          widget.controller.usesPersistentFolderAccess) ...[
+                        const SizedBox(height: 16),
+                        _FolderAccessRow(
+                          buttonKey: const ValueKey(
+                            'minecraft-automatic-folder-access',
+                          ),
+                          providerName: 'Minecraft',
+                          automaticDescription: 'Minecraft screenshots are stored in the launcher screenshots folder. The macOS dialog will open it; click Allow Access to grant access.',
+                          status: widget.controller.folderAuthorization(
+                            FolderGrantIds.minecraft,
+                          ),
+                          error: _minecraftPathError,
+                          onAllow: () => _chooseAutomaticDirectory(
+                            SettingsFolderTarget.minecraftAutomatic,
+                          ),
+                        ),
+                      ],
                     ],
                   ),
                 ),
@@ -875,6 +994,7 @@ class _SettingsPageState extends State<SettingsPage> {
     _diabloController.text = saved.diabloIV.sourcePath;
     _guildWars2Controller.text = saved.guildWars2.sourcePath;
     _hytaleController.text = saved.hytale.sourcePath;
+    _minecraftController.text = saved.minecraft.sourcePath;
     _steamPathController.text = saved.steam.userdataPath;
     _suppressAutosave = false;
     setState(() {
@@ -884,6 +1004,8 @@ class _SettingsPageState extends State<SettingsPage> {
       _guildWars2UseCustomPath = saved.guildWars2.useCustomPath;
       _hytaleEnabled = saved.hytale.enabled;
       _hytaleUseCustomPath = saved.hytale.useCustomPath;
+      _minecraftEnabled = saved.minecraft.enabled;
+      _minecraftUseCustomPath = saved.minecraft.useCustomPath;
       _steamEnabled = saved.steam.enabled;
       _steamUseCustomPath = saved.steam.useCustomPath;
       _setFolderError(target, null);
@@ -1000,6 +1122,10 @@ class _SettingsPageState extends State<SettingsPage> {
         SettingsFolderTarget.guildWars2Custom,
       (_SettingsProvider.hytale, true) => SettingsFolderTarget.hytaleCustom,
       (_SettingsProvider.hytale, false) => SettingsFolderTarget.hytaleAutomatic,
+      (_SettingsProvider.minecraft, true) =>
+        SettingsFolderTarget.minecraftCustom,
+      (_SettingsProvider.minecraft, false) =>
+        SettingsFolderTarget.minecraftAutomatic,
       (_SettingsProvider.steam, true) => SettingsFolderTarget.steamCustom,
       (_SettingsProvider.steam, false) => SettingsFolderTarget.steamAutomatic,
       _ => null,
@@ -1035,10 +1161,13 @@ class _SettingsPageState extends State<SettingsPage> {
             _SettingsProvider.guildWars2 =>
               SettingsFolderTarget.guildWars2Custom,
             _SettingsProvider.hytale => SettingsFolderTarget.hytaleCustom,
+            _SettingsProvider.minecraft => SettingsFolderTarget.minecraftCustom,
             _SettingsProvider.steam => SettingsFolderTarget.steamCustom,
           }
         : switch (provider) {
             _SettingsProvider.hytale => SettingsFolderTarget.hytaleAutomatic,
+            _SettingsProvider.minecraft =>
+              SettingsFolderTarget.minecraftAutomatic,
             _SettingsProvider.steam => SettingsFolderTarget.steamAutomatic,
             _ => null,
           };
@@ -1071,6 +1200,7 @@ class _SettingsPageState extends State<SettingsPage> {
     _SettingsProvider.diabloIV => _diabloUseCustomPath,
     _SettingsProvider.guildWars2 => _guildWars2UseCustomPath,
     _SettingsProvider.hytale => _hytaleUseCustomPath,
+    _SettingsProvider.minecraft => _minecraftUseCustomPath,
     _SettingsProvider.steam => _steamUseCustomPath,
   };
 
@@ -1078,6 +1208,7 @@ class _SettingsPageState extends State<SettingsPage> {
     _SettingsProvider.diabloIV => _diabloController.text,
     _SettingsProvider.guildWars2 => _guildWars2Controller.text,
     _SettingsProvider.hytale => _hytaleController.text,
+    _SettingsProvider.minecraft => _minecraftController.text,
     _SettingsProvider.steam => _steamPathController.text,
   };
 
@@ -1086,6 +1217,7 @@ class _SettingsPageState extends State<SettingsPage> {
       _SettingsProvider.diabloIV => FolderGrantIds.diabloIV,
       _SettingsProvider.guildWars2 => FolderGrantIds.guildWars2,
       _SettingsProvider.hytale => FolderGrantIds.hytale,
+      _SettingsProvider.minecraft => FolderGrantIds.minecraft,
       _SettingsProvider.steam => FolderGrantIds.steam,
     };
     return widget.controller.folderAuthorization(id).isReady;
@@ -1101,6 +1233,9 @@ class _SettingsPageState extends State<SettingsPage> {
         break;
       case _SettingsProvider.hytale:
         _hytaleEnabled = value;
+        break;
+      case _SettingsProvider.minecraft:
+        _minecraftEnabled = value;
         break;
       case _SettingsProvider.steam:
         _steamEnabled = value;
@@ -1119,6 +1254,9 @@ class _SettingsPageState extends State<SettingsPage> {
       case _SettingsProvider.hytale:
         _hytaleUseCustomPath = value;
         break;
+      case _SettingsProvider.minecraft:
+        _minecraftUseCustomPath = value;
+        break;
       case _SettingsProvider.steam:
         _steamUseCustomPath = value;
         break;
@@ -1135,6 +1273,9 @@ class _SettingsPageState extends State<SettingsPage> {
         break;
       case _SettingsProvider.hytale:
         _hytalePathError = value;
+        break;
+      case _SettingsProvider.minecraft:
+        _minecraftPathError = value;
         break;
       case _SettingsProvider.steam:
         _steamPathError = value;
@@ -1157,6 +1298,10 @@ class _SettingsPageState extends State<SettingsPage> {
       case SettingsFolderTarget.hytaleAutomatic:
         _hytalePathError = value;
         break;
+      case SettingsFolderTarget.minecraftCustom:
+      case SettingsFolderTarget.minecraftAutomatic:
+        _minecraftPathError = value;
+        break;
       case SettingsFolderTarget.steamCustom:
       case SettingsFolderTarget.steamAutomatic:
         _steamPathError = value;
@@ -1173,12 +1318,14 @@ class _SettingsPageState extends State<SettingsPage> {
 
   bool _isAutomaticTarget(SettingsFolderTarget target) {
     return target == SettingsFolderTarget.hytaleAutomatic ||
+        target == SettingsFolderTarget.minecraftAutomatic ||
         target == SettingsFolderTarget.steamAutomatic;
   }
 
   String _automaticProviderName(SettingsFolderTarget target) {
     return switch (target) {
       SettingsFolderTarget.hytaleAutomatic => 'Hytale',
+      SettingsFolderTarget.minecraftAutomatic => 'Minecraft',
       SettingsFolderTarget.steamAutomatic => 'Steam',
       _ => 'automatic',
     };
@@ -1283,6 +1430,11 @@ class _SettingsPageState extends State<SettingsPage> {
         sourcePath: _hytaleController.text.trim(),
         downloadCovers: _hytaleDownloadCovers,
       ),
+      minecraft: ProviderSettings(
+        enabled: _minecraftEnabled,
+        useCustomPath: _minecraftUseCustomPath,
+        sourcePath: _minecraftController.text.trim(),
+      ),
       steam: SteamSettings(
         enabled: _steamEnabled,
         useCustomPath: _steamUseCustomPath,
@@ -1342,6 +1494,9 @@ class _SettingsPageState extends State<SettingsPage> {
               enabled: draft.hytale.enabled,
               downloadCovers: draft.hytale.downloadCovers,
             ),
+      minecraft: errors.minecraft == null
+          ? draft.minecraft
+          : saved.minecraft.copyWith(enabled: draft.minecraft.enabled),
       steam: SteamSettings(
         enabled: draft.steam.enabled,
         useCustomPath: errors.steam == null
@@ -1403,6 +1558,22 @@ class _SettingsPageState extends State<SettingsPage> {
               ),
             )
           : Future.value(),
+      draft.minecraft.useCustomPath
+          ? _directoryError(
+              draft.minecraft.sourcePath,
+              label: 'Minecraft screenshot folder',
+              grantId: FolderGrantIds.minecraft,
+            )
+          : draft.minecraft.enabled &&
+                widget.controller.usesPersistentFolderAccess
+          ? Future.value(
+              _folderAuthorizationError(
+                FolderGrantIds.minecraft,
+                label: 'Minecraft screenshot folder',
+                needsAuthorizationMessage: 'Minecraft screenshots are stored in the launcher screenshots folder. Click Allow Access to grant access to that folder.',
+              ),
+            )
+          : Future.value(),
       draft.steam.useCustomPath
           ? _directoryError(
               draft.steam.userdataPath,
@@ -1425,7 +1596,8 @@ class _SettingsPageState extends State<SettingsPage> {
       diabloIV: results[1],
       guildWars2: results[2],
       hytale: results[3],
-      steam: results[4],
+      minecraft: results[4],
+      steam: results[5],
     );
   }
 
@@ -1475,6 +1647,7 @@ class _SettingsPageState extends State<SettingsPage> {
       _diabloPathError = errors.diabloIV;
       _guildWars2PathError = errors.guildWars2;
       _hytalePathError = errors.hytale;
+      _minecraftPathError = errors.minecraft;
       _steamPathError = errors.steam;
     });
   }
@@ -1532,6 +1705,7 @@ class _PathErrors {
     required this.diabloIV,
     required this.guildWars2,
     required this.hytale,
+    required this.minecraft,
     required this.steam,
   });
 
@@ -1539,10 +1713,11 @@ class _PathErrors {
   final String? diabloIV;
   final String? guildWars2;
   final String? hytale;
+  final String? minecraft;
   final String? steam;
 }
 
-enum _SettingsProvider { diabloIV, guildWars2, hytale, steam }
+enum _SettingsProvider { diabloIV, guildWars2, hytale, minecraft, steam }
 
 class _CustomGame {
   const _CustomGame(this.appId, this.name);

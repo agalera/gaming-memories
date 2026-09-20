@@ -34,6 +34,13 @@ class ProviderPathResolver {
       allowEnvironmentHome: allowEnvironmentHome,
     );
   }
+
+  List<String> minecraftScreenshots() {
+    return ProviderPaths.minecraftScreenshots(
+      userHomeDirectory: userHomeDirectory,
+      allowEnvironmentHome: allowEnvironmentHome,
+    );
+  }
 }
 
 const _folderAccessChannel = MethodChannel('gaming-memories/folder-access');
@@ -88,6 +95,63 @@ abstract final class ProviderPaths {
     final home =
         userHomeDirectory ?? (allowEnvironmentHome ? homeDirectory() : null);
     return home == null ? null : p.join(home, 'Pictures', 'Hytale Screenshots');
+  }
+
+  static List<String> minecraftScreenshots({
+    String? userHomeDirectory,
+    bool allowEnvironmentHome = true,
+    String? operatingSystem,
+    String? windowsAppDataDirectory,
+  }) {
+    final platform = operatingSystem ?? Platform.operatingSystem;
+    if (platform == 'windows') {
+      final appData =
+          windowsAppDataDirectory ??
+          (allowEnvironmentHome ? Platform.environment['APPDATA'] : null);
+      return appData == null
+          ? const []
+          : [p.join(appData, '.minecraft', 'screenshots')];
+    }
+
+    final home =
+        userHomeDirectory ?? (allowEnvironmentHome ? homeDirectory() : null);
+    if (home == null) {
+      return const [];
+    }
+    if (platform == 'macos') {
+      return [
+        p.join(
+          home,
+          'Library',
+          'Application Support',
+          'minecraft',
+          'screenshots',
+        ),
+      ];
+    }
+    if (platform == 'linux') {
+      return [
+        p.join(home, '.minecraft', 'screenshots'),
+        p.join(
+          home,
+          '.var',
+          'app',
+          'com.mojang.Minecraft',
+          '.minecraft',
+          'screenshots',
+        ),
+        p.join(
+          home,
+          '.var',
+          'app',
+          'com.mojang.Minecraft',
+          'data',
+          'minecraft',
+          'screenshots',
+        ),
+      ];
+    }
+    return const [];
   }
 
   static String? steamUserdata({

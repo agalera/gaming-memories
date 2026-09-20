@@ -779,6 +779,54 @@ void main() {
     await tester.pump(const Duration(milliseconds: 200));
   });
 
+  testWidgets('shows and autosaves Minecraft provider settings', (
+    tester,
+  ) async {
+    final directory = Directory.systemTemp.createTempSync('gaming-memories-');
+    final source = Directory(p.join(directory.path, 'minecraft-screenshots'))
+      ..createSync();
+    addTearDown(() => directory.deleteSync(recursive: true));
+    final store = _MemoryConfigStore();
+    final controller =
+        LibraryController(
+            configStore: store,
+            scanner: const LibraryScanner(),
+            providers: const [],
+          )
+          ..isInitializing = false
+          ..view = LibraryView.settings
+          ..settings = AppSettings(
+            outputPath: '',
+            diabloIV: const ProviderSettings.disabled(),
+            minecraft: ProviderSettings(
+              enabled: true,
+              useCustomPath: true,
+              sourcePath: source.path,
+            ),
+          );
+
+    await tester.pumpWidget(GamingMemoriesApp(controller: controller));
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const ValueKey('minecraft-path-field')), findsOneWidget);
+    expect(find.text('PC · Launcher and Flatpak screenshots'), findsOneWidget);
+    final enabled = find.byKey(const ValueKey('minecraft-enabled'));
+    await tester.ensureVisible(enabled);
+    tester.widget<FSwitch>(enabled).onChange!(false);
+    await tester.pump(const Duration(milliseconds: 400));
+    expect(tester.widget<FSwitch>(enabled).value, isFalse);
+    await tester.runAsync(
+      () => Future<void>.delayed(const Duration(milliseconds: 200)),
+    );
+    await tester.pumpAndSettle();
+
+    expect(controller.settings.minecraft.enabled, isFalse);
+    expect(store.saved?.minecraft.enabled, isFalse);
+
+    await tester.pumpWidget(const SizedBox.shrink());
+    await tester.pump(const Duration(milliseconds: 200));
+  });
+
   testWidgets('shows missing macOS access immediately in settings', (
     tester,
   ) async {

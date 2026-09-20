@@ -30,6 +30,8 @@ enum SettingsFolderTarget {
   guildWars2Custom,
   hytaleCustom,
   hytaleAutomatic,
+  minecraftCustom,
+  minecraftAutomatic,
   steamCustom,
   steamAutomatic,
 }
@@ -155,6 +157,8 @@ class LibraryController extends ChangeNotifier {
       SettingsFolderTarget.hytaleAutomatic => [
         ?providerPaths.hytaleScreenshots(),
       ],
+      SettingsFolderTarget.minecraftAutomatic =>
+        providerPaths.minecraftScreenshots(),
       _ => const <String>[],
     };
     return paths
@@ -614,6 +618,49 @@ class LibraryController extends ChangeNotifier {
           pathMismatchMessage: 'Choose the “Hytale Screenshots” folder shown by Gaming Memories.',
           selectedPath: (_) => candidate,
         );
+      case SettingsFolderTarget.minecraftCustom:
+        return _FolderSpecification(
+          request: FolderAccessRequest(
+            id: FolderGrantIds.minecraft,
+            title: 'Choose the Minecraft screenshot folder',
+            access: FolderGrantAccess.readOnly,
+            initialPath:
+                _nonEmpty(initialPath) ??
+                _nonEmpty(settings.minecraft.sourcePath),
+          ),
+          selectedPath: (settings) => settings.minecraft.sourcePath,
+        );
+      case SettingsFolderTarget.minecraftAutomatic:
+        final candidates = automaticFolderCandidates(target);
+        if (candidates.isEmpty) {
+          return null;
+        }
+        final requested = _nonEmpty(initialPath);
+        final selected = requested == null
+            ? candidates.length == 1
+                  ? candidates.single
+                  : null
+            : candidates
+                  .where((candidate) => _samePath(candidate.path, requested))
+                  .firstOrNull;
+        if (selected == null) {
+          return null;
+        }
+        final candidate = selected.path;
+        return _FolderSpecification(
+          request: FolderAccessRequest(
+            id: FolderGrantIds.minecraft,
+            title: 'Allow access to Minecraft screenshots',
+            access: FolderGrantAccess.readOnly,
+            initialPath: candidate,
+            suggestedPath: candidate,
+            message:
+                'Click Allow Access to grant Gaming Memories access to the “${selected.name}” Minecraft folder.',
+          ),
+          expectedPath: candidate,
+          pathMismatchMessage: 'Choose the Minecraft screenshots folder shown by Gaming Memories.',
+          selectedPath: (_) => candidate,
+        );
       case SettingsFolderTarget.steamCustom:
         return _FolderSpecification(
           request: FolderAccessRequest(
@@ -686,6 +733,20 @@ class LibraryController extends ChangeNotifier {
       ),
       SettingsFolderTarget.hytaleAutomatic => settings.copyWith(
         hytale: settings.hytale.copyWith(
+          enabled: true,
+          useCustomPath: false,
+          sourcePath: path,
+        ),
+      ),
+      SettingsFolderTarget.minecraftCustom => settings.copyWith(
+        minecraft: settings.minecraft.copyWith(
+          enabled: true,
+          useCustomPath: true,
+          sourcePath: path,
+        ),
+      ),
+      SettingsFolderTarget.minecraftAutomatic => settings.copyWith(
+        minecraft: settings.minecraft.copyWith(
           enabled: true,
           useCustomPath: false,
           sourcePath: path,

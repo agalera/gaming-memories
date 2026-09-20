@@ -512,6 +512,56 @@ void main() {
       expect((await store.load()).hytale.sourcePath, hytale.path);
     },
   );
+
+  test(
+    'saves automatic Minecraft folder access without making it custom',
+    () async {
+      final directory = await Directory.systemTemp.createTemp(
+        'gaming-memories-',
+      );
+      final minecraft = Directory(p.join(directory.path, 'screenshots'))
+        ..createSync();
+      addTearDown(() => directory.delete(recursive: true));
+      final access = _FakeFolderAccess(
+        chosen: FolderAccessLease(
+          grant: FolderGrant(
+            platform: 'macos',
+            path: minecraft.path,
+            access: FolderGrantAccess.readOnly,
+            bookmark: 'minecraft-bookmark',
+          ),
+          token: 'minecraft-lease',
+        ),
+      );
+      final store = ConfigStore(
+        filePath: p.join(directory.path, 'settings.json'),
+      );
+      final controller = LibraryController(
+        configStore: store,
+        scanner: const LibraryScanner(),
+        providers: const [],
+        folderAccess: access,
+        providerPaths: _TestProviderPathResolver(
+          const [],
+          minecraftPaths: [minecraft.path],
+        ),
+      );
+
+      final result = await controller.chooseFolder(
+        SettingsFolderTarget.minecraftAutomatic,
+      );
+
+      expect(result.saved, isTrue);
+      expect(controller.settings.minecraft.enabled, isTrue);
+      expect(controller.settings.minecraft.useCustomPath, isFalse);
+      expect(controller.settings.minecraft.sourcePath, minecraft.path);
+      expect(
+        controller.settings.folderGrants[FolderGrantIds.minecraft]?.bookmark,
+        'minecraft-bookmark',
+      );
+      expect((await store.load()).minecraft.sourcePath, minecraft.path);
+    },
+  );
 }
 
 class _FakeScreenshotActions implements ScreenshotActionService {
@@ -603,13 +653,21 @@ class _FakeFolderAccess implements FolderAccessService {
 }
 
 class _TestProviderPathResolver extends ProviderPathResolver {
-  const _TestProviderPathResolver(this.paths, {this.hytalePath});
+  const _TestProviderPathResolver(
+    this.paths, {
+    this.hytalePath,
+    this.minecraftPaths = const [],
+  });
 
   final List<String> paths;
   final String? hytalePath;
+  final List<String> minecraftPaths;
 
   @override
   String? hytaleScreenshots() => hytalePath;
+
+  @override
+  List<String> minecraftScreenshots() => minecraftPaths;
 
   @override
   List<String> steamUserdataCandidates() => paths;
