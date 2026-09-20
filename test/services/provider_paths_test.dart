@@ -23,5 +23,15 @@ void main() {
     const resolver = ProviderPathResolver(allowEnvironmentHome: false);
 
     expect(resolver.steamUserdataCandidates(), isEmpty);
+    expect(resolver.hytaleScreenshots(), isNull);
+  }, skip: !Platform.isMacOS);
+
+  test('Hytale discovery uses the real macOS account home', () {
+    const resolver = ProviderPathResolver(userHomeDirectory: '/Users/alice');
+
+    expect(
+      resolver.hytaleScreenshots(),
+      p.join('/Users/alice', 'Pictures', 'Hytale Screenshots'),
+    );
   }, skip: !Platform.isMacOS);
 }

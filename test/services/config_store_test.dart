@@ -26,6 +26,12 @@ void main() {
         useCustomPath: true,
         sourcePath: '/guild-wars-2',
       ),
+      hytale: ProviderSettings(
+        enabled: true,
+        useCustomPath: false,
+        sourcePath: '/Users/alice/Pictures/Hytale Screenshots',
+        downloadCovers: true,
+      ),
       steam: SteamSettings(
         enabled: true,
         useCustomPath: true,
@@ -58,6 +64,13 @@ void main() {
     expect(actual.guildWars2.enabled, isTrue);
     expect(actual.guildWars2.useCustomPath, isTrue);
     expect(actual.guildWars2.sourcePath, '/guild-wars-2');
+    expect(actual.hytale.enabled, isTrue);
+    expect(actual.hytale.useCustomPath, isFalse);
+    expect(
+      actual.hytale.sourcePath,
+      '/Users/alice/Pictures/Hytale Screenshots',
+    );
+    expect(actual.hytale.downloadCovers, isTrue);
     expect(actual.steam.enabled, isTrue);
     expect(actual.steam.useCustomPath, isTrue);
     expect(actual.steam.userdataPath, '/steam');
@@ -70,7 +83,7 @@ void main() {
     expect(actual.folderGrants['library']?.path, '/screenshots');
     expect(actual.folderGrants['library']?.access, FolderGrantAccess.readWrite);
     final json = jsonDecode(await File(store.filePath).readAsString()) as Map;
-    expect(json['version'], 6);
+    expect(json['version'], 7);
     expect(File('${store.filePath}.tmp').existsSync(), isFalse);
   });
 
@@ -83,6 +96,7 @@ void main() {
   "outputPath": "",
   "diabloIV": {"enabled": true, "sourcePath": "auto"},
   "guildWars2": {"enabled": true, "sourcePath": "/legacy/gw2"},
+  "hytale": {"enabled": true, "sourcePath": "auto", "downloadCovers": true},
   "steam": {"enabled": true, "userdataPath": "auto"}
 }
 ''');
@@ -93,6 +107,9 @@ void main() {
     expect(settings.diabloIV.sourcePath, isEmpty);
     expect(settings.guildWars2.useCustomPath, isTrue);
     expect(settings.guildWars2.sourcePath, '/legacy/gw2');
+    expect(settings.hytale.useCustomPath, isFalse);
+    expect(settings.hytale.sourcePath, isEmpty);
+    expect(settings.hytale.downloadCovers, isTrue);
     expect(settings.steam.useCustomPath, isFalse);
     expect(settings.steam.userdataPath, isEmpty);
   });

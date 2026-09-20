@@ -71,26 +71,31 @@ class ProviderSettings {
     required this.enabled,
     required this.useCustomPath,
     required this.sourcePath,
+    this.downloadCovers = false,
   });
 
   const ProviderSettings.disabled()
     : enabled = false,
       useCustomPath = false,
-      sourcePath = '';
+      sourcePath = '',
+      downloadCovers = false;
 
   final bool enabled;
   final bool useCustomPath;
   final String sourcePath;
+  final bool downloadCovers;
 
   ProviderSettings copyWith({
     bool? enabled,
     bool? useCustomPath,
     String? sourcePath,
+    bool? downloadCovers,
   }) {
     return ProviderSettings(
       enabled: enabled ?? this.enabled,
       useCustomPath: useCustomPath ?? this.useCustomPath,
       sourcePath: sourcePath ?? this.sourcePath,
+      downloadCovers: downloadCovers ?? this.downloadCovers,
     );
   }
 
@@ -103,6 +108,7 @@ class ProviderSettings {
       enabled: json['enabled'] as bool? ?? false,
       useCustomPath: json['useCustomPath'] as bool? ?? hasLegacyCustomPath,
       sourcePath: hasLegacyCustomPath ? storedPath : '',
+      downloadCovers: json['downloadCovers'] as bool? ?? false,
     );
   }
 
@@ -110,6 +116,7 @@ class ProviderSettings {
     'enabled': enabled,
     'useCustomPath': useCustomPath,
     'sourcePath': sourcePath,
+    'downloadCovers': downloadCovers,
   };
 }
 
@@ -215,6 +222,7 @@ class AppSettings {
     required this.outputPath,
     required this.diabloIV,
     this.guildWars2 = const ProviderSettings.disabled(),
+    this.hytale = const ProviderSettings.disabled(),
     this.steam = const SteamSettings.disabled(),
     this.themeMode = AppThemeMode.system,
     this.folderGrants = const {},
@@ -224,6 +232,7 @@ class AppSettings {
     : outputPath = '',
       diabloIV = const ProviderSettings.disabled(),
       guildWars2 = const ProviderSettings.disabled(),
+      hytale = const ProviderSettings.disabled(),
       steam = const SteamSettings.disabled(),
       themeMode = AppThemeMode.system,
       folderGrants = const {};
@@ -231,6 +240,7 @@ class AppSettings {
   final String outputPath;
   final ProviderSettings diabloIV;
   final ProviderSettings guildWars2;
+  final ProviderSettings hytale;
   final SteamSettings steam;
   final AppThemeMode themeMode;
   final Map<String, FolderGrant> folderGrants;
@@ -239,6 +249,7 @@ class AppSettings {
     String? outputPath,
     ProviderSettings? diabloIV,
     ProviderSettings? guildWars2,
+    ProviderSettings? hytale,
     SteamSettings? steam,
     AppThemeMode? themeMode,
     Map<String, FolderGrant>? folderGrants,
@@ -247,6 +258,7 @@ class AppSettings {
       outputPath: outputPath ?? this.outputPath,
       diabloIV: diabloIV ?? this.diabloIV,
       guildWars2: guildWars2 ?? this.guildWars2,
+      hytale: hytale ?? this.hytale,
       steam: steam ?? this.steam,
       themeMode: themeMode ?? this.themeMode,
       folderGrants: folderGrants ?? this.folderGrants,
@@ -256,6 +268,7 @@ class AppSettings {
   factory AppSettings.fromJson(Map<String, Object?> json) {
     final providerJson = json['diabloIV'];
     final guildWars2Json = json['guildWars2'];
+    final hytaleJson = json['hytale'];
     final steamJson = json['steam'];
     final grantsJson = json['folderGrants'];
     final grants = <String, FolderGrant>{};
@@ -278,6 +291,9 @@ class AppSettings {
       guildWars2: guildWars2Json is Map<String, Object?>
           ? ProviderSettings.fromJson(guildWars2Json)
           : const ProviderSettings.disabled(),
+      hytale: hytaleJson is Map<String, Object?>
+          ? ProviderSettings.fromJson(hytaleJson)
+          : const ProviderSettings.disabled(),
       steam: steamJson is Map<String, Object?>
           ? SteamSettings.fromJson(steamJson)
           : const SteamSettings.disabled(),
@@ -287,11 +303,12 @@ class AppSettings {
   }
 
   Map<String, Object?> toJson() => {
-    'version': 6,
+    'version': 7,
     'outputPath': outputPath,
     'themeMode': themeMode.name,
     'diabloIV': diabloIV.toJson(),
     'guildWars2': guildWars2.toJson(),
+    'hytale': hytale.toJson(),
     'steam': steam.toJson(),
     'folderGrants': {
       for (final entry in folderGrants.entries) entry.key: entry.value.toJson(),

@@ -10,6 +10,7 @@ abstract final class FolderGrantIds {
   static const library = 'library';
   static const diabloIV = 'provider.diabloIV';
   static const guildWars2 = 'provider.guildWars2';
+  static const hytale = 'provider.hytale';
   static const steam = 'provider.steam';
 }
 

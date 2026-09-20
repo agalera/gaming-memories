@@ -462,6 +462,56 @@ void main() {
     expect(access.requests.single.suggestedPath, '/Steam Two/userdata');
     expect(access.requests.single.message, contains('Click Allow Access'));
   });
+
+  test(
+    'saves automatic Hytale folder access without making it custom',
+    () async {
+      final directory = await Directory.systemTemp.createTemp(
+        'gaming-memories-',
+      );
+      final hytale = Directory(p.join(directory.path, 'Hytale Screenshots'))
+        ..createSync();
+      addTearDown(() => directory.delete(recursive: true));
+      final access = _FakeFolderAccess(
+        chosen: FolderAccessLease(
+          grant: FolderGrant(
+            platform: 'macos',
+            path: hytale.path,
+            access: FolderGrantAccess.readOnly,
+            bookmark: 'hytale-bookmark',
+          ),
+          token: 'hytale-lease',
+        ),
+      );
+      final store = ConfigStore(
+        filePath: p.join(directory.path, 'settings.json'),
+      );
+      final controller = LibraryController(
+        configStore: store,
+        scanner: const LibraryScanner(),
+        providers: const [],
+        folderAccess: access,
+        providerPaths: _TestProviderPathResolver(
+          const [],
+          hytalePath: hytale.path,
+        ),
+      );
+
+      final result = await controller.chooseFolder(
+        SettingsFolderTarget.hytaleAutomatic,
+      );
+
+      expect(result.saved, isTrue);
+      expect(controller.settings.hytale.enabled, isTrue);
+      expect(controller.settings.hytale.useCustomPath, isFalse);
+      expect(controller.settings.hytale.sourcePath, hytale.path);
+      expect(
+        controller.settings.folderGrants[FolderGrantIds.hytale]?.bookmark,
+        'hytale-bookmark',
+      );
+      expect((await store.load()).hytale.sourcePath, hytale.path);
+    },
+  );
 }
 
 class _FakeScreenshotActions implements ScreenshotActionService {
@@ -553,9 +603,13 @@ class _FakeFolderAccess implements FolderAccessService {
 }
 
 class _TestProviderPathResolver extends ProviderPathResolver {
-  const _TestProviderPathResolver(this.paths);
+  const _TestProviderPathResolver(this.paths, {this.hytalePath});
 
   final List<String> paths;
+  final String? hytalePath;
+
+  @override
+  String? hytaleScreenshots() => hytalePath;
 
   @override
   List<String> steamUserdataCandidates() => paths;

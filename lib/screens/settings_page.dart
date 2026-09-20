@@ -22,6 +22,7 @@ class _SettingsPageState extends State<SettingsPage> {
   late final TextEditingController _outputController;
   late final TextEditingController _diabloController;
   late final TextEditingController _guildWars2Controller;
+  late final TextEditingController _hytaleController;
   late final TextEditingController _steamPathController;
   late final TextEditingController _steamUserController;
   late final TextEditingController _steamKeyController;
@@ -35,6 +36,9 @@ class _SettingsPageState extends State<SettingsPage> {
   late bool _diabloUseCustomPath;
   late bool _guildWars2Enabled;
   late bool _guildWars2UseCustomPath;
+  late bool _hytaleEnabled;
+  late bool _hytaleUseCustomPath;
+  late bool _hytaleDownloadCovers;
   late bool _steamEnabled;
   late bool _steamUseCustomPath;
   late bool _steamOnlineGallery;
@@ -42,6 +46,7 @@ class _SettingsPageState extends State<SettingsPage> {
   String? _outputPathError;
   String? _diabloPathError;
   String? _guildWars2PathError;
+  String? _hytalePathError;
   String? _steamPathError;
   Timer? _saveTimer;
   var _draftRevision = 0;
@@ -61,6 +66,8 @@ class _SettingsPageState extends State<SettingsPage> {
     _guildWars2Controller = TextEditingController(
       text: widget.controller.settings.guildWars2.sourcePath,
     );
+    final hytale = widget.controller.settings.hytale;
+    _hytaleController = TextEditingController(text: hytale.sourcePath);
     final steam = widget.controller.settings.steam;
     _steamPathController = TextEditingController(text: steam.userdataPath);
     _steamUserController = TextEditingController(text: steam.userId);
@@ -77,6 +84,9 @@ class _SettingsPageState extends State<SettingsPage> {
     _guildWars2Enabled = widget.controller.settings.guildWars2.enabled;
     _guildWars2UseCustomPath =
         widget.controller.settings.guildWars2.useCustomPath;
+    _hytaleEnabled = hytale.enabled;
+    _hytaleUseCustomPath = hytale.useCustomPath;
+    _hytaleDownloadCovers = hytale.downloadCovers;
     _steamEnabled = steam.enabled;
     _steamUseCustomPath = steam.useCustomPath;
     _steamOnlineGallery = steam.onlineGallery;
@@ -87,6 +97,7 @@ class _SettingsPageState extends State<SettingsPage> {
       _outputController,
       _diabloController,
       _guildWars2Controller,
+      _hytaleController,
       _steamPathController,
       _steamUserController,
       _steamKeyController,
@@ -118,6 +129,7 @@ class _SettingsPageState extends State<SettingsPage> {
     _outputController.dispose();
     _diabloController.dispose();
     _guildWars2Controller.dispose();
+    _hytaleController.dispose();
     _steamPathController.dispose();
     _steamUserController.dispose();
     _steamKeyController.dispose();
@@ -341,6 +353,128 @@ class _SettingsPageState extends State<SettingsPage> {
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
                                 Text(
+                                  'Hytale',
+                                  style: context.theme.typography.body.lg
+                                      .copyWith(fontWeight: FontWeight.w700),
+                                ),
+                                const SizedBox(height: 2),
+                                Text(
+                                  'PC · Screenshots',
+                                  style: context.theme.typography.body.sm
+                                      .copyWith(
+                                        color: context
+                                            .theme
+                                            .colors
+                                            .mutedForeground,
+                                      ),
+                                ),
+                              ],
+                            ),
+                          ),
+                          FSwitch(
+                            key: const ValueKey('hytale-enabled'),
+                            value: _hytaleEnabled,
+                            semanticsLabel: 'Enable Hytale',
+                            onChange: (value) => unawaited(
+                              _setProviderEnabled(
+                                _SettingsProvider.hytale,
+                                value,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 18),
+                      FCheckbox(
+                        key: const ValueKey('hytale-custom-path'),
+                        label: const Text('Use custom folder'),
+                        description: const Text(
+                          'Otherwise, the screenshot folder is discovered automatically.',
+                        ),
+                        value: _hytaleUseCustomPath,
+                        enabled: _hytaleEnabled,
+                        onChange: (value) => unawaited(
+                          _setCustomPath(_SettingsProvider.hytale, value),
+                        ),
+                      ),
+                      if (_hytaleUseCustomPath) ...[
+                        const SizedBox(height: 16),
+                        _DirectoryField(
+                          fieldKey: const ValueKey('hytale-path-field'),
+                          controller: _hytaleController,
+                          label: 'Screenshot folder',
+                          hint: '/path/to/Hytale Screenshots',
+                          error: _hytalePathError,
+                          enabled: _hytaleEnabled,
+                          readOnly:
+                              widget.controller.usesPersistentFolderAccess,
+                          buttonLabel: _folderButtonLabel(
+                            FolderGrantIds.hytale,
+                          ),
+                          onBrowse: () => _chooseDirectory(
+                            SettingsFolderTarget.hytaleCustom,
+                            initialPath: _hytaleController.text,
+                          ),
+                        ),
+                      ] else if (_hytaleEnabled &&
+                          widget.controller.usesPersistentFolderAccess) ...[
+                        const SizedBox(height: 16),
+                        _FolderAccessRow(
+                          buttonKey: const ValueKey(
+                            'hytale-automatic-folder-access',
+                          ),
+                          providerName: 'Hytale',
+                          automaticDescription: 'Hytale screenshots are stored in “Pictures/Hytale Screenshots”. The macOS dialog will open that folder; click Allow Access to grant access.',
+                          status: widget.controller.folderAuthorization(
+                            FolderGrantIds.hytale,
+                          ),
+                          error: _hytalePathError,
+                          onAllow: () => _chooseAutomaticDirectory(
+                            SettingsFolderTarget.hytaleAutomatic,
+                          ),
+                        ),
+                      ],
+                      const SizedBox(height: 16),
+                      _SwitchSetting(
+                        switchKey: const ValueKey('hytale-bundled-cover'),
+                        label: 'Use bundled game cover',
+                        description:
+                            'Save the included cover.png in the album.',
+                        value: _hytaleDownloadCovers,
+                        enabled: _hytaleEnabled,
+                        onChange: (value) {
+                          setState(() => _hytaleDownloadCovers = value);
+                          _scheduleAutosave();
+                        },
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+              const SizedBox(height: 16),
+              FCard(
+                child: Padding(
+                  padding: const EdgeInsets.all(20),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          Container(
+                            width: 44,
+                            height: 44,
+                            decoration: BoxDecoration(
+                              color: context.theme.colors.muted,
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            child: const Icon(FLucideIcons.gamepad2),
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
                                   'Guild Wars 2',
                                   style: context.theme.typography.body.lg
                                       .copyWith(fontWeight: FontWeight.w700),
@@ -509,6 +643,11 @@ class _SettingsPageState extends State<SettingsPage> {
                           widget.controller.usesPersistentFolderAccess) ...[
                         const SizedBox(height: 16),
                         _FolderAccessRow(
+                          buttonKey: const ValueKey(
+                            'steam-automatic-folder-access',
+                          ),
+                          providerName: 'Steam',
+                          automaticDescription: 'Steam screenshots are stored in its “userdata” folder. The macOS dialog will open Steam; click Allow Access to grant access to that folder.',
                           status: widget.controller.folderAuthorization(
                             FolderGrantIds.steam,
                           ),
@@ -735,6 +874,7 @@ class _SettingsPageState extends State<SettingsPage> {
     _outputController.text = saved.outputPath;
     _diabloController.text = saved.diabloIV.sourcePath;
     _guildWars2Controller.text = saved.guildWars2.sourcePath;
+    _hytaleController.text = saved.hytale.sourcePath;
     _steamPathController.text = saved.steam.userdataPath;
     _suppressAutosave = false;
     setState(() {
@@ -742,6 +882,8 @@ class _SettingsPageState extends State<SettingsPage> {
       _diabloUseCustomPath = saved.diabloIV.useCustomPath;
       _guildWars2Enabled = saved.guildWars2.enabled;
       _guildWars2UseCustomPath = saved.guildWars2.useCustomPath;
+      _hytaleEnabled = saved.hytale.enabled;
+      _hytaleUseCustomPath = saved.hytale.useCustomPath;
       _steamEnabled = saved.steam.enabled;
       _steamUseCustomPath = saved.steam.useCustomPath;
       _setFolderError(target, null);
@@ -755,7 +897,7 @@ class _SettingsPageState extends State<SettingsPage> {
         setState(
           () => _setFolderError(
             target,
-            'No supported Steam folder was found on this platform.',
+            'No supported ${_automaticProviderName(target)} folder was found on this platform.',
           ),
         );
       }
@@ -764,7 +906,7 @@ class _SettingsPageState extends State<SettingsPage> {
 
     final candidate = candidates.length == 1
         ? candidates.single
-        : await _showAutomaticFolderChoices(candidates);
+        : await _showAutomaticFolderChoices(target, candidates);
     if (candidate == null || !mounted) {
       return;
     }
@@ -772,13 +914,15 @@ class _SettingsPageState extends State<SettingsPage> {
   }
 
   Future<AutomaticFolderCandidate?> _showAutomaticFolderChoices(
+    SettingsFolderTarget target,
     List<AutomaticFolderCandidate> candidates,
   ) {
+    final providerName = _automaticProviderName(target);
     return showFDialog<AutomaticFolderCandidate>(
       context: context,
       builder: (dialogContext, _, animation) => FDialog(
         animation: animation,
-        semanticsLabel: 'Choose a Steam folder',
+        semanticsLabel: 'Choose a $providerName folder',
         builder: (context, _) => Padding(
           padding: const EdgeInsets.all(24),
           child: ConstrainedBox(
@@ -788,12 +932,12 @@ class _SettingsPageState extends State<SettingsPage> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  'Choose a Steam folder',
+                  'Choose a $providerName folder',
                   style: context.theme.typography.display.sm,
                 ),
                 const SizedBox(height: 8),
                 Text(
-                  'More than one supported Steam data folder is available. Choose the one used by your installation. macOS will then ask you to confirm that exact folder.',
+                  'More than one supported $providerName folder is available. Choose the one used by your installation. macOS will then ask you to confirm that exact folder.',
                   style: context.theme.typography.body.sm.copyWith(
                     color: context.theme.colors.mutedForeground,
                   ),
@@ -854,6 +998,8 @@ class _SettingsPageState extends State<SettingsPage> {
       (_SettingsProvider.diabloIV, true) => SettingsFolderTarget.diabloIVCustom,
       (_SettingsProvider.guildWars2, true) =>
         SettingsFolderTarget.guildWars2Custom,
+      (_SettingsProvider.hytale, true) => SettingsFolderTarget.hytaleCustom,
+      (_SettingsProvider.hytale, false) => SettingsFolderTarget.hytaleAutomatic,
       (_SettingsProvider.steam, true) => SettingsFolderTarget.steamCustom,
       (_SettingsProvider.steam, false) => SettingsFolderTarget.steamAutomatic,
       _ => null,
@@ -864,7 +1010,7 @@ class _SettingsPageState extends State<SettingsPage> {
       return;
     }
 
-    if (target == SettingsFolderTarget.steamAutomatic) {
+    if (_isAutomaticTarget(target)) {
       await _chooseAutomaticDirectory(target);
     } else {
       await _chooseDirectory(target, initialPath: _providerPath(provider));
@@ -888,13 +1034,16 @@ class _SettingsPageState extends State<SettingsPage> {
             _SettingsProvider.diabloIV => SettingsFolderTarget.diabloIVCustom,
             _SettingsProvider.guildWars2 =>
               SettingsFolderTarget.guildWars2Custom,
+            _SettingsProvider.hytale => SettingsFolderTarget.hytaleCustom,
             _SettingsProvider.steam => SettingsFolderTarget.steamCustom,
           }
-        : provider == _SettingsProvider.steam
-        ? SettingsFolderTarget.steamAutomatic
-        : null;
+        : switch (provider) {
+            _SettingsProvider.hytale => SettingsFolderTarget.hytaleAutomatic,
+            _SettingsProvider.steam => SettingsFolderTarget.steamAutomatic,
+            _ => null,
+          };
     if (target != null) {
-      if (target == SettingsFolderTarget.steamAutomatic) {
+      if (_isAutomaticTarget(target)) {
         await _chooseAutomaticDirectory(target);
       } else {
         await _chooseDirectory(target, initialPath: _providerPath(provider));
@@ -921,12 +1070,14 @@ class _SettingsPageState extends State<SettingsPage> {
   bool _usesCustomPath(_SettingsProvider provider) => switch (provider) {
     _SettingsProvider.diabloIV => _diabloUseCustomPath,
     _SettingsProvider.guildWars2 => _guildWars2UseCustomPath,
+    _SettingsProvider.hytale => _hytaleUseCustomPath,
     _SettingsProvider.steam => _steamUseCustomPath,
   };
 
   String _providerPath(_SettingsProvider provider) => switch (provider) {
     _SettingsProvider.diabloIV => _diabloController.text,
     _SettingsProvider.guildWars2 => _guildWars2Controller.text,
+    _SettingsProvider.hytale => _hytaleController.text,
     _SettingsProvider.steam => _steamPathController.text,
   };
 
@@ -934,6 +1085,7 @@ class _SettingsPageState extends State<SettingsPage> {
     final id = switch (provider) {
       _SettingsProvider.diabloIV => FolderGrantIds.diabloIV,
       _SettingsProvider.guildWars2 => FolderGrantIds.guildWars2,
+      _SettingsProvider.hytale => FolderGrantIds.hytale,
       _SettingsProvider.steam => FolderGrantIds.steam,
     };
     return widget.controller.folderAuthorization(id).isReady;
@@ -946,6 +1098,9 @@ class _SettingsPageState extends State<SettingsPage> {
         break;
       case _SettingsProvider.guildWars2:
         _guildWars2Enabled = value;
+        break;
+      case _SettingsProvider.hytale:
+        _hytaleEnabled = value;
         break;
       case _SettingsProvider.steam:
         _steamEnabled = value;
@@ -961,6 +1116,9 @@ class _SettingsPageState extends State<SettingsPage> {
       case _SettingsProvider.guildWars2:
         _guildWars2UseCustomPath = value;
         break;
+      case _SettingsProvider.hytale:
+        _hytaleUseCustomPath = value;
+        break;
       case _SettingsProvider.steam:
         _steamUseCustomPath = value;
         break;
@@ -974,6 +1132,9 @@ class _SettingsPageState extends State<SettingsPage> {
         break;
       case _SettingsProvider.guildWars2:
         _guildWars2PathError = value;
+        break;
+      case _SettingsProvider.hytale:
+        _hytalePathError = value;
         break;
       case _SettingsProvider.steam:
         _steamPathError = value;
@@ -992,6 +1153,10 @@ class _SettingsPageState extends State<SettingsPage> {
       case SettingsFolderTarget.guildWars2Custom:
         _guildWars2PathError = value;
         break;
+      case SettingsFolderTarget.hytaleCustom:
+      case SettingsFolderTarget.hytaleAutomatic:
+        _hytalePathError = value;
+        break;
       case SettingsFolderTarget.steamCustom:
       case SettingsFolderTarget.steamAutomatic:
         _steamPathError = value;
@@ -1004,6 +1169,19 @@ class _SettingsPageState extends State<SettingsPage> {
     return status == FolderAuthorizationStatus.ready
         ? 'Change'
         : 'Allow Access';
+  }
+
+  bool _isAutomaticTarget(SettingsFolderTarget target) {
+    return target == SettingsFolderTarget.hytaleAutomatic ||
+        target == SettingsFolderTarget.steamAutomatic;
+  }
+
+  String _automaticProviderName(SettingsFolderTarget target) {
+    return switch (target) {
+      SettingsFolderTarget.hytaleAutomatic => 'Hytale',
+      SettingsFolderTarget.steamAutomatic => 'Steam',
+      _ => 'automatic',
+    };
   }
 
   void _showSteamCredentialHelp() {
@@ -1099,6 +1277,12 @@ class _SettingsPageState extends State<SettingsPage> {
         useCustomPath: _guildWars2UseCustomPath,
         sourcePath: _guildWars2Controller.text.trim(),
       ),
+      hytale: ProviderSettings(
+        enabled: _hytaleEnabled,
+        useCustomPath: _hytaleUseCustomPath,
+        sourcePath: _hytaleController.text.trim(),
+        downloadCovers: _hytaleDownloadCovers,
+      ),
       steam: SteamSettings(
         enabled: _steamEnabled,
         useCustomPath: _steamUseCustomPath,
@@ -1152,6 +1336,12 @@ class _SettingsPageState extends State<SettingsPage> {
       guildWars2: errors.guildWars2 == null
           ? draft.guildWars2
           : saved.guildWars2.copyWith(enabled: draft.guildWars2.enabled),
+      hytale: errors.hytale == null
+          ? draft.hytale
+          : saved.hytale.copyWith(
+              enabled: draft.hytale.enabled,
+              downloadCovers: draft.hytale.downloadCovers,
+            ),
       steam: SteamSettings(
         enabled: draft.steam.enabled,
         useCustomPath: errors.steam == null
@@ -1198,6 +1388,21 @@ class _SettingsPageState extends State<SettingsPage> {
               grantId: FolderGrantIds.guildWars2,
             )
           : Future.value(),
+      draft.hytale.useCustomPath
+          ? _directoryError(
+              draft.hytale.sourcePath,
+              label: 'Hytale screenshot folder',
+              grantId: FolderGrantIds.hytale,
+            )
+          : draft.hytale.enabled && widget.controller.usesPersistentFolderAccess
+          ? Future.value(
+              _folderAuthorizationError(
+                FolderGrantIds.hytale,
+                label: 'Hytale screenshot folder',
+                needsAuthorizationMessage: 'Hytale screenshots are stored in “Pictures/Hytale Screenshots”. Click Allow Access to grant access to that folder.',
+              ),
+            )
+          : Future.value(),
       draft.steam.useCustomPath
           ? _directoryError(
               draft.steam.userdataPath,
@@ -1219,7 +1424,8 @@ class _SettingsPageState extends State<SettingsPage> {
       outputPath: results[0],
       diabloIV: results[1],
       guildWars2: results[2],
-      steam: results[3],
+      hytale: results[3],
+      steam: results[4],
     );
   }
 
@@ -1268,6 +1474,7 @@ class _SettingsPageState extends State<SettingsPage> {
       _outputPathError = errors.outputPath;
       _diabloPathError = errors.diabloIV;
       _guildWars2PathError = errors.guildWars2;
+      _hytalePathError = errors.hytale;
       _steamPathError = errors.steam;
     });
   }
@@ -1324,16 +1531,18 @@ class _PathErrors {
     required this.outputPath,
     required this.diabloIV,
     required this.guildWars2,
+    required this.hytale,
     required this.steam,
   });
 
   final String? outputPath;
   final String? diabloIV;
   final String? guildWars2;
+  final String? hytale;
   final String? steam;
 }
 
-enum _SettingsProvider { diabloIV, guildWars2, steam }
+enum _SettingsProvider { diabloIV, guildWars2, hytale, steam }
 
 class _CustomGame {
   const _CustomGame(this.appId, this.name);
@@ -1559,6 +1768,7 @@ class _SwitchSetting extends StatelessWidget {
     required this.value,
     required this.enabled,
     required this.onChange,
+    this.switchKey,
   });
 
   final String label;
@@ -1566,6 +1776,7 @@ class _SwitchSetting extends StatelessWidget {
   final bool value;
   final bool enabled;
   final ValueChanged<bool> onChange;
+  final Key? switchKey;
 
   @override
   Widget build(BuildContext context) {
@@ -1587,6 +1798,7 @@ class _SwitchSetting extends StatelessWidget {
           ),
         ),
         FSwitch(
+          key: switchKey,
           value: value,
           enabled: enabled,
           semanticsLabel: label,
@@ -1672,11 +1884,17 @@ class _InlinePathError extends StatelessWidget {
 
 class _FolderAccessRow extends StatelessWidget {
   const _FolderAccessRow({
+    required this.buttonKey,
+    required this.providerName,
+    required this.automaticDescription,
     required this.status,
     required this.onAllow,
     this.error,
   });
 
+  final Key buttonKey;
+  final String providerName;
+  final String automaticDescription;
   final FolderAuthorization status;
   final VoidCallback onAllow;
   final String? error;
@@ -1688,10 +1906,10 @@ class _FolderAccessRow extends StatelessWidget {
     final message =
         error ??
         (ready
-            ? 'Access allowed to the automatically discovered Steam folder.'
+            ? 'Access allowed to the automatically discovered $providerName folder.'
             : unavailable
-            ? 'The Steam folder is unavailable. Choose it again.'
-            : 'Steam screenshots are stored in its “userdata” folder. The macOS dialog will open Steam; click Allow Access to grant access to that folder.');
+            ? 'The $providerName folder is unavailable. Choose it again.'
+            : automaticDescription);
     return Row(
       crossAxisAlignment: CrossAxisAlignment.center,
       children: [
@@ -1715,7 +1933,7 @@ class _FolderAccessRow extends StatelessWidget {
         ),
         const SizedBox(width: 10),
         FButton(
-          key: const ValueKey('steam-automatic-folder-access'),
+          key: buttonKey,
           variant: FButtonVariant.outline,
           mainAxisSize: MainAxisSize.min,
           onPress: onAllow,

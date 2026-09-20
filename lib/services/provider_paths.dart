@@ -27,6 +27,13 @@ class ProviderPathResolver {
       allowEnvironmentHome: allowEnvironmentHome,
     );
   }
+
+  String? hytaleScreenshots() {
+    return ProviderPaths.hytaleScreenshots(
+      userHomeDirectory: userHomeDirectory,
+      allowEnvironmentHome: allowEnvironmentHome,
+    );
+  }
 }
 
 const _folderAccessChannel = MethodChannel('gaming-memories/folder-access');
@@ -69,6 +76,18 @@ abstract final class ProviderPaths {
     return home == null
         ? null
         : p.join(home, 'Documents', 'Guild Wars 2', 'Screens');
+  }
+
+  static String? hytaleScreenshots({
+    String? userHomeDirectory,
+    bool allowEnvironmentHome = true,
+  }) {
+    if (!Platform.isMacOS && !Platform.isLinux) {
+      return null;
+    }
+    final home =
+        userHomeDirectory ?? (allowEnvironmentHome ? homeDirectory() : null);
+    return home == null ? null : p.join(home, 'Pictures', 'Hytale Screenshots');
   }
 
   static String? steamUserdata({

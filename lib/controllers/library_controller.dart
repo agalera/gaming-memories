@@ -28,6 +28,8 @@ enum SettingsFolderTarget {
   library,
   diabloIVCustom,
   guildWars2Custom,
+  hytaleCustom,
+  hytaleAutomatic,
   steamCustom,
   steamAutomatic,
 }
@@ -150,6 +152,9 @@ class LibraryController extends ChangeNotifier {
     final paths = switch (target) {
       SettingsFolderTarget.steamAutomatic =>
         providerPaths.steamUserdataCandidates(),
+      SettingsFolderTarget.hytaleAutomatic => [
+        ?providerPaths.hytaleScreenshots(),
+      ],
       _ => const <String>[],
     };
     return paths
@@ -480,8 +485,9 @@ class LibraryController extends ChangeNotifier {
           !_samePath(lease.grant.path, specification.expectedPath!)) {
         await folderAccess.release(lease);
         lease = null;
-        return const FolderChoiceResult.failure(
-          'Choose Steam’s “userdata” folder, not a numbered account folder.',
+        return FolderChoiceResult.failure(
+          specification.pathMismatchMessage ??
+              'Choose the folder shown by Gaming Memories.',
         );
       }
 
@@ -578,6 +584,36 @@ class LibraryController extends ChangeNotifier {
           ),
           selectedPath: (settings) => settings.guildWars2.sourcePath,
         );
+      case SettingsFolderTarget.hytaleCustom:
+        return _FolderSpecification(
+          request: FolderAccessRequest(
+            id: FolderGrantIds.hytale,
+            title: 'Choose the Hytale screenshot folder',
+            access: FolderGrantAccess.readOnly,
+            initialPath:
+                _nonEmpty(initialPath) ?? _nonEmpty(settings.hytale.sourcePath),
+          ),
+          selectedPath: (settings) => settings.hytale.sourcePath,
+        );
+      case SettingsFolderTarget.hytaleAutomatic:
+        final candidates = automaticFolderCandidates(target);
+        if (candidates.isEmpty) {
+          return null;
+        }
+        final candidate = candidates.single.path;
+        return _FolderSpecification(
+          request: FolderAccessRequest(
+            id: FolderGrantIds.hytale,
+            title: 'Allow access to Hytale screenshots',
+            access: FolderGrantAccess.readOnly,
+            initialPath: candidate,
+            suggestedPath: candidate,
+            message: 'Click Allow Access to grant Gaming Memories access to the “Hytale Screenshots” folder.',
+          ),
+          expectedPath: candidate,
+          pathMismatchMessage: 'Choose the “Hytale Screenshots” folder shown by Gaming Memories.',
+          selectedPath: (_) => candidate,
+        );
       case SettingsFolderTarget.steamCustom:
         return _FolderSpecification(
           request: FolderAccessRequest(
@@ -618,6 +654,7 @@ class LibraryController extends ChangeNotifier {
                 'Click Allow Access to grant Gaming Memories access to the “${selected.name}” folder. Do not open a numbered Steam account folder.',
           ),
           expectedPath: candidate,
+          pathMismatchMessage: 'Choose Steam’s “userdata” folder, not a numbered account folder.',
           selectedPath: (_) => candidate,
         );
     }
@@ -637,6 +674,20 @@ class LibraryController extends ChangeNotifier {
         guildWars2: settings.guildWars2.copyWith(
           enabled: true,
           useCustomPath: true,
+          sourcePath: path,
+        ),
+      ),
+      SettingsFolderTarget.hytaleCustom => settings.copyWith(
+        hytale: settings.hytale.copyWith(
+          enabled: true,
+          useCustomPath: true,
+          sourcePath: path,
+        ),
+      ),
+      SettingsFolderTarget.hytaleAutomatic => settings.copyWith(
+        hytale: settings.hytale.copyWith(
+          enabled: true,
+          useCustomPath: false,
           sourcePath: path,
         ),
       ),
@@ -1054,9 +1105,11 @@ class _FolderSpecification {
     required this.request,
     required this.selectedPath,
     this.expectedPath,
+    this.pathMismatchMessage,
   });
 
   final FolderAccessRequest request;
   final String? expectedPath;
+  final String? pathMismatchMessage;
   final String Function(AppSettings settings) selectedPath;
 }

@@ -735,6 +735,50 @@ void main() {
     await tester.pump(const Duration(milliseconds: 200));
   });
 
+  testWidgets('shows and autosaves Hytale provider settings', (tester) async {
+    final directory = Directory.systemTemp.createTempSync('gaming-memories-');
+    final source = Directory(p.join(directory.path, 'Hytale Screenshots'))
+      ..createSync();
+    addTearDown(() => directory.deleteSync(recursive: true));
+    final store = _MemoryConfigStore();
+    final controller =
+        LibraryController(
+            configStore: store,
+            scanner: const LibraryScanner(),
+            providers: const [],
+          )
+          ..isInitializing = false
+          ..view = LibraryView.settings
+          ..settings = AppSettings(
+            outputPath: '',
+            diabloIV: const ProviderSettings.disabled(),
+            hytale: ProviderSettings(
+              enabled: true,
+              useCustomPath: true,
+              sourcePath: source.path,
+            ),
+          );
+
+    await tester.pumpWidget(GamingMemoriesApp(controller: controller));
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const ValueKey('hytale-path-field')), findsOneWidget);
+    final cover = find.byKey(const ValueKey('hytale-bundled-cover'));
+    await tester.ensureVisible(cover);
+    await tester.tap(cover);
+    await tester.pump(const Duration(milliseconds: 400));
+    await tester.runAsync(
+      () => Future<void>.delayed(const Duration(milliseconds: 20)),
+    );
+    await tester.pumpAndSettle();
+
+    expect(controller.settings.hytale.downloadCovers, isTrue);
+    expect(store.saved?.hytale.downloadCovers, isTrue);
+
+    await tester.pumpWidget(const SizedBox.shrink());
+    await tester.pump(const Duration(milliseconds: 200));
+  });
+
   testWidgets('shows missing macOS access immediately in settings', (
     tester,
   ) async {

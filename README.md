@@ -8,7 +8,7 @@ The app includes these functions:
 - An album tree that groups media by platform, game, and nested folder.
 - Video thumbnails, duration details, and video playback.
 - Settings for the library folder and provider folder.
-- Diablo IV, Guild Wars 2, and Steam providers.
+- Diablo IV, Guild Wars 2, Hytale, and Steam providers.
 - SHA-1 collision names that prevent file loss.
 
 ## Requirements
@@ -38,6 +38,9 @@ On Windows, you can leave the Diablo IV folder empty. The provider scans these d
 
 - `Pictures\Diablo IV`
 - `Documents\Diablo IV\Screenshots`
+
+On macOS and Linux, Hytale is discovered in `Pictures/Hytale Screenshots`.
+Its provider can also save the bundled Hytale cover in the library album.
 
 Select the collect action in the page header to import media.
 
