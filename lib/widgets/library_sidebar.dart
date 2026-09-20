@@ -172,7 +172,7 @@ class _AlbumSidebarItem extends StatefulWidget {
 }
 
 class _AlbumSidebarItemState extends State<_AlbumSidebarItem> {
-  bool _expanded = true;
+  bool _expanded = false;
 
   @override
   Widget build(BuildContext context) {
@@ -260,7 +260,7 @@ class _PlatformSidebarItem extends StatefulWidget {
 }
 
 class _PlatformSidebarItemState extends State<_PlatformSidebarItem> {
-  bool _expanded = true;
+  bool _expanded = false;
 
   @override
   Widget build(BuildContext context) {

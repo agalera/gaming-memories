@@ -97,16 +97,14 @@ void main() {
     expect(controller.view, LibraryView.platform);
     expect(controller.pageTitle, 'PC');
     expect(controller.visibleMedia, hasLength(1));
-    expect(find.text('Diablo IV  1'), findsOneWidget);
+    expect(find.text('Diablo IV  1'), findsNothing);
 
     await tester.tap(find.byKey(const ValueKey('platform-toggle-PC')));
     await tester.pump(const Duration(milliseconds: 300));
 
     expect(controller.view, LibraryView.platform);
-    expect(find.text('Diablo IV  1'), findsNothing);
+    expect(find.text('Diablo IV  1'), findsOneWidget);
 
-    await tester.tap(find.byKey(const ValueKey('platform-toggle-PC')));
-    await tester.pump(const Duration(milliseconds: 300));
     await tester.tap(find.text('Diablo IV  1'));
     await tester.pump();
 
@@ -150,10 +148,23 @@ void main() {
     await tester.pumpWidget(GamingMemoriesApp(controller: controller));
     await tester.pump();
 
-    expect(find.text('Game  1'), findsOneWidget);
-    expect(find.text('Other  1'), findsOneWidget);
+    expect(find.text('Game  1'), findsNothing);
+    expect(find.text('Other  1'), findsNothing);
     expect(find.byKey(const ValueKey('video-indicator-$path')), findsOneWidget);
     expect(find.text('00:30'), findsOneWidget);
+
+    await tester.tap(
+      find.byKey(const ValueKey('platform-toggle-PlayStation 5')),
+    );
+    await tester.pump(const Duration(milliseconds: 200));
+    expect(find.text('Game  1'), findsOneWidget);
+    expect(find.text('Other  1'), findsNothing);
+
+    await tester.tap(
+      find.byKey(const ValueKey('game-PlayStation 5-Game-toggle')),
+    );
+    await tester.pump(const Duration(milliseconds: 200));
+    expect(find.text('Other  1'), findsOneWidget);
 
     await tester.tap(
       find.byKey(const ValueKey('sub-album-PlayStation 5-Game-Other-label')),
