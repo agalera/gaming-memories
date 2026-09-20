@@ -15,6 +15,7 @@ import 'package:gaming_memories/services/config_store.dart';
 import 'package:gaming_memories/services/battle_net_catalog.dart';
 import 'package:gaming_memories/services/folder_access_service.dart';
 import 'package:gaming_memories/services/library_scanner.dart';
+import 'package:gaming_memories/services/library_watcher.dart';
 import 'package:gaming_memories/services/provider_paths.dart';
 import 'package:gaming_memories/services/screenshot_action_service.dart';
 import 'package:gaming_memories/services/steam_client.dart';
@@ -275,6 +276,144 @@ void main() {
       expect((await cache.load(directory.path)).single.path, refreshed.path);
     },
   );
+
+  test('applies watched media changes without another full scan', () async {
+    final directory = await Directory.systemTemp.createTemp(
+      'gaming-memories-controller-',
+    );
+    final library = Directory(p.join(directory.path, 'library'));
+    await Directory(p.join(library.path, 'PC', 'Game')).create(recursive: true);
+    addTearDown(() => directory.delete(recursive: true));
+    final store = ConfigStore(
+      filePath: p.join(directory.path, 'settings.json'),
+    );
+    await store.save(AppSettings(outputPath: library.path));
+    final cache = TimelineCache(
+      filePath: p.join(directory.path, 'timeline-cache.json'),
+    );
+    final scanner = _WatchScanner(library.path);
+    final watcher = _FakeLibraryWatcher();
+    final controller = LibraryController(
+      configStore: store,
+      scanner: scanner,
+      timelineCache: cache,
+      libraryWatcher: watcher,
+      providers: const [],
+    );
+    addTearDown(controller.dispose);
+
+    await controller.initialize();
+    await _waitForController(
+      () => !controller.isTimelineRefreshing && watcher.paths.isNotEmpty,
+    );
+    expect(scanner.scanCalls, 1);
+    expect(watcher.paths.single, p.normalize(p.absolute(library.path)));
+    controller.showAlbum('PC', 'Game');
+    await _waitForController(() => !controller.isViewLoading);
+
+    final media = MediaItem(
+      path: p.join(library.path, 'PC', 'Game', 'new.jpg'),
+      platform: 'PC',
+      game: 'Game',
+      capturedAt: DateTime(2026, 1, 2),
+      kind: MediaKind.image,
+      thumbnailPath: p.join(directory.path, 'new.thumb.jpg'),
+      sourceModifiedAt: DateTime(2026, 1, 2),
+      sourceSize: 123,
+    );
+    scanner.listing = FolderListing(folders: const [], media: [media]);
+    watcher.add(
+      LibraryChange(
+        kind: LibraryChangeKind.create,
+        path: media.path,
+        isDirectory: false,
+      ),
+    );
+    await _waitForController(() => controller.timelineMedia.isNotEmpty);
+    await _waitForCache(cache, library.path, (items) => items.isNotEmpty);
+
+    expect(controller.timelineMedia.single.path, media.path);
+    expect(controller.visibleMedia.single.path, media.path);
+    expect((await cache.load(library.path)).single.path, media.path);
+    expect(scanner.scanCalls, 1);
+
+    scanner.listing = const FolderListing.empty();
+    watcher.add(
+      LibraryChange(
+        kind: LibraryChangeKind.delete,
+        path: media.path,
+        isDirectory: false,
+      ),
+    );
+    await _waitForController(() => controller.timelineMedia.isEmpty);
+    await _waitForCache(cache, library.path, (items) => items.isEmpty);
+
+    expect(await cache.load(library.path), isEmpty);
+    expect(controller.visibleMedia, isEmpty);
+    expect(scanner.scanCalls, 1);
+
+    final subAlbumPath = p.join(library.path, 'PC', 'Game', 'New album');
+    final nested = MediaItem(
+      path: p.join(subAlbumPath, 'nested.jpg'),
+      platform: 'PC',
+      game: 'Game',
+      capturedAt: DateTime(2026, 1, 3),
+      kind: MediaKind.image,
+      subAlbumPath: 'New album',
+      sourceModifiedAt: DateTime(2026, 1, 3),
+      sourceSize: 456,
+    );
+    scanner.treeMedia = [nested];
+    watcher.add(
+      LibraryChange(
+        kind: LibraryChangeKind.create,
+        path: subAlbumPath,
+        isDirectory: true,
+      ),
+    );
+    await _waitForController(
+      () => controller.timelineMedia.any((item) => item.path == nested.path),
+    );
+    expect(scanner.mediaTreeCalls, 1);
+    expect(scanner.scanCalls, 1);
+
+    await controller.collect();
+    await Future<void>.delayed(const Duration(milliseconds: 50));
+    expect(scanner.scanCalls, 1);
+
+    await controller.refresh();
+    await _waitForController(
+      () => scanner.scanCalls == 2 && !controller.isTimelineRefreshing,
+    );
+    expect(scanner.scanCalls, 2);
+  });
+
+  test('refreshes the timeline when the folder watcher cannot start', () async {
+    final directory = await Directory.systemTemp.createTemp(
+      'gaming-memories-controller-',
+    );
+    final library = Directory(p.join(directory.path, 'library'));
+    await library.create();
+    addTearDown(() => directory.delete(recursive: true));
+    final store = ConfigStore(
+      filePath: p.join(directory.path, 'settings.json'),
+    );
+    await store.save(AppSettings(outputPath: library.path));
+    final scanner = _WatchScanner(library.path);
+    final controller = LibraryController(
+      configStore: store,
+      scanner: scanner,
+      libraryWatcher: const _FailingLibraryWatcher(),
+      providers: const [],
+    );
+    addTearDown(controller.dispose);
+
+    await controller.initialize();
+    await _waitForController(() => !controller.isTimelineRefreshing);
+
+    expect(scanner.scanCalls, 1);
+    expect(controller.error, isNull);
+  });
 
   test('selects a platform and shows its games without media', () {
     final controller = LibraryController(
@@ -1028,6 +1167,109 @@ class _ProgressProvider implements ScreenshotProvider {
     );
     await release.future;
     return const ImportResult(provider: 'Test', imported: 1, skipped: 0);
+  }
+}
+
+Future<void> _waitForController(bool Function() condition) async {
+  for (var attempt = 0; attempt < 300; attempt++) {
+    if (condition()) {
+      return;
+    }
+    await Future<void>.delayed(const Duration(milliseconds: 10));
+  }
+  fail('The expected controller state did not arrive.');
+}
+
+Future<void> _waitForCache(
+  TimelineCache cache,
+  String libraryPath,
+  bool Function(List<MediaItem>) condition,
+) async {
+  for (var attempt = 0; attempt < 300; attempt++) {
+    if (condition(await cache.load(libraryPath))) {
+      return;
+    }
+    await Future<void>.delayed(const Duration(milliseconds: 10));
+  }
+  fail('The expected timeline cache state did not arrive.');
+}
+
+class _FakeLibraryWatcher implements LibraryWatcher {
+  final controller = StreamController<LibraryChange>.broadcast(sync: true);
+  final List<String> paths = [];
+
+  @override
+  Future<Stream<LibraryChange>> watch(String rootPath) async {
+    paths.add(rootPath);
+    return controller.stream;
+  }
+
+  void add(LibraryChange change) => controller.add(change);
+}
+
+class _FailingLibraryWatcher implements LibraryWatcher {
+  const _FailingLibraryWatcher();
+
+  @override
+  Future<Stream<LibraryChange>> watch(String rootPath) {
+    throw const FileSystemException('Watcher unavailable.');
+  }
+}
+
+class _WatchScanner extends LibraryScanner {
+  _WatchScanner(this.root);
+
+  final String root;
+  int scanCalls = 0;
+  int mediaTreeCalls = 0;
+  FolderListing listing = const FolderListing.empty();
+  List<MediaItem> treeMedia = const [];
+
+  @override
+  Future<MediaLibrary> scan(String outputPath) async {
+    scanCalls++;
+    return const MediaLibrary.empty();
+  }
+
+  @override
+  Future<List<LibraryFolder>> folderTree(String outputPath) async {
+    return [
+      LibraryFolder(
+        name: 'PC',
+        path: p.join(root, 'PC'),
+        children: [
+          LibraryFolder(
+            name: 'Game',
+            path: p.join(root, 'PC', 'Game'),
+            relativePath: 'Game',
+            childrenLoaded: false,
+          ),
+        ],
+      ),
+    ];
+  }
+
+  @override
+  Future<FolderListing> folderContents(
+    String outputPath,
+    String platform,
+    String game, {
+    String subAlbumPath = '',
+    FolderListingCallback? onUpdate,
+  }) async => listing;
+
+  @override
+  Future<MediaItem?> prepareMediaItem(MediaItem item) async => item;
+
+  @override
+  Future<List<MediaItem>> mediaTree(
+    String outputPath,
+    String platform,
+    String game, {
+    String subAlbumPath = '',
+  }) async {
+    mediaTreeCalls++;
+    return treeMedia;
   }
 }
 

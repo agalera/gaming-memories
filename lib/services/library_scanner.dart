@@ -213,28 +213,7 @@ class LibraryScanner {
         break;
       }
       final item = media[index];
-      try {
-        final source = item.file;
-        final stat = await source.stat();
-        final thumbnailPath = item.isVideo
-            ? await thumbnailService.ensureVideoThumbnail(source, stat)
-            : await thumbnailService.ensureImageThumbnail(source, stat);
-        final duration = item.isVideo
-            ? await videoMetadataService.ensureDuration(source, stat)
-            : null;
-        media[index] = MediaItem(
-          path: item.path,
-          platform: item.platform,
-          game: item.game,
-          capturedAt: item.capturedAt,
-          kind: item.kind,
-          subAlbumPath: item.subAlbumPath,
-          thumbnailPath: thumbnailPath,
-          duration: duration,
-        );
-      } on FileSystemException {
-        // Keep the listed item if it changes before preparation completes.
-      }
+      media[index] = await prepareMediaItem(item) ?? item;
 
       if ((index + 1) % 16 == 0 || index == media.length - 1) {
         onUpdate?.call(
@@ -251,13 +230,76 @@ class LibraryScanner {
     );
   }
 
+  Future<MediaItem?> prepareMediaItem(MediaItem item) async {
+    try {
+      final source = item.file;
+      final stat = await source.stat();
+      final thumbnailPath = item.isVideo
+          ? await thumbnailService.ensureVideoThumbnail(source, stat)
+          : await thumbnailService.ensureImageThumbnail(source, stat);
+      final duration = item.isVideo
+          ? await videoMetadataService.ensureDuration(source, stat)
+          : null;
+      return MediaItem(
+        path: item.path,
+        platform: item.platform,
+        game: item.game,
+        capturedAt: item.capturedAt,
+        kind: item.kind,
+        subAlbumPath: item.subAlbumPath,
+        thumbnailPath: thumbnailPath,
+        duration: duration,
+        sourceModifiedAt: stat.modified,
+        sourceSize: stat.size,
+      );
+    } on FileSystemException {
+      return null;
+    }
+  }
+
+  Future<List<MediaItem>> mediaTree(
+    String outputPath,
+    String platform,
+    String game, {
+    String subAlbumPath = '',
+  }) async {
+    if (outputPath.trim().isEmpty) {
+      return const [];
+    }
+
+    final rootPath = p.normalize(p.absolute(expandUserPath(outputPath.trim())));
+    final gamePath = p.join(rootPath, platform, game);
+    final directoryPath = subAlbumPath.isEmpty
+        ? gamePath
+        : p.join(gamePath, subAlbumPath);
+    final normalizedGame = p.normalize(p.absolute(gamePath));
+    final normalizedDirectory = p.normalize(p.absolute(directoryPath));
+    if (!p.isWithin(rootPath, normalizedGame) ||
+        (normalizedDirectory != normalizedGame &&
+            !p.isWithin(normalizedGame, normalizedDirectory))) {
+      return const [];
+    }
+
+    return _mediaTree(
+      Directory(normalizedDirectory),
+      Directory(normalizedGame),
+      platform,
+      game,
+    );
+  }
+
+  bool supportsMediaPath(String path) => _isMedia(path);
+
+  bool isCoverPath(String path) => _isCover(path);
+
   Future<MediaItem> _listedMediaItem(
     File file,
     String platform,
     String game,
     String subAlbumPath,
   ) async {
-    final capturedAt = _dateFromName(file.path) ?? (await file.stat()).modified;
+    final stat = await file.stat();
+    final capturedAt = _dateFromName(file.path) ?? stat.modified;
     final isVideo = _isVideo(file.path);
     return MediaItem(
       path: file.path,
@@ -267,6 +309,8 @@ class LibraryScanner {
       kind: isVideo ? MediaKind.video : MediaKind.image,
       subAlbumPath: subAlbumPath,
       thumbnailPath: thumbnailService.pathFor(file.path),
+      sourceModifiedAt: stat.modified,
+      sourceSize: stat.size,
     );
   }
 
@@ -355,6 +399,30 @@ class LibraryScanner {
     );
   }
 
+  Future<List<MediaItem>> _mediaTree(
+    Directory directory,
+    Directory gameDirectory,
+    String platform,
+    String game,
+  ) async {
+    if (!await directory.exists()) {
+      return const [];
+    }
+
+    final relativePath = p.relative(directory.path, from: gameDirectory.path);
+    final media = await _mediaFiles(
+      directory,
+      platform,
+      game,
+      relativePath == '.' ? '' : relativePath,
+    );
+    for (final child in await _directories(directory)) {
+      media.addAll(await _mediaTree(child, gameDirectory, platform, game));
+    }
+    media.sort((left, right) => right.capturedAt.compareTo(left.capturedAt));
+    return media;
+  }
+
   Future<List<MediaItem>> _mediaFiles(
     Directory directory,
     String platform,
@@ -390,6 +458,8 @@ class LibraryScanner {
             subAlbumPath: subAlbumPath,
             thumbnailPath: thumbnailPath,
             duration: duration,
+            sourceModifiedAt: stat.modified,
+            sourceSize: stat.size,
           ),
         );
       }

@@ -72,6 +72,8 @@ class TimelineCache {
       'subAlbumPath': item.subAlbumPath,
       'thumbnailPath': item.thumbnailPath,
       'durationMs': item.duration?.inMilliseconds,
+      'sourceModifiedAtMs': item.sourceModifiedAt?.millisecondsSinceEpoch,
+      'sourceSize': item.sourceSize,
     };
   }
 
@@ -124,6 +126,12 @@ class TimelineCache {
       duration: value['durationMs'] == null
           ? null
           : Duration(milliseconds: value['durationMs'] as int),
+      sourceModifiedAt: value['sourceModifiedAtMs'] == null
+          ? null
+          : DateTime.fromMillisecondsSinceEpoch(
+              value['sourceModifiedAtMs'] as int,
+            ),
+      sourceSize: value['sourceSize'] as int?,
     );
   }
 }

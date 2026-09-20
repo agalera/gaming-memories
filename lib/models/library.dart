@@ -12,6 +12,8 @@ class MediaItem {
     this.subAlbumPath = '',
     this.thumbnailPath,
     this.duration,
+    this.sourceModifiedAt,
+    this.sourceSize,
   });
 
   final String path;
@@ -22,6 +24,8 @@ class MediaItem {
   final String subAlbumPath;
   final String? thumbnailPath;
   final Duration? duration;
+  final DateTime? sourceModifiedAt;
+  final int? sourceSize;
 
   bool get isVideo => kind == MediaKind.video;
   File get file => File(path);

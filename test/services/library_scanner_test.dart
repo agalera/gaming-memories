@@ -159,6 +159,29 @@ void main() {
     );
   });
 
+  test('scans only one changed media subtree', () async {
+    final output = await Directory.systemTemp.createTemp('gaming-memories-');
+    addTearDown(() => output.delete(recursive: true));
+    final game = Directory(p.join(output.path, 'PC', 'Game'));
+    final changed = Directory(p.join(game.path, 'Changed'));
+    final other = Directory(p.join(game.path, 'Other'));
+    await changed.create(recursive: true);
+    await other.create();
+    final included = File(p.join(changed.path, '2026-01-02_03-04-05.jpg'));
+    final excluded = File(p.join(other.path, '2026-01-03_03-04-05.jpg'));
+    await included.writeAsBytes(const [1]);
+    await excluded.writeAsBytes(const [2]);
+
+    final media = await const LibraryScanner(
+      thumbnailService: _FakeThumbnailService(),
+    ).mediaTree(output.path, 'PC', 'Game', subAlbumPath: 'Changed');
+
+    expect(media.map((item) => item.path), [included.path]);
+    expect(media.single.subAlbumPath, 'Changed');
+    expect(media.single.sourceModifiedAt, isNotNull);
+    expect(media.single.sourceSize, 1);
+  });
+
   test('keeps sub-albums and scans video files', () async {
     final output = await Directory.systemTemp.createTemp('gaming-memories-');
     addTearDown(() => output.delete(recursive: true));
@@ -240,6 +263,11 @@ void main() {
 
 class _FakeThumbnailService extends ThumbnailService {
   const _FakeThumbnailService();
+
+  @override
+  Future<String?> ensureImageThumbnail(File source, FileStat sourceStat) async {
+    return '${source.path}.thumb.jpg';
+  }
 
   @override
   Future<String?> ensureVideoThumbnail(File source, FileStat sourceStat) async {

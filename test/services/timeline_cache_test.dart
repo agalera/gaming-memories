@@ -21,6 +21,8 @@ void main() {
       capturedAt: DateTime(2026, 2, 1),
       kind: MediaKind.image,
       thumbnailPath: '/cache/new.thumb.jpg',
+      sourceModifiedAt: DateTime(2026, 2, 1, 12),
+      sourceSize: 2048,
     );
     final older = MediaItem(
       path: p.join(directory.path, 'PC', 'Game', 'old.mp4'),
@@ -40,6 +42,8 @@ void main() {
     expect(restored.last.kind, MediaKind.video);
     expect(restored.last.subAlbumPath, 'Clips');
     expect(restored.last.duration, const Duration(seconds: 42));
+    expect(restored.first.sourceModifiedAt, DateTime(2026, 2, 1, 12));
+    expect(restored.first.sourceSize, 2048);
     expect(await cache.load(p.join(directory.path, 'another')), isEmpty);
   });
 
