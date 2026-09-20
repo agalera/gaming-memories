@@ -10,7 +10,7 @@ PLATFORM ?= linux
 BUILD_MODE ?= debug
 ARGS ?=
 
-.PHONY: help setup deps outdated upgrade devices doctor run run-linux run-macos run-windows analyze format format-check test check build build-linux build-macos build-windows clean
+.PHONY: help setup deps outdated upgrade devices doctor run run-linux run-macos run-windows analyze format format-check test check icons build build-linux build-macos build-windows clean
 
 help: ## Show the available commands.
 	@awk 'BEGIN {FS = ":.*## "; printf "Usage: make <target> [VARIABLE=value]\n\nTargets:\n"} /^[a-zA-Z0-9_-]+:.*## / {printf "  %-16s %s\n", $$1, $$2}' $(MAKEFILE_LIST)
@@ -59,6 +59,9 @@ test: ## Run all tests. Use ARGS for extra Flutter test options.
 	$(FLUTTER) test $(ARGS)
 
 check: format-check analyze test ## Run all source checks.
+
+icons: ## Generate desktop icons from assets/logo.png.
+	./tool/generate_desktop_icons.sh
 
 build: ## Build a desktop app. Set PLATFORM and BUILD_MODE as needed.
 	$(FLUTTER) build $(PLATFORM) --$(BUILD_MODE) $(ARGS)
