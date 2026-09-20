@@ -1,6 +1,7 @@
 import 'dart:io';
 
 import 'package:flutter/gestures.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:forui/forui.dart';
@@ -396,6 +397,159 @@ void main() {
     expect(find.text('Image details'), findsNothing);
     expect(scrollState.mounted, isTrue);
     expect(scrollState.position.pixels, offset);
+
+    await tester.pumpWidget(const SizedBox.shrink());
+    await tester.pump(const Duration(milliseconds: 200));
+  });
+
+  testWidgets('zooms the detail image with a double tap and resets it', (
+    tester,
+  ) async {
+    final media = List.generate(
+      2,
+      (index) => MediaItem(
+        path: '/library/PC/Game/screenshot-$index.jpg',
+        platform: 'PC',
+        game: 'Game',
+        capturedAt: DateTime(2026, 1, 1).add(Duration(days: index)),
+        kind: MediaKind.image,
+      ),
+    );
+    final controller = LibraryController(
+      configStore: const ConfigStore(filePath: 'unused'),
+      scanner: const LibraryScanner(),
+      providers: const [],
+    )..isInitializing = false;
+    controller.library = MediaLibrary(
+      albums: [GameAlbum(platform: 'PC', game: 'Game', media: media)],
+    );
+
+    await tester.pumpWidget(GamingMemoriesApp(controller: controller));
+    await tester.pump();
+    controller.showMedia(media.first);
+    await tester.pump(const Duration(milliseconds: 200));
+
+    final viewer = find.byKey(const ValueKey('media-detail-viewer'));
+    Matrix4 transformation() => tester
+        .widget<InteractiveViewer>(viewer)
+        .transformationController!
+        .value;
+
+    Future<void> doubleTap() async {
+      await tester.tap(viewer);
+      await tester.pump(const Duration(milliseconds: 50));
+      await tester.tap(viewer);
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 300));
+    }
+
+    expect(transformation().getMaxScaleOnAxis(), 1);
+
+    await doubleTap();
+    expect(transformation().getMaxScaleOnAxis(), closeTo(2.5, 0.01));
+
+    await doubleTap();
+    expect(transformation().getMaxScaleOnAxis(), closeTo(1, 0.01));
+
+    await doubleTap();
+    expect(transformation().getMaxScaleOnAxis(), closeTo(2.5, 0.01));
+
+    controller.showMedia(media.last);
+    await tester.pump(const Duration(milliseconds: 200));
+
+    expect(transformation(), Matrix4.identity());
+
+    await tester.pumpWidget(const SizedBox.shrink());
+    await tester.pump(const Duration(milliseconds: 200));
+  });
+
+  testWidgets('pans, pinches and modifier-zooms with trackpad gestures', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(1600, 1000);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+
+    final media = [
+      MediaItem(
+        path: '/library/PC/Game/screenshot-0.jpg',
+        platform: 'PC',
+        game: 'Game',
+        capturedAt: DateTime(2026, 1, 1),
+        kind: MediaKind.image,
+      ),
+    ];
+    final controller = LibraryController(
+      configStore: const ConfigStore(filePath: 'unused'),
+      scanner: const LibraryScanner(),
+      providers: const [],
+    )..isInitializing = false;
+    controller.library = MediaLibrary(
+      albums: [GameAlbum(platform: 'PC', game: 'Game', media: media)],
+    );
+
+    await tester.pumpWidget(GamingMemoriesApp(controller: controller));
+    await tester.pump();
+    controller.showMedia(media.first);
+    await tester.pump(const Duration(milliseconds: 200));
+
+    final viewer = find.byKey(const ValueKey('media-detail-viewer'));
+    Matrix4 transformation() => tester
+        .widget<InteractiveViewer>(viewer)
+        .transformationController!
+        .value;
+
+    // Zoomed in, so there is room to pan.
+    await tester.tap(viewer);
+    await tester.pump(const Duration(milliseconds: 50));
+    await tester.tap(viewer);
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 300));
+
+    final zoomed = transformation().clone();
+    final pointer = TestPointer(1, PointerDeviceKind.trackpad);
+    await tester.sendEventToBinding(pointer.hover(tester.getCenter(viewer)));
+    await tester.sendEventToBinding(pointer.scroll(const Offset(0, 40)));
+    await tester.pump();
+
+    expect(
+      transformation().getMaxScaleOnAxis(),
+      closeTo(zoomed.getMaxScaleOnAxis(), 0.001),
+    );
+    expect(
+      transformation().getTranslation().y,
+      lessThan(zoomed.getTranslation().y),
+    );
+
+    final panned = transformation().clone();
+    await tester.sendKeyDownEvent(LogicalKeyboardKey.metaLeft);
+    await tester.pump();
+    await tester.sendEventToBinding(pointer.scroll(const Offset(0, -40)));
+    await tester.pump();
+    await tester.sendKeyUpEvent(LogicalKeyboardKey.metaLeft);
+    await tester.pump();
+
+    expect(
+      transformation().getMaxScaleOnAxis(),
+      greaterThan(panned.getMaxScaleOnAxis()),
+    );
+
+    final modifierZoomed = transformation().clone();
+    final pinch = await tester.createGesture(
+      kind: PointerDeviceKind.trackpad,
+      pointer: 7,
+    );
+    await pinch.panZoomStart(tester.getCenter(viewer));
+    await tester.pump();
+    await pinch.panZoomUpdate(tester.getCenter(viewer), scale: 1.2);
+    await tester.pump();
+    await pinch.panZoomEnd();
+    await tester.pump();
+
+    expect(
+      transformation().getMaxScaleOnAxis(),
+      greaterThan(modifierZoomed.getMaxScaleOnAxis()),
+    );
 
     await tester.pumpWidget(const SizedBox.shrink());
     await tester.pump(const Duration(milliseconds: 200));

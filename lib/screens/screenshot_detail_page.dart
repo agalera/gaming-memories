@@ -1,5 +1,6 @@
 import 'dart:io';
 
+import 'package:flutter/services.dart';
 import 'package:forui/forui.dart';
 import 'package:material_ui/material_ui.dart';
 import 'package:media_kit/media_kit.dart';
@@ -53,10 +54,114 @@ class MediaDetailPage extends StatelessWidget {
   }
 }
 
-class _MediaPreview extends StatelessWidget {
+class _MediaPreview extends StatefulWidget {
   const _MediaPreview({required this.media});
 
   final MediaItem media;
+
+  @override
+  State<_MediaPreview> createState() => _MediaPreviewState();
+}
+
+class _MediaPreviewState extends State<_MediaPreview>
+    with SingleTickerProviderStateMixin {
+  static const double _minScale = 0.5;
+  static const double _maxScale = 5;
+  static const double _doubleTapScale = 2.5;
+
+  final TransformationController _transformation = TransformationController();
+  late final AnimationController _zoomAnimation;
+  Animation<Matrix4>? _zoomTween;
+  Offset _doubleTapFocalPoint = Offset.zero;
+  bool _zoomModifierHeld = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _zoomAnimation = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 180),
+    )..addListener(_applyZoomAnimation);
+    HardwareKeyboard.instance.addHandler(_handleKeyEvent);
+  }
+
+  @override
+  void didUpdateWidget(covariant _MediaPreview oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.media.path != widget.media.path) {
+      _resetZoom();
+    }
+  }
+
+  @override
+  void dispose() {
+    HardwareKeyboard.instance.removeHandler(_handleKeyEvent);
+    _zoomAnimation.dispose();
+    _transformation.dispose();
+    super.dispose();
+  }
+
+  // Trackpad scroll pans by default, and zooms while the macOS zoom modifier
+  // is held, which is how Preview and Photos behave.
+  bool _handleKeyEvent(KeyEvent event) {
+    final keyboard = HardwareKeyboard.instance;
+    final held = keyboard.isMetaPressed || keyboard.isControlPressed;
+    if (held != _zoomModifierHeld && mounted) {
+      setState(() => _zoomModifierHeld = held);
+    }
+    return false;
+  }
+
+  void _applyZoomAnimation() {
+    final tween = _zoomTween;
+    if (tween != null) {
+      _transformation.value = tween.value;
+    }
+  }
+
+  void _resetZoom() {
+    _zoomAnimation.stop();
+    _zoomTween = null;
+    _transformation.value = Matrix4.identity();
+  }
+
+  void _animateTo(Matrix4 target) {
+    _zoomTween = Matrix4Tween(
+      begin: _transformation.value,
+      end: target,
+    ).animate(CurvedAnimation(parent: _zoomAnimation, curve: Curves.easeOut));
+    _zoomAnimation.forward(from: 0);
+  }
+
+  void _handleDoubleTapDown(TapDownDetails details) {
+    _doubleTapFocalPoint = details.localPosition;
+  }
+
+  void _handleDoubleTap(Size viewport) {
+    if (_transformation.value.getMaxScaleOnAxis() > 1.01) {
+      _animateTo(Matrix4.identity());
+      return;
+    }
+
+    _animateTo(_zoomedAt(_doubleTapFocalPoint, viewport));
+  }
+
+  // Scales around the tapped point, keeping the image inside the viewport so
+  // the result matches what InteractiveViewer allows when panning.
+  Matrix4 _zoomedAt(Offset focalPoint, Size viewport) {
+    final x = (focalPoint.dx * (1 - _doubleTapScale)).clamp(
+      viewport.width * (1 - _doubleTapScale),
+      0.0,
+    );
+    final y = (focalPoint.dy * (1 - _doubleTapScale)).clamp(
+      viewport.height * (1 - _doubleTapScale),
+      0.0,
+    );
+
+    return Matrix4.identity()
+      ..translateByDouble(x, y, 0, 1)
+      ..scaleByDouble(_doubleTapScale, _doubleTapScale, 1, 1);
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -64,23 +169,32 @@ class _MediaPreview extends StatelessWidget {
       clipBehavior: Clip.antiAlias,
       child: ColoredBox(
         color: context.theme.colors.muted,
-        child: media.isVideo
-            ? _VideoPreview(media: media)
+        child: widget.media.isVideo
+            ? _VideoPreview(media: widget.media)
             : Padding(
                 padding: const EdgeInsets.all(12),
-                child: InteractiveViewer(
-                  minScale: 0.5,
-                  maxScale: 5,
-                  child: Center(
-                    child: Image.file(
-                      media.file,
-                      key: const ValueKey('media-detail-image'),
-                      fit: BoxFit.contain,
-                      errorBuilder: (context, error, stackTrace) => Center(
-                        child: Icon(
-                          FLucideIcons.imageOff,
-                          size: 44,
-                          color: context.theme.colors.mutedForeground,
+                child: LayoutBuilder(
+                  builder: (context, constraints) => GestureDetector(
+                    onDoubleTapDown: _handleDoubleTapDown,
+                    onDoubleTap: () => _handleDoubleTap(constraints.biggest),
+                    child: InteractiveViewer(
+                      key: const ValueKey('media-detail-viewer'),
+                      transformationController: _transformation,
+                      trackpadScrollCausesScale: _zoomModifierHeld,
+                      minScale: _minScale,
+                      maxScale: _maxScale,
+                      child: Center(
+                        child: Image.file(
+                          widget.media.file,
+                          key: const ValueKey('media-detail-image'),
+                          fit: BoxFit.contain,
+                          errorBuilder: (context, error, stackTrace) => Center(
+                            child: Icon(
+                              FLucideIcons.imageOff,
+                              size: 44,
+                              color: context.theme.colors.mutedForeground,
+                            ),
+                          ),
                         ),
                       ),
                     ),

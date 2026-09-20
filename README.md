@@ -7,6 +7,7 @@ The app includes these functions:
 - A timeline that shows all media by date.
 - An album tree that groups media by platform, game, and nested folder.
 - Video thumbnails, duration details, and video playback.
+- An image detail view that zooms with a trackpad pinch, a double click, or a modifier scroll, and pans with a two-finger scroll.
 - Settings for the library folder and provider folder.
 - Battle.net, Guild Wars 2, Hytale, Minecraft, PlayStation 4, PlayStation 5, and Steam providers.
 - SHA-1 collision names that prevent file loss.
