@@ -233,16 +233,6 @@ class LibraryController extends ChangeNotifier {
     };
   }
 
-  String get pageDescription {
-    return switch (view) {
-      LibraryView.timeline => 'All media, from newest to oldest',
-      LibraryView.platform => 'Games in this platform',
-      LibraryView.album => 'Media in this game',
-      LibraryView.subAlbum => 'Media in this folder',
-      LibraryView.settings => 'Library and provider setup',
-    };
-  }
-
   SubAlbum? get _selectedSubAlbum {
     if (selectedPlatform == null ||
         selectedGame == null ||

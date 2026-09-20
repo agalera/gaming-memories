@@ -171,7 +171,7 @@ class _LibraryShellState extends State<LibraryShell> {
     final media = controller.selectedMedia;
     if (media != null) {
       return FHeader.nested(
-        title: Text(media.game),
+        title: _breadcrumb(controller),
         titleAlignment: Alignment.centerLeft,
         prefixes: [
           FHeaderAction.back(
@@ -191,12 +191,14 @@ class _LibraryShellState extends State<LibraryShell> {
   }
 
   Widget _breadcrumb(LibraryController controller) {
+    final media = controller.selectedMedia;
+    final isMediaDetail = media != null;
     final items = <Widget>[
       FBreadcrumbItem(
         key: const ValueKey('breadcrumb-library'),
-        current: controller.view == LibraryView.timeline,
+        current: controller.view == LibraryView.timeline && !isMediaDetail,
         onPress: controller.view == LibraryView.timeline
-            ? null
+            ? (isMediaDetail ? controller.closeMedia : null)
             : controller.showTimeline,
         child: const Text('Library'),
       ),
@@ -206,9 +208,9 @@ class _LibraryShellState extends State<LibraryShell> {
       items.add(
         FBreadcrumbItem(
           key: ValueKey('breadcrumb-platform-$platform'),
-          current: controller.view == LibraryView.platform,
+          current: controller.view == LibraryView.platform && !isMediaDetail,
           onPress: controller.view == LibraryView.platform
-              ? null
+              ? (isMediaDetail ? controller.closeMedia : null)
               : () => controller.showPlatform(platform),
           child: Text(platform),
         ),
@@ -219,9 +221,9 @@ class _LibraryShellState extends State<LibraryShell> {
       items.add(
         FBreadcrumbItem(
           key: ValueKey('breadcrumb-game-$game'),
-          current: controller.view == LibraryView.album,
+          current: controller.view == LibraryView.album && !isMediaDetail,
           onPress: controller.view == LibraryView.album
-              ? null
+              ? (isMediaDetail ? controller.closeMedia : null)
               : () => controller.showAlbum(platform, game),
           child: Text(game),
         ),
@@ -239,14 +241,23 @@ class _LibraryShellState extends State<LibraryShell> {
         items.add(
           FBreadcrumbItem(
             key: ValueKey('breadcrumb-folder-$targetPath'),
-            current: index == segments.length - 1,
+            current: index == segments.length - 1 && !isMediaDetail,
             onPress: index == segments.length - 1
-                ? null
+                ? (isMediaDetail ? controller.closeMedia : null)
                 : () => controller.showSubAlbum(platform, game, targetPath),
             child: Text(segment),
           ),
         );
       }
+    }
+    if (media != null) {
+      items.add(
+        FBreadcrumbItem(
+          key: ValueKey('breadcrumb-media-${media.path}'),
+          current: true,
+          child: Text(p.basename(media.path)),
+        ),
+      );
     }
     return SingleChildScrollView(
       scrollDirection: Axis.horizontal,
@@ -287,7 +298,6 @@ class _LibraryShellState extends State<LibraryShell> {
                   controller.view == LibraryView.subAlbum
               ? controller.folderListing.folders
               : const [],
-          description: controller.pageDescription,
           isLoading: controller.isViewLoading,
           isTimelineRefreshing:
               controller.view == LibraryView.timeline &&

@@ -12,7 +12,6 @@ class MediaGallery extends StatelessWidget {
     required this.media,
     required this.games,
     required this.folders,
-    required this.description,
     required this.isLoading,
     required this.isTimelineRefreshing,
     required this.needsSetup,
@@ -24,7 +23,6 @@ class MediaGallery extends StatelessWidget {
   final List<MediaItem> media;
   final List<LibraryFolder> games;
   final List<LibraryFolder> folders;
-  final String description;
   final bool isLoading;
   final bool isTimelineRefreshing;
   final bool needsSetup;
@@ -46,28 +44,17 @@ class MediaGallery extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
-            children: [
-              Expanded(
-                child: Text(
-                  description,
-                  style: context.theme.typography.body.sm.copyWith(
-                    color: context.theme.colors.mutedForeground,
-                  ),
+          if (isLoading)
+            const Padding(
+              padding: EdgeInsets.only(bottom: 10),
+              child: Align(
+                alignment: Alignment.centerRight,
+                child: SizedBox.square(
+                  dimension: 18,
+                  child: FCircularProgress(),
                 ),
               ),
-              if (isLoading)
-                const SizedBox.square(dimension: 18, child: FCircularProgress())
-              else if (media.isNotEmpty)
-                FBadge(
-                  variant: FBadgeVariant.secondary,
-                  child: Text(
-                    '${media.length} ${media.length == 1 ? 'item' : 'items'}',
-                  ),
-                ),
-            ],
-          ),
-          const SizedBox(height: 18),
+            ),
           Expanded(
             child: LayoutBuilder(
               builder: (context, constraints) {

@@ -198,6 +198,22 @@ void main() {
     await tester.pump();
     expect(controller.view, LibraryView.album);
 
+    final mediaPath = p.join(directory.path, 'missing.jpg');
+    await tester.tap(find.byKey(ValueKey('media-card-$mediaPath')));
+    await tester.pump(const Duration(milliseconds: 200));
+
+    expect(
+      find.byKey(const ValueKey('breadcrumb-game-Diablo IV')),
+      findsOneWidget,
+    );
+    expect(find.byKey(ValueKey('breadcrumb-media-$mediaPath')), findsOneWidget);
+
+    await tester.tap(find.byKey(const ValueKey('breadcrumb-game-Diablo IV')));
+    await tester.pump(const Duration(milliseconds: 200));
+
+    expect(controller.selectedMedia, isNull);
+    expect(controller.view, LibraryView.album);
+
     await tester.pumpWidget(const SizedBox.shrink());
     await tester.pump(const Duration(milliseconds: 200));
   });
@@ -464,8 +480,15 @@ void main() {
     await tester.pump(const Duration(milliseconds: 200));
 
     expect(controller.selectedMedia, same(media[12]));
+    expect(find.byKey(const ValueKey('breadcrumb-library')), findsOneWidget);
+    expect(
+      find.byKey(
+        const ValueKey('breadcrumb-media-/library/PC/Game/screenshot-12.jpg'),
+      ),
+      findsOneWidget,
+    );
     expect(find.text('Image details'), findsOneWidget);
-    expect(find.text('screenshot-12.jpg'), findsOneWidget);
+    expect(find.text('screenshot-12.jpg'), findsNWidgets(2));
     expect(find.byKey(const ValueKey('media-open-location')), findsOneWidget);
     expect(find.byKey(const ValueKey('media-copy-image')), findsOneWidget);
     expect(find.byKey(const ValueKey('media-copy-path')), findsOneWidget);
