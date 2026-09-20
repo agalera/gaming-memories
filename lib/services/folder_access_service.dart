@@ -12,6 +12,7 @@ abstract final class FolderGrantIds {
   static const guildWars2 = 'provider.guildWars2';
   static const hytale = 'provider.hytale';
   static const minecraft = 'provider.minecraft';
+  static const nintendoSwitch2 = 'provider.nintendoSwitch2';
   static const playStation4 = 'provider.playStation4';
   static const playStation5 = 'provider.playStation5';
   static const steam = 'provider.steam';

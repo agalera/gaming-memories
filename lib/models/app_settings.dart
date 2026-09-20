@@ -217,6 +217,65 @@ class SteamSettings {
   };
 }
 
+class NintendoSwitch2Settings {
+  const NintendoSwitch2Settings({
+    required this.enabled,
+    required this.useCustomPath,
+    required this.sourcePath,
+    required this.ignoredFolders,
+  });
+
+  const NintendoSwitch2Settings.disabled()
+    : enabled = false,
+      useCustomPath = false,
+      sourcePath = '',
+      ignoredFolders = defaultIgnoredFolders;
+
+  static const defaultIgnoredFolders = ['Otra carpeta'];
+
+  final bool enabled;
+  final bool useCustomPath;
+  final String sourcePath;
+  final List<String> ignoredFolders;
+
+  NintendoSwitch2Settings copyWith({
+    bool? enabled,
+    bool? useCustomPath,
+    String? sourcePath,
+    List<String>? ignoredFolders,
+  }) {
+    return NintendoSwitch2Settings(
+      enabled: enabled ?? this.enabled,
+      useCustomPath: useCustomPath ?? this.useCustomPath,
+      sourcePath: sourcePath ?? this.sourcePath,
+      ignoredFolders: ignoredFolders ?? this.ignoredFolders,
+    );
+  }
+
+  factory NintendoSwitch2Settings.fromJson(Map<String, Object?> json) {
+    final storedPath = json['sourcePath'] as String? ?? '';
+    final hasLegacyCustomPath =
+        storedPath.trim().isNotEmpty && storedPath.trim() != 'auto';
+    final ignored = json['ignoredFolders'];
+
+    return NintendoSwitch2Settings(
+      enabled: json['enabled'] as bool? ?? false,
+      useCustomPath: json['useCustomPath'] as bool? ?? hasLegacyCustomPath,
+      sourcePath: hasLegacyCustomPath ? storedPath : '',
+      ignoredFolders: ignored is List
+          ? ignored.whereType<String>().toList(growable: false)
+          : defaultIgnoredFolders,
+    );
+  }
+
+  Map<String, Object?> toJson() => {
+    'enabled': enabled,
+    'useCustomPath': useCustomPath,
+    'sourcePath': sourcePath,
+    'ignoredFolders': ignoredFolders,
+  };
+}
+
 class AppSettings {
   const AppSettings({
     required this.outputPath,
@@ -224,6 +283,7 @@ class AppSettings {
     this.guildWars2 = const ProviderSettings.disabled(),
     this.hytale = const ProviderSettings.disabled(),
     this.minecraft = const ProviderSettings.disabled(),
+    this.nintendoSwitch2 = const NintendoSwitch2Settings.disabled(),
     this.playStation4 = const ProviderSettings.disabled(),
     this.playStation5 = const ProviderSettings.disabled(),
     this.steam = const SteamSettings.disabled(),
@@ -237,6 +297,7 @@ class AppSettings {
       guildWars2 = const ProviderSettings.disabled(),
       hytale = const ProviderSettings.disabled(),
       minecraft = const ProviderSettings.disabled(),
+      nintendoSwitch2 = const NintendoSwitch2Settings.disabled(),
       playStation4 = const ProviderSettings.disabled(),
       playStation5 = const ProviderSettings.disabled(),
       steam = const SteamSettings.disabled(),
@@ -248,6 +309,7 @@ class AppSettings {
   final ProviderSettings guildWars2;
   final ProviderSettings hytale;
   final ProviderSettings minecraft;
+  final NintendoSwitch2Settings nintendoSwitch2;
   final ProviderSettings playStation4;
   final ProviderSettings playStation5;
   final SteamSettings steam;
@@ -260,6 +322,7 @@ class AppSettings {
     ProviderSettings? guildWars2,
     ProviderSettings? hytale,
     ProviderSettings? minecraft,
+    NintendoSwitch2Settings? nintendoSwitch2,
     ProviderSettings? playStation4,
     ProviderSettings? playStation5,
     SteamSettings? steam,
@@ -272,6 +335,7 @@ class AppSettings {
       guildWars2: guildWars2 ?? this.guildWars2,
       hytale: hytale ?? this.hytale,
       minecraft: minecraft ?? this.minecraft,
+      nintendoSwitch2: nintendoSwitch2 ?? this.nintendoSwitch2,
       playStation4: playStation4 ?? this.playStation4,
       playStation5: playStation5 ?? this.playStation5,
       steam: steam ?? this.steam,
@@ -285,6 +349,7 @@ class AppSettings {
     final guildWars2Json = json['guildWars2'];
     final hytaleJson = json['hytale'];
     final minecraftJson = json['minecraft'];
+    final nintendoSwitch2Json = json['nintendoSwitch2'];
     final playStation4Json = json['playStation4'];
     final playStation5Json = json['playStation5'];
     final steamJson = json['steam'];
@@ -320,6 +385,9 @@ class AppSettings {
       minecraft: minecraftJson is Map<String, Object?>
           ? ProviderSettings.fromJson(minecraftJson)
           : const ProviderSettings.disabled(),
+      nintendoSwitch2: nintendoSwitch2Json is Map<String, Object?>
+          ? NintendoSwitch2Settings.fromJson(nintendoSwitch2Json)
+          : const NintendoSwitch2Settings.disabled(),
       playStation4: playStation4Json is Map<String, Object?>
           ? ProviderSettings.fromJson(playStation4Json)
           : const ProviderSettings.disabled(),
@@ -335,13 +403,14 @@ class AppSettings {
   }
 
   Map<String, Object?> toJson() => {
-    'version': 10,
+    'version': 11,
     'outputPath': outputPath,
     'themeMode': themeMode.name,
     'battleNet': battleNet.toJson(),
     'guildWars2': guildWars2.toJson(),
     'hytale': hytale.toJson(),
     'minecraft': minecraft.toJson(),
+    'nintendoSwitch2': nintendoSwitch2.toJson(),
     'playStation4': playStation4.toJson(),
     'playStation5': playStation5.toJson(),
     'steam': steam.toJson(),

@@ -45,6 +45,7 @@ void main() {
     expect(find.text('Color mode'), findsOneWidget);
     expect(find.text('Battle.net'), findsOneWidget);
     expect(find.text('Guild Wars 2'), findsOneWidget);
+    expect(find.text('Nintendo Switch 2'), findsOneWidget);
     expect(
       tester
           .widget<FButton>(
@@ -966,6 +967,53 @@ void main() {
 
     expect(controller.settings.minecraft.enabled, isFalse);
     expect(store.saved?.minecraft.enabled, isFalse);
+
+    await tester.pumpWidget(const SizedBox.shrink());
+    await tester.pump(const Duration(milliseconds: 200));
+  });
+
+  testWidgets('edits Nintendo Switch 2 ignored album folders', (tester) async {
+    final store = _MemoryConfigStore();
+    final controller =
+        LibraryController(
+            configStore: store,
+            scanner: const LibraryScanner(),
+            providers: const [],
+          )
+          ..isInitializing = false
+          ..view = LibraryView.settings
+          ..settings = const AppSettings(
+            outputPath: '',
+            nintendoSwitch2: NintendoSwitch2Settings(
+              enabled: true,
+              useCustomPath: false,
+              sourcePath: '',
+              ignoredFolders: ['Otra carpeta'],
+            ),
+          );
+
+    await tester.pumpWidget(GamingMemoriesApp(controller: controller));
+    await tester.pumpAndSettle();
+
+    final input = find.byKey(const ValueKey('nintendo-switch-2-ignored-input'));
+    final add = find.byKey(const ValueKey('nintendo-switch-2-ignored-add'));
+    await tester.ensureVisible(input);
+    await tester.enterText(input, 'News');
+    await tester.tap(add);
+    await tester.pump();
+    await tester.tap(
+      find.byKey(
+        const ValueKey('nintendo-switch-2-ignored-remove-Otra carpeta'),
+      ),
+    );
+    await tester.pump(const Duration(milliseconds: 400));
+    await tester.runAsync(
+      () => Future<void>.delayed(const Duration(milliseconds: 20)),
+    );
+    await tester.pumpAndSettle();
+
+    expect(controller.settings.nintendoSwitch2.ignoredFolders, ['News']);
+    expect(store.saved?.nintendoSwitch2.ignoredFolders, ['News']);
 
     await tester.pumpWidget(const SizedBox.shrink());
     await tester.pump(const Duration(milliseconds: 200));

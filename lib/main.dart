@@ -11,6 +11,7 @@ import 'providers/battle_net_provider.dart';
 import 'providers/guild_wars_2_provider.dart';
 import 'providers/hytale_provider.dart';
 import 'providers/minecraft_provider.dart';
+import 'providers/nintendo_switch_2_provider.dart';
 import 'providers/playstation_4_provider.dart';
 import 'providers/playstation_5_provider.dart';
 import 'providers/steam_provider.dart';
@@ -43,6 +44,7 @@ Future<void> main() async {
       const GuildWars2Provider(),
       HytaleProvider(providerPaths: providerPaths),
       MinecraftProvider(providerPaths: providerPaths),
+      const NintendoSwitch2Provider(),
       const PlayStation4Provider(),
       const PlayStation5Provider(),
       SteamProvider(

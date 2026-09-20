@@ -529,6 +529,55 @@ void main() {
   });
 
   test(
+    'saves Nintendo Switch 2 folder access as a copied album path',
+    () async {
+      final directory = await Directory.systemTemp.createTemp(
+        'gaming-memories-',
+      );
+      final album = Directory(p.join(directory.path, 'Switch 2 album'))
+        ..createSync();
+      addTearDown(() => directory.delete(recursive: true));
+      final access = _FakeFolderAccess(
+        chosen: FolderAccessLease(
+          grant: FolderGrant(
+            platform: 'macos',
+            path: album.path,
+            access: FolderGrantAccess.readOnly,
+            bookmark: 'switch-bookmark',
+          ),
+          token: 'switch-lease',
+        ),
+      );
+      final store = ConfigStore(
+        filePath: p.join(directory.path, 'settings.json'),
+      );
+      final controller = LibraryController(
+        configStore: store,
+        scanner: const LibraryScanner(),
+        providers: const [],
+        folderAccess: access,
+      );
+
+      final result = await controller.chooseFolder(
+        SettingsFolderTarget.nintendoSwitch2Custom,
+      );
+
+      expect(result.saved, isTrue);
+      expect(controller.settings.nintendoSwitch2.enabled, isTrue);
+      expect(controller.settings.nintendoSwitch2.useCustomPath, isTrue);
+      expect(controller.settings.nintendoSwitch2.sourcePath, album.path);
+      expect(
+        controller
+            .settings
+            .folderGrants[FolderGrantIds.nintendoSwitch2]
+            ?.bookmark,
+        'switch-bookmark',
+      );
+      expect((await store.load()).nintendoSwitch2.sourcePath, album.path);
+    },
+  );
+
+  test(
     'saves automatic Hytale folder access without making it custom',
     () async {
       final directory = await Directory.systemTemp.createTemp(

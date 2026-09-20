@@ -24,6 +24,8 @@ class _SettingsPageState extends State<SettingsPage> {
   late final TextEditingController _guildWars2Controller;
   late final TextEditingController _hytaleController;
   late final TextEditingController _minecraftController;
+  late final TextEditingController _nintendoSwitch2Controller;
+  late final TextEditingController _nintendoSwitch2IgnoredInputController;
   late final TextEditingController _playStation4Controller;
   late final TextEditingController _playStation5Controller;
   late final TextEditingController _steamPathController;
@@ -32,6 +34,7 @@ class _SettingsPageState extends State<SettingsPage> {
   late final TextEditingController _steamIgnoredInputController;
   late final TextEditingController _steamCustomIdController;
   late final TextEditingController _steamCustomNameController;
+  late final List<String> _nintendoSwitch2IgnoredFolders;
   late final List<String> _steamIgnoredGames;
   late final List<_CustomGame> _steamCustomGames;
   late AppThemeMode _themeMode;
@@ -44,6 +47,8 @@ class _SettingsPageState extends State<SettingsPage> {
   late bool _hytaleDownloadCovers;
   late bool _minecraftEnabled;
   late bool _minecraftUseCustomPath;
+  late bool _nintendoSwitch2Enabled;
+  late bool _nintendoSwitch2UseCustomPath;
   late bool _playStation4Enabled;
   late bool _playStation5Enabled;
   late bool _steamEnabled;
@@ -55,6 +60,7 @@ class _SettingsPageState extends State<SettingsPage> {
   String? _guildWars2PathError;
   String? _hytalePathError;
   String? _minecraftPathError;
+  String? _nintendoSwitch2PathError;
   String? _playStation4PathError;
   String? _playStation5PathError;
   String? _steamPathError;
@@ -80,6 +86,12 @@ class _SettingsPageState extends State<SettingsPage> {
     _hytaleController = TextEditingController(text: hytale.sourcePath);
     final minecraft = widget.controller.settings.minecraft;
     _minecraftController = TextEditingController(text: minecraft.sourcePath);
+    final nintendoSwitch2 = widget.controller.settings.nintendoSwitch2;
+    _nintendoSwitch2Controller = TextEditingController(
+      text: nintendoSwitch2.sourcePath,
+    );
+    _nintendoSwitch2IgnoredInputController = TextEditingController();
+    _nintendoSwitch2IgnoredFolders = nintendoSwitch2.ignoredFolders.toList();
     final playStation4 = widget.controller.settings.playStation4;
     _playStation4Controller = TextEditingController(
       text: playStation4.sourcePath,
@@ -109,6 +121,8 @@ class _SettingsPageState extends State<SettingsPage> {
     _hytaleDownloadCovers = hytale.downloadCovers;
     _minecraftEnabled = minecraft.enabled;
     _minecraftUseCustomPath = minecraft.useCustomPath;
+    _nintendoSwitch2Enabled = nintendoSwitch2.enabled;
+    _nintendoSwitch2UseCustomPath = nintendoSwitch2.useCustomPath;
     _playStation4Enabled = playStation4.enabled;
     _playStation5Enabled = playStation5.enabled;
     _steamEnabled = steam.enabled;
@@ -123,6 +137,7 @@ class _SettingsPageState extends State<SettingsPage> {
       _guildWars2Controller,
       _hytaleController,
       _minecraftController,
+      _nintendoSwitch2Controller,
       _playStation4Controller,
       _playStation5Controller,
       _steamPathController,
@@ -158,6 +173,8 @@ class _SettingsPageState extends State<SettingsPage> {
     _guildWars2Controller.dispose();
     _hytaleController.dispose();
     _minecraftController.dispose();
+    _nintendoSwitch2Controller.dispose();
+    _nintendoSwitch2IgnoredInputController.dispose();
     _playStation4Controller.dispose();
     _playStation5Controller.dispose();
     _steamPathController.dispose();
@@ -535,6 +552,159 @@ class _SettingsPageState extends State<SettingsPage> {
                 onBrowse: () => _chooseDirectory(
                   SettingsFolderTarget.playStation5Custom,
                   initialPath: _playStation5Controller.text,
+                ),
+              ),
+              const SizedBox(height: 16),
+              FCard(
+                child: Padding(
+                  padding: const EdgeInsets.all(20),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          Container(
+                            width: 44,
+                            height: 44,
+                            decoration: BoxDecoration(
+                              color: context.theme.colors.muted,
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            child: const Icon(FLucideIcons.gamepad2),
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  'Nintendo Switch 2',
+                                  style: context.theme.typography.body.lg
+                                      .copyWith(fontWeight: FontWeight.w700),
+                                ),
+                                const SizedBox(height: 2),
+                                Text(
+                                  'Console · Screenshots and clips',
+                                  style: context.theme.typography.body.sm
+                                      .copyWith(
+                                        color: context
+                                            .theme
+                                            .colors
+                                            .mutedForeground,
+                                      ),
+                                ),
+                              ],
+                            ),
+                          ),
+                          FSwitch(
+                            key: const ValueKey('nintendo-switch-2-enabled'),
+                            value: _nintendoSwitch2Enabled,
+                            semanticsLabel: 'Enable Nintendo Switch 2',
+                            onChange: (value) => unawaited(
+                              _setProviderEnabled(
+                                _SettingsProvider.nintendoSwitch2,
+                                value,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 18),
+                      FCheckbox(
+                        key: const ValueKey('nintendo-switch-2-custom-path'),
+                        label: const Text('Use copied album folder'),
+                        description: const Text(
+                          'Otherwise, read a connected console over USB on Linux.',
+                        ),
+                        value: _nintendoSwitch2UseCustomPath,
+                        enabled: _nintendoSwitch2Enabled,
+                        onChange: (value) => unawaited(
+                          _setCustomPath(
+                            _SettingsProvider.nintendoSwitch2,
+                            value,
+                          ),
+                        ),
+                      ),
+                      if (_nintendoSwitch2UseCustomPath) ...[
+                        const SizedBox(height: 16),
+                        _DirectoryField(
+                          fieldKey: const ValueKey(
+                            'nintendo-switch-2-path-field',
+                          ),
+                          controller: _nintendoSwitch2Controller,
+                          label: 'Copied album folder',
+                          hint: '/path/to/Nintendo Switch 2 album',
+                          error: _nintendoSwitch2PathError,
+                          enabled: _nintendoSwitch2Enabled,
+                          readOnly:
+                              widget.controller.usesPersistentFolderAccess,
+                          buttonLabel: _folderButtonLabel(
+                            FolderGrantIds.nintendoSwitch2,
+                          ),
+                          onBrowse: () => _chooseDirectory(
+                            SettingsFolderTarget.nintendoSwitch2Custom,
+                            initialPath: _nintendoSwitch2Controller.text,
+                          ),
+                        ),
+                      ] else ...[
+                        const SizedBox(height: 10),
+                        Text(
+                          'Direct collection requires Linux and the mtp-folders, mtp-files, and mtp-connect tools from libmtp.',
+                          style: context.theme.typography.body.xs.copyWith(
+                            color: context.theme.colors.mutedForeground,
+                          ),
+                        ),
+                      ],
+                      const SizedBox(height: 16),
+                      Row(
+                        crossAxisAlignment: CrossAxisAlignment.end,
+                        children: [
+                          Expanded(
+                            child: FTextField(
+                              key: const ValueKey(
+                                'nintendo-switch-2-ignored-input',
+                              ),
+                              control: FTextFieldControl.managed(
+                                controller:
+                                    _nintendoSwitch2IgnoredInputController,
+                              ),
+                              label: const Text('Ignored album folder'),
+                              hint: 'Other folder',
+                              enabled: _nintendoSwitch2Enabled,
+                              onSubmit: (_) =>
+                                  _addNintendoSwitch2IgnoredFolder(),
+                            ),
+                          ),
+                          const SizedBox(width: 10),
+                          FButton(
+                            key: const ValueKey(
+                              'nintendo-switch-2-ignored-add',
+                            ),
+                            variant: FButtonVariant.outline,
+                            mainAxisSize: MainAxisSize.min,
+                            onPress: _nintendoSwitch2Enabled
+                                ? _addNintendoSwitch2IgnoredFolder
+                                : null,
+                            prefix: const Icon(FLucideIcons.plus),
+                            child: const Text('Add'),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 6),
+                      Text(
+                        'Skip the console folder used for captures outside games, or any game you do not want to import.',
+                        style: context.theme.typography.body.xs.copyWith(
+                          color: context.theme.colors.mutedForeground,
+                        ),
+                      ),
+                      const SizedBox(height: 10),
+                      _IgnoredFoldersList(
+                        folders: _nintendoSwitch2IgnoredFolders,
+                        enabled: _nintendoSwitch2Enabled,
+                        onRemove: _removeNintendoSwitch2IgnoredFolder,
+                      ),
+                    ],
+                  ),
                 ),
               ),
               const SizedBox(height: 16),
@@ -1071,6 +1241,7 @@ class _SettingsPageState extends State<SettingsPage> {
     _guildWars2Controller.text = saved.guildWars2.sourcePath;
     _hytaleController.text = saved.hytale.sourcePath;
     _minecraftController.text = saved.minecraft.sourcePath;
+    _nintendoSwitch2Controller.text = saved.nintendoSwitch2.sourcePath;
     _playStation4Controller.text = saved.playStation4.sourcePath;
     _playStation5Controller.text = saved.playStation5.sourcePath;
     _steamPathController.text = saved.steam.userdataPath;
@@ -1084,6 +1255,8 @@ class _SettingsPageState extends State<SettingsPage> {
       _hytaleUseCustomPath = saved.hytale.useCustomPath;
       _minecraftEnabled = saved.minecraft.enabled;
       _minecraftUseCustomPath = saved.minecraft.useCustomPath;
+      _nintendoSwitch2Enabled = saved.nintendoSwitch2.enabled;
+      _nintendoSwitch2UseCustomPath = saved.nintendoSwitch2.useCustomPath;
       _playStation4Enabled = saved.playStation4.enabled;
       _playStation5Enabled = saved.playStation5.enabled;
       _steamEnabled = saved.steam.enabled;
@@ -1209,6 +1382,8 @@ class _SettingsPageState extends State<SettingsPage> {
         SettingsFolderTarget.minecraftCustom,
       (_SettingsProvider.minecraft, false) =>
         SettingsFolderTarget.minecraftAutomatic,
+      (_SettingsProvider.nintendoSwitch2, true) =>
+        SettingsFolderTarget.nintendoSwitch2Custom,
       (_SettingsProvider.playStation4, true) =>
         SettingsFolderTarget.playStation4Custom,
       (_SettingsProvider.playStation5, true) =>
@@ -1249,6 +1424,8 @@ class _SettingsPageState extends State<SettingsPage> {
               SettingsFolderTarget.guildWars2Custom,
             _SettingsProvider.hytale => SettingsFolderTarget.hytaleCustom,
             _SettingsProvider.minecraft => SettingsFolderTarget.minecraftCustom,
+            _SettingsProvider.nintendoSwitch2 =>
+              SettingsFolderTarget.nintendoSwitch2Custom,
             _SettingsProvider.playStation4 =>
               SettingsFolderTarget.playStation4Custom,
             _SettingsProvider.playStation5 =>
@@ -1294,6 +1471,7 @@ class _SettingsPageState extends State<SettingsPage> {
     _SettingsProvider.guildWars2 => _guildWars2UseCustomPath,
     _SettingsProvider.hytale => _hytaleUseCustomPath,
     _SettingsProvider.minecraft => _minecraftUseCustomPath,
+    _SettingsProvider.nintendoSwitch2 => _nintendoSwitch2UseCustomPath,
     _SettingsProvider.playStation4 => true,
     _SettingsProvider.playStation5 => true,
     _SettingsProvider.steam => _steamUseCustomPath,
@@ -1304,6 +1482,7 @@ class _SettingsPageState extends State<SettingsPage> {
     _SettingsProvider.guildWars2 => _guildWars2Controller.text,
     _SettingsProvider.hytale => _hytaleController.text,
     _SettingsProvider.minecraft => _minecraftController.text,
+    _SettingsProvider.nintendoSwitch2 => _nintendoSwitch2Controller.text,
     _SettingsProvider.playStation4 => _playStation4Controller.text,
     _SettingsProvider.playStation5 => _playStation5Controller.text,
     _SettingsProvider.steam => _steamPathController.text,
@@ -1315,6 +1494,7 @@ class _SettingsPageState extends State<SettingsPage> {
       _SettingsProvider.guildWars2 => FolderGrantIds.guildWars2,
       _SettingsProvider.hytale => FolderGrantIds.hytale,
       _SettingsProvider.minecraft => FolderGrantIds.minecraft,
+      _SettingsProvider.nintendoSwitch2 => FolderGrantIds.nintendoSwitch2,
       _SettingsProvider.playStation4 => FolderGrantIds.playStation4,
       _SettingsProvider.playStation5 => FolderGrantIds.playStation5,
       _SettingsProvider.steam => FolderGrantIds.steam,
@@ -1335,6 +1515,9 @@ class _SettingsPageState extends State<SettingsPage> {
         break;
       case _SettingsProvider.minecraft:
         _minecraftEnabled = value;
+        break;
+      case _SettingsProvider.nintendoSwitch2:
+        _nintendoSwitch2Enabled = value;
         break;
       case _SettingsProvider.playStation4:
         _playStation4Enabled = value;
@@ -1362,6 +1545,9 @@ class _SettingsPageState extends State<SettingsPage> {
       case _SettingsProvider.minecraft:
         _minecraftUseCustomPath = value;
         break;
+      case _SettingsProvider.nintendoSwitch2:
+        _nintendoSwitch2UseCustomPath = value;
+        break;
       case _SettingsProvider.playStation4:
       case _SettingsProvider.playStation5:
         break;
@@ -1384,6 +1570,9 @@ class _SettingsPageState extends State<SettingsPage> {
         break;
       case _SettingsProvider.minecraft:
         _minecraftPathError = value;
+        break;
+      case _SettingsProvider.nintendoSwitch2:
+        _nintendoSwitch2PathError = value;
         break;
       case _SettingsProvider.playStation4:
         _playStation4PathError = value;
@@ -1416,6 +1605,9 @@ class _SettingsPageState extends State<SettingsPage> {
       case SettingsFolderTarget.minecraftCustom:
       case SettingsFolderTarget.minecraftAutomatic:
         _minecraftPathError = value;
+        break;
+      case SettingsFolderTarget.nintendoSwitch2Custom:
+        _nintendoSwitch2PathError = value;
         break;
       case SettingsFolderTarget.playStation4Custom:
         _playStation4PathError = value;
@@ -1558,6 +1750,12 @@ class _SettingsPageState extends State<SettingsPage> {
         useCustomPath: _minecraftUseCustomPath,
         sourcePath: _minecraftController.text.trim(),
       ),
+      nintendoSwitch2: NintendoSwitch2Settings(
+        enabled: _nintendoSwitch2Enabled,
+        useCustomPath: _nintendoSwitch2UseCustomPath,
+        sourcePath: _nintendoSwitch2Controller.text.trim(),
+        ignoredFolders: List.unmodifiable(_nintendoSwitch2IgnoredFolders),
+      ),
       playStation4: ProviderSettings(
         enabled: _playStation4Enabled,
         useCustomPath: true,
@@ -1630,6 +1828,12 @@ class _SettingsPageState extends State<SettingsPage> {
       minecraft: errors.minecraft == null
           ? draft.minecraft
           : saved.minecraft.copyWith(enabled: draft.minecraft.enabled),
+      nintendoSwitch2: errors.nintendoSwitch2 == null
+          ? draft.nintendoSwitch2
+          : saved.nintendoSwitch2.copyWith(
+              enabled: draft.nintendoSwitch2.enabled,
+              ignoredFolders: draft.nintendoSwitch2.ignoredFolders,
+            ),
       playStation4: errors.playStation4 == null
           ? draft.playStation4
           : saved.playStation4.copyWith(enabled: draft.playStation4.enabled),
@@ -1722,6 +1926,13 @@ class _SettingsPageState extends State<SettingsPage> {
               ),
             )
           : Future.value(),
+      draft.nintendoSwitch2.useCustomPath
+          ? _directoryError(
+              draft.nintendoSwitch2.sourcePath,
+              label: 'Copied Nintendo Switch 2 album folder',
+              grantId: FolderGrantIds.nintendoSwitch2,
+            )
+          : Future.value(),
       draft.playStation4.enabled
           ? _directoryError(
               draft.playStation4.sourcePath,
@@ -1759,9 +1970,10 @@ class _SettingsPageState extends State<SettingsPage> {
       guildWars2: results[2],
       hytale: results[3],
       minecraft: results[4],
-      playStation4: results[5],
-      playStation5: results[6],
-      steam: results[7],
+      nintendoSwitch2: results[5],
+      playStation4: results[6],
+      playStation5: results[7],
+      steam: results[8],
     );
   }
 
@@ -1812,6 +2024,7 @@ class _SettingsPageState extends State<SettingsPage> {
       _guildWars2PathError = errors.guildWars2;
       _hytalePathError = errors.hytale;
       _minecraftPathError = errors.minecraft;
+      _nintendoSwitch2PathError = errors.nintendoSwitch2;
       _playStation4PathError = errors.playStation4;
       _playStation5PathError = errors.playStation5;
       _steamPathError = errors.steam;
@@ -1828,6 +2041,24 @@ class _SettingsPageState extends State<SettingsPage> {
       _steamIgnoredGames.add(appId);
       _steamIgnoredInputController.clear();
     });
+    _scheduleAutosave();
+  }
+
+  void _addNintendoSwitch2IgnoredFolder() {
+    final folder = _nintendoSwitch2IgnoredInputController.text.trim();
+    if (folder.isEmpty || _nintendoSwitch2IgnoredFolders.contains(folder)) {
+      return;
+    }
+
+    setState(() {
+      _nintendoSwitch2IgnoredFolders.add(folder);
+      _nintendoSwitch2IgnoredInputController.clear();
+    });
+    _scheduleAutosave();
+  }
+
+  void _removeNintendoSwitch2IgnoredFolder(String folder) {
+    setState(() => _nintendoSwitch2IgnoredFolders.remove(folder));
     _scheduleAutosave();
   }
 
@@ -1872,6 +2103,7 @@ class _PathErrors {
     required this.guildWars2,
     required this.hytale,
     required this.minecraft,
+    required this.nintendoSwitch2,
     required this.playStation4,
     required this.playStation5,
     required this.steam,
@@ -1882,6 +2114,7 @@ class _PathErrors {
   final String? guildWars2;
   final String? hytale;
   final String? minecraft;
+  final String? nintendoSwitch2;
   final String? playStation4;
   final String? playStation5;
   final String? steam;
@@ -1892,6 +2125,7 @@ enum _SettingsProvider {
   guildWars2,
   hytale,
   minecraft,
+  nintendoSwitch2,
   playStation4,
   playStation5,
   steam,
@@ -1979,6 +2213,69 @@ class _CredentialHelpSection extends StatelessWidget {
           ),
         ],
       ],
+    );
+  }
+}
+
+class _IgnoredFoldersList extends StatelessWidget {
+  const _IgnoredFoldersList({
+    required this.folders,
+    required this.enabled,
+    required this.onRemove,
+  });
+
+  final List<String> folders;
+  final bool enabled;
+  final ValueChanged<String> onRemove;
+
+  @override
+  Widget build(BuildContext context) {
+    if (folders.isEmpty) {
+      return Text(
+        'No ignored album folders.',
+        style: context.theme.typography.body.sm.copyWith(
+          color: context.theme.colors.mutedForeground,
+        ),
+      );
+    }
+
+    return Container(
+      decoration: BoxDecoration(
+        border: Border.all(color: context.theme.colors.border),
+        borderRadius: BorderRadius.circular(10),
+      ),
+      child: Column(
+        children: [
+          for (var index = 0; index < folders.length; index++) ...[
+            if (index > 0)
+              Divider(height: 1, color: context.theme.colors.border),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(12, 6, 6, 6),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      folders[index],
+                      style: context.theme.typography.body.sm,
+                    ),
+                  ),
+                  FButton.icon(
+                    key: ValueKey(
+                      'nintendo-switch-2-ignored-remove-${folders[index]}',
+                    ),
+                    variant: FButtonVariant.ghost,
+                    size: FButtonSizeVariant.sm,
+                    semanticsLabel:
+                        'Remove ignored album folder ${folders[index]}',
+                    onPress: enabled ? () => onRemove(folders[index]) : null,
+                    child: const Icon(FLucideIcons.x),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ],
+      ),
     );
   }
 }

@@ -37,6 +37,12 @@ void main() {
         useCustomPath: true,
         sourcePath: '/minecraft/screenshots',
       ),
+      nintendoSwitch2: NintendoSwitch2Settings(
+        enabled: true,
+        useCustomPath: true,
+        sourcePath: '/switch-2-album',
+        ignoredFolders: ['Other folder', 'News'],
+      ),
       playStation4: ProviderSettings(
         enabled: true,
         useCustomPath: true,
@@ -89,6 +95,10 @@ void main() {
     expect(actual.minecraft.enabled, isTrue);
     expect(actual.minecraft.useCustomPath, isTrue);
     expect(actual.minecraft.sourcePath, '/minecraft/screenshots');
+    expect(actual.nintendoSwitch2.enabled, isTrue);
+    expect(actual.nintendoSwitch2.useCustomPath, isTrue);
+    expect(actual.nintendoSwitch2.sourcePath, '/switch-2-album');
+    expect(actual.nintendoSwitch2.ignoredFolders, ['Other folder', 'News']);
     expect(actual.playStation4.enabled, isTrue);
     expect(actual.playStation4.useCustomPath, isTrue);
     expect(actual.playStation4.sourcePath, '/playstation-4');
@@ -107,7 +117,7 @@ void main() {
     expect(actual.folderGrants['library']?.path, '/screenshots');
     expect(actual.folderGrants['library']?.access, FolderGrantAccess.readWrite);
     final json = jsonDecode(await File(store.filePath).readAsString()) as Map;
-    expect(json['version'], 10);
+    expect(json['version'], 11);
     expect(json['diabloIV'], isNull);
     expect(json['battleNet'], isA<Map>());
     expect(File('${store.filePath}.tmp').existsSync(), isFalse);
@@ -124,6 +134,7 @@ void main() {
   "guildWars2": {"enabled": true, "sourcePath": "/legacy/gw2"},
   "hytale": {"enabled": true, "sourcePath": "auto", "downloadCovers": true},
   "minecraft": {"enabled": true, "sourcePath": "/legacy/minecraft"},
+  "nintendoSwitch2": {"enabled": true, "sourcePath": "auto"},
   "steam": {"enabled": true, "userdataPath": "auto"},
   "folderGrants": {
     "provider.diabloIV": {
@@ -147,6 +158,12 @@ void main() {
     expect(settings.hytale.downloadCovers, isTrue);
     expect(settings.minecraft.useCustomPath, isTrue);
     expect(settings.minecraft.sourcePath, '/legacy/minecraft');
+    expect(settings.nintendoSwitch2.useCustomPath, isFalse);
+    expect(settings.nintendoSwitch2.sourcePath, isEmpty);
+    expect(
+      settings.nintendoSwitch2.ignoredFolders,
+      NintendoSwitch2Settings.defaultIgnoredFolders,
+    );
     expect(settings.steam.useCustomPath, isFalse);
     expect(settings.steam.userdataPath, isEmpty);
     expect(settings.folderGrants['provider.diabloIV'], isNull);
@@ -154,5 +171,13 @@ void main() {
       settings.folderGrants['provider.battleNet']?.bookmark,
       'legacy-bookmark',
     );
+  });
+
+  test('preserves an explicitly empty Switch 2 ignored folder list', () {
+    final settings = NintendoSwitch2Settings.fromJson({
+      'ignoredFolders': <String>[],
+    });
+
+    expect(settings.ignoredFolders, isEmpty);
   });
 }

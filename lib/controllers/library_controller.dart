@@ -33,6 +33,7 @@ enum SettingsFolderTarget {
   hytaleAutomatic,
   minecraftCustom,
   minecraftAutomatic,
+  nintendoSwitch2Custom,
   playStation4Custom,
   playStation5Custom,
   steamCustom,
@@ -697,6 +698,18 @@ class LibraryController extends ChangeNotifier {
           pathMismatchMessage: 'Choose the Minecraft screenshots folder shown by Gaming Memories.',
           selectedPath: (_) => candidate,
         );
+      case SettingsFolderTarget.nintendoSwitch2Custom:
+        return _FolderSpecification(
+          request: FolderAccessRequest(
+            id: FolderGrantIds.nintendoSwitch2,
+            title: 'Choose the copied Nintendo Switch 2 album folder',
+            access: FolderGrantAccess.readOnly,
+            initialPath:
+                _nonEmpty(initialPath) ??
+                _nonEmpty(settings.nintendoSwitch2.sourcePath),
+          ),
+          selectedPath: (settings) => settings.nintendoSwitch2.sourcePath,
+        );
       case SettingsFolderTarget.playStation4Custom:
         return _FolderSpecification(
           request: FolderAccessRequest(
@@ -816,6 +829,13 @@ class LibraryController extends ChangeNotifier {
         minecraft: settings.minecraft.copyWith(
           enabled: true,
           useCustomPath: false,
+          sourcePath: path,
+        ),
+      ),
+      SettingsFolderTarget.nintendoSwitch2Custom => settings.copyWith(
+        nintendoSwitch2: settings.nintendoSwitch2.copyWith(
+          enabled: true,
+          useCustomPath: true,
           sourcePath: path,
         ),
       ),
