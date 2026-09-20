@@ -6,23 +6,63 @@ import 'package:path/path.dart' as p;
 import '../models/app_settings.dart';
 import '../services/library_scanner.dart';
 import '../services/media_importer.dart';
+import '../services/folder_access_service.dart';
+import '../services/provider_paths.dart';
 import '../services/steam_client.dart';
 import 'screenshot_provider.dart';
 
-class SteamProvider implements ScreenshotProvider {
+class SteamProvider implements FolderBackedScreenshotProvider {
   const SteamProvider({
     required this.api,
     this.importer = const MediaImporter(),
+    this.providerPaths = const ProviderPathResolver(),
   });
 
   final SteamApi api;
   final MediaImporter importer;
+  final ProviderPathResolver providerPaths;
 
   @override
   String get name => 'Steam';
 
   @override
+  String get folderGrantId => FolderGrantIds.steam;
+
+  @override
   bool isEnabled(AppSettings settings) => settings.steam.enabled;
+
+  @override
+  ProviderFolderRequirement? folderRequirement(AppSettings settings) {
+    final steam = settings.steam;
+    if (steam.useCustomPath) {
+      final path = steam.userdataPath.trim();
+      return path.isEmpty
+          ? null
+          : ProviderFolderRequirement(
+              id: folderGrantId,
+              path: expandUserPath(path),
+              automatic: false,
+            );
+    }
+    final configured = steam.userdataPath.trim();
+    final path = configured.isEmpty
+        ? providerPaths.steamUserdata()
+        : expandUserPath(configured);
+    return path == null
+        ? null
+        : ProviderFolderRequirement(
+            id: folderGrantId,
+            path: path,
+            automatic: true,
+          );
+  }
+
+  @override
+  AppSettings withFolderPath(AppSettings settings, String path) {
+    return settings.copyWith(
+      steam: settings.steam.copyWith(useCustomPath: true, userdataPath: path),
+    );
+  }
 
   @override
   Future<ImportResult> collect(
@@ -403,22 +443,10 @@ class SteamProvider implements ScreenshotProvider {
           : Directory(p.join(directory.path, 'userdata'));
     }
 
-    final home = homeDirectory();
-    if (Platform.isWindows) {
-      return Directory(r'C:\Program Files (x86)\Steam\userdata');
-    }
-    if (home == null) {
-      return null;
-    }
-    if (Platform.isMacOS) {
-      return Directory(
-        p.join(home, 'Library', 'Application Support', 'Steam', 'userdata'),
-      );
-    }
-    if (Platform.isLinux) {
-      return Directory(p.join(home, '.local', 'share', 'Steam', 'userdata'));
-    }
-    return null;
+    final automatic = configured.isEmpty
+        ? providerPaths.steamUserdata()
+        : expandUserPath(configured);
+    return automatic == null ? null : Directory(automatic);
   }
 
   Future<String> _gameName(String appId, SteamSettings settings) async {

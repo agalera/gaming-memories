@@ -25,9 +25,19 @@ class ConfigStore {
   Future<void> save(AppSettings settings) async {
     final file = File(filePath);
     await file.parent.create(recursive: true);
-    await file.writeAsString(
+    final temporary = File('$filePath.tmp');
+    await temporary.writeAsString(
       const JsonEncoder.withIndent('  ').convert(settings.toJson()),
       flush: true,
     );
+    try {
+      await temporary.rename(filePath);
+    } on FileSystemException {
+      if (!Platform.isWindows || !await file.exists()) {
+        rethrow;
+      }
+      await file.delete();
+      await temporary.rename(filePath);
+    }
   }
 }

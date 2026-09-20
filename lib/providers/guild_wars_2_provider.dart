@@ -6,9 +6,11 @@ import '../models/app_settings.dart';
 import '../services/exiftool_service.dart';
 import '../services/library_scanner.dart';
 import '../services/media_importer.dart';
+import '../services/folder_access_service.dart';
+import '../services/provider_paths.dart';
 import 'screenshot_provider.dart';
 
-class GuildWars2Provider implements ScreenshotProvider {
+class GuildWars2Provider implements FolderBackedScreenshotProvider {
   const GuildWars2Provider({
     this.importer = const MediaImporter(),
     this.dateReader = const ExifToolDateReader(),
@@ -25,7 +27,43 @@ class GuildWars2Provider implements ScreenshotProvider {
   String get name => gameName;
 
   @override
+  String get folderGrantId => FolderGrantIds.guildWars2;
+
+  @override
   bool isEnabled(AppSettings settings) => settings.guildWars2.enabled;
+
+  @override
+  ProviderFolderRequirement? folderRequirement(AppSettings settings) {
+    final provider = settings.guildWars2;
+    if (provider.useCustomPath) {
+      final path = provider.sourcePath.trim();
+      return path.isEmpty
+          ? null
+          : ProviderFolderRequirement(
+              id: folderGrantId,
+              path: expandUserPath(path),
+              automatic: false,
+            );
+    }
+    final path = ProviderPaths.guildWars2Screenshots();
+    return path == null
+        ? null
+        : ProviderFolderRequirement(
+            id: folderGrantId,
+            path: path,
+            automatic: true,
+          );
+  }
+
+  @override
+  AppSettings withFolderPath(AppSettings settings, String path) {
+    return settings.copyWith(
+      guildWars2: settings.guildWars2.copyWith(
+        useCustomPath: true,
+        sourcePath: path,
+      ),
+    );
+  }
 
   @override
   Future<ImportResult> collect(
@@ -122,14 +160,8 @@ class GuildWars2Provider implements ScreenshotProvider {
       return Directory(expandUserPath(path));
     }
 
-    if (!Platform.isWindows) {
-      return null;
-    }
-
-    final home = homeDirectory();
-    return home == null
-        ? null
-        : Directory(p.join(home, 'Documents', 'Guild Wars 2', 'Screens'));
+    final automatic = ProviderPaths.guildWars2Screenshots();
+    return automatic == null ? null : Directory(automatic);
   }
 
   bool _isScreenshot(String path) {

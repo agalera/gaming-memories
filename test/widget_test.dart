@@ -10,7 +10,9 @@ import 'package:gaming_memories/models/app_settings.dart';
 import 'package:gaming_memories/models/library.dart';
 import 'package:gaming_memories/providers/screenshot_provider.dart';
 import 'package:gaming_memories/services/config_store.dart';
+import 'package:gaming_memories/services/folder_access_service.dart';
 import 'package:gaming_memories/services/library_scanner.dart';
+import 'package:gaming_memories/services/provider_paths.dart';
 import 'package:gaming_memories/services/screenshot_action_service.dart';
 import 'package:path/path.dart' as p;
 
@@ -732,6 +734,101 @@ void main() {
     await tester.pumpWidget(const SizedBox.shrink());
     await tester.pump(const Duration(milliseconds: 200));
   });
+
+  testWidgets('shows missing macOS access immediately in settings', (
+    tester,
+  ) async {
+    final controller =
+        LibraryController(
+            configStore: _MemoryConfigStore(),
+            scanner: const LibraryScanner(),
+            providers: const [],
+            folderAccess: const _PersistentFolderAccess(),
+          )
+          ..isInitializing = false
+          ..view = LibraryView.settings
+          ..settings = const AppSettings(
+            outputPath: '/saved/library',
+            diabloIV: ProviderSettings.disabled(),
+          );
+
+    await tester.pumpWidget(GamingMemoriesApp(controller: controller));
+    await tester.pump();
+    await tester.runAsync(
+      () => Future<void>.delayed(const Duration(milliseconds: 20)),
+    );
+    await tester.pumpAndSettle();
+
+    final field = tester.widget<FTextField>(
+      find.byKey(const ValueKey('library-path-field')),
+    );
+    expect(field.readOnly, isTrue);
+    expect(find.text('Allow access to the Library folder.'), findsOneWidget);
+    expect(find.text('Allow Access'), findsOneWidget);
+
+    await tester.pumpWidget(const SizedBox.shrink());
+    await tester.pump(const Duration(milliseconds: 200));
+  });
+
+  testWidgets('asks which automatic folder to authorize when several exist', (
+    tester,
+  ) async {
+    final access = _RecordingPersistentFolderAccess();
+    final controller =
+        LibraryController(
+            configStore: _MemoryConfigStore(),
+            scanner: const LibraryScanner(),
+            providers: const [],
+            folderAccess: access,
+            providerPaths: const _WidgetProviderPathResolver([
+              '/Steam One/userdata',
+              '/Steam Two/userdata',
+            ]),
+          )
+          ..isInitializing = false
+          ..view = LibraryView.settings
+          ..settings = const AppSettings(
+            outputPath: '',
+            diabloIV: ProviderSettings.disabled(),
+            steam: SteamSettings(
+              enabled: true,
+              useCustomPath: false,
+              userdataPath: '',
+              onlineGallery: false,
+              userId: '',
+              apiKey: '',
+              downloadCovers: false,
+              ignoredGames: [],
+              customGames: {},
+            ),
+          );
+
+    await tester.pumpWidget(GamingMemoriesApp(controller: controller));
+    await tester.pumpAndSettle();
+
+    final allow = find.byKey(const ValueKey('steam-automatic-folder-access'));
+    await tester.ensureVisible(allow);
+    await tester.tap(allow);
+    await tester.pumpAndSettle();
+
+    expect(find.text('Choose a Steam folder'), findsOneWidget);
+    expect(
+      find.textContaining('macOS will then ask you to confirm'),
+      findsOneWidget,
+    );
+    expect(access.requests, isEmpty);
+
+    await tester.tap(
+      find.byKey(const ValueKey('automatic-folder-/Steam Two/userdata')),
+    );
+    await tester.pumpAndSettle();
+
+    expect(access.requests, hasLength(1));
+    expect(access.requests.single.suggestedPath, '/Steam Two/userdata');
+
+    await tester.pumpWidget(const SizedBox.shrink());
+    await tester.pump(const Duration(milliseconds: 200));
+  });
 }
 
 class _MemoryConfigStore extends ConfigStore {
@@ -786,4 +883,58 @@ class _WarningProvider implements ScreenshotProvider {
       '$name was skipped because it was not found.',
     );
   }
+}
+
+class _PersistentFolderAccess implements FolderAccessService {
+  const _PersistentFolderAccess();
+
+  @override
+  bool get requiresPersistentGrant => true;
+
+  @override
+  Future<FolderAccessLease?> choose(FolderAccessRequest request) async => null;
+
+  @override
+  Future<FolderAccessLease> activate(FolderGrant grant) {
+    throw UnimplementedError();
+  }
+
+  @override
+  Future<void> release(FolderAccessLease lease) async {}
+
+  @override
+  Future<void> dispose() async {}
+}
+
+class _RecordingPersistentFolderAccess implements FolderAccessService {
+  final List<FolderAccessRequest> requests = [];
+
+  @override
+  bool get requiresPersistentGrant => true;
+
+  @override
+  Future<FolderAccessLease?> choose(FolderAccessRequest request) async {
+    requests.add(request);
+    return null;
+  }
+
+  @override
+  Future<FolderAccessLease> activate(FolderGrant grant) {
+    throw UnimplementedError();
+  }
+
+  @override
+  Future<void> release(FolderAccessLease lease) async {}
+
+  @override
+  Future<void> dispose() async {}
+}
+
+class _WidgetProviderPathResolver extends ProviderPathResolver {
+  const _WidgetProviderPathResolver(this.paths);
+
+  final List<String> paths;
+
+  @override
+  List<String> steamUserdataCandidates() => paths;
 }

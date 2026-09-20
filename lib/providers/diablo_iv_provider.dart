@@ -5,9 +5,11 @@ import 'package:path/path.dart' as p;
 import '../models/app_settings.dart';
 import '../services/library_scanner.dart';
 import '../services/media_importer.dart';
+import '../services/folder_access_service.dart';
+import '../services/provider_paths.dart';
 import 'screenshot_provider.dart';
 
-class DiabloIVProvider implements ScreenshotProvider {
+class DiabloIVProvider implements FolderBackedScreenshotProvider {
   const DiabloIVProvider({this.importer = const MediaImporter()});
 
   final MediaImporter importer;
@@ -21,7 +23,43 @@ class DiabloIVProvider implements ScreenshotProvider {
   String get name => gameName;
 
   @override
+  String get folderGrantId => FolderGrantIds.diabloIV;
+
+  @override
   bool isEnabled(AppSettings settings) => settings.diabloIV.enabled;
+
+  @override
+  ProviderFolderRequirement? folderRequirement(AppSettings settings) {
+    final provider = settings.diabloIV;
+    if (provider.useCustomPath) {
+      final path = provider.sourcePath.trim();
+      return path.isEmpty
+          ? null
+          : ProviderFolderRequirement(
+              id: folderGrantId,
+              path: expandUserPath(path),
+              automatic: false,
+            );
+    }
+    final paths = ProviderPaths.diabloIVScreenshots();
+    return paths.isEmpty
+        ? null
+        : ProviderFolderRequirement(
+            id: folderGrantId,
+            path: paths.first,
+            automatic: true,
+          );
+  }
+
+  @override
+  AppSettings withFolderPath(AppSettings settings, String path) {
+    return settings.copyWith(
+      diabloIV: settings.diabloIV.copyWith(
+        useCustomPath: true,
+        sourcePath: path,
+      ),
+    );
+  }
 
   @override
   Future<ImportResult> collect(
@@ -129,19 +167,7 @@ class DiabloIVProvider implements ScreenshotProvider {
       return [Directory(expandUserPath(path))];
     }
 
-    if (!Platform.isWindows) {
-      return const [];
-    }
-
-    final home = homeDirectory();
-    if (home == null) {
-      return const [];
-    }
-
-    return [
-      Directory(p.join(home, 'Pictures', 'Diablo IV')),
-      Directory(p.join(home, 'Documents', 'Diablo IV', 'Screenshots')),
-    ];
+    return ProviderPaths.diabloIVScreenshots().map(Directory.new).toList();
   }
 
   bool _isScreenshot(String path) {

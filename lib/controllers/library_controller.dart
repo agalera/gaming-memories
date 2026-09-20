@@ -1,15 +1,81 @@
+import 'dart:async';
+import 'dart:io';
+
 import 'package:flutter/foundation.dart';
+import 'package:path/path.dart' as p;
 
 import '../models/app_settings.dart';
 import '../models/library.dart';
 import '../providers/screenshot_provider.dart';
 import '../services/config_store.dart';
+import '../services/folder_access_service.dart';
 import '../services/library_scanner.dart';
+import '../services/provider_paths.dart';
 import '../services/screenshot_action_service.dart';
 
 enum LibraryView { timeline, platform, album, subAlbum, settings }
 
 enum NotificationKind { success, warning, error }
+
+enum FolderAuthorizationStatus {
+  notRequired,
+  ready,
+  needsAuthorization,
+  unavailable,
+}
+
+enum SettingsFolderTarget {
+  library,
+  diabloIVCustom,
+  guildWars2Custom,
+  steamCustom,
+  steamAutomatic,
+}
+
+class AutomaticFolderCandidate {
+  const AutomaticFolderCandidate({required this.name, required this.path});
+
+  final String name;
+  final String path;
+}
+
+class FolderAuthorization {
+  const FolderAuthorization(this.status, {this.path});
+
+  const FolderAuthorization.notRequired()
+    : status = FolderAuthorizationStatus.notRequired,
+      path = null;
+
+  const FolderAuthorization.needsAuthorization({this.path})
+    : status = FolderAuthorizationStatus.needsAuthorization;
+
+  final FolderAuthorizationStatus status;
+  final String? path;
+
+  bool get isReady => status == FolderAuthorizationStatus.ready;
+}
+
+class FolderChoiceResult {
+  const FolderChoiceResult._({
+    required this.saved,
+    required this.cancelled,
+    this.path,
+    this.message,
+  });
+
+  const FolderChoiceResult.success(String path)
+    : this._(saved: true, cancelled: false, path: path);
+
+  const FolderChoiceResult.cancelled() : this._(saved: false, cancelled: true);
+
+  const FolderChoiceResult.failure(String message)
+    : this._(saved: false, cancelled: false, message: message);
+
+  final bool saved;
+  final bool cancelled;
+  final String? path;
+  final String? message;
+}
 
 class AppNotification {
   const AppNotification({
@@ -28,12 +94,16 @@ class LibraryController extends ChangeNotifier {
     required this.configStore,
     required this.scanner,
     required this.providers,
+    this.folderAccess = const PathFolderAccessService(),
+    this.providerPaths = const ProviderPathResolver(),
     this.screenshotActions = const NativeScreenshotActionService(),
   });
 
   final ConfigStore configStore;
   final LibraryScanner scanner;
   final List<ScreenshotProvider> providers;
+  final FolderAccessService folderAccess;
+  final ProviderPathResolver providerPaths;
   final ScreenshotActionService screenshotActions;
 
   AppSettings settings = const AppSettings.defaults();
@@ -52,8 +122,45 @@ class LibraryController extends ChangeNotifier {
   double? progressValue;
   int notificationRevision = 0;
   final List<AppNotification> _notifications = [];
+  final Map<String, FolderAuthorization> _folderAuthorizations = {};
+  FolderAccessLease? _libraryLease;
 
   List<AppNotification> get notifications => List.unmodifiable(_notifications);
+
+  bool get usesPersistentFolderAccess => folderAccess.requiresPersistentGrant;
+
+  bool get libraryNeedsAuthorization {
+    return settings.outputPath.trim().isNotEmpty &&
+        folderAuthorization(FolderGrantIds.library).status !=
+            FolderAuthorizationStatus.ready &&
+        usesPersistentFolderAccess;
+  }
+
+  FolderAuthorization folderAuthorization(String id) {
+    if (!usesPersistentFolderAccess) {
+      return const FolderAuthorization.notRequired();
+    }
+    return _folderAuthorizations[id] ??
+        const FolderAuthorization.needsAuthorization();
+  }
+
+  List<AutomaticFolderCandidate> automaticFolderCandidates(
+    SettingsFolderTarget target,
+  ) {
+    final paths = switch (target) {
+      SettingsFolderTarget.steamAutomatic =>
+        providerPaths.steamUserdataCandidates(),
+      _ => const <String>[],
+    };
+    return paths
+        .map(
+          (path) => AutomaticFolderCandidate(
+            name: p.basename(p.normalize(path)),
+            path: path,
+          ),
+        )
+        .toList(growable: false);
+  }
 
   List<MediaItem> get visibleMedia {
     if (view == LibraryView.platform && selectedPlatform != null) {
@@ -116,13 +223,136 @@ class LibraryController extends ChangeNotifier {
   Future<void> initialize() async {
     try {
       settings = await configStore.load();
-      library = await scanner.scan(settings.outputPath);
+      if (usesPersistentFolderAccess) {
+        var changed = await _restoreLibraryGrant();
+        changed = await _restoreProviderGrants() || changed;
+        if (changed) {
+          await configStore.save(settings);
+        }
+      }
+
+      if (!libraryNeedsAuthorization) {
+        library = await scanner.scan(settings.outputPath);
+      } else {
+        library = const MediaLibrary.empty();
+        view = LibraryView.settings;
+      }
     } catch (exception) {
       _setError('Could not load the library: $exception');
     } finally {
       isInitializing = false;
       notifyListeners();
     }
+  }
+
+  Future<bool> _restoreLibraryGrant() async {
+    final outputPath = settings.outputPath.trim();
+    if (outputPath.isEmpty) {
+      _folderAuthorizations[FolderGrantIds.library] =
+          const FolderAuthorization.notRequired();
+      return false;
+    }
+
+    final grant = settings.folderGrants[FolderGrantIds.library];
+    if (grant == null || grant.bookmark.isEmpty) {
+      _folderAuthorizations[FolderGrantIds.library] =
+          FolderAuthorization.needsAuthorization(path: outputPath);
+      return false;
+    }
+
+    FolderAccessLease? lease;
+    try {
+      lease = await folderAccess.activate(grant);
+      await _ensureWritableDirectory(lease.grant.path);
+      final activeGrant = lease.grant;
+      _libraryLease = lease;
+      lease = null;
+      _folderAuthorizations[FolderGrantIds.library] = FolderAuthorization(
+        FolderAuthorizationStatus.ready,
+        path: activeGrant.path,
+      );
+
+      if (_grantChanged(grant, activeGrant) ||
+          !_samePath(outputPath, activeGrant.path)) {
+        settings = _withGrant(
+          settings.copyWith(outputPath: activeGrant.path),
+          FolderGrantIds.library,
+          activeGrant,
+        );
+        return true;
+      }
+    } on FolderAccessException {
+      _folderAuthorizations[FolderGrantIds.library] =
+          FolderAuthorization.needsAuthorization(path: grant.path);
+    } on FileSystemException {
+      _folderAuthorizations[FolderGrantIds.library] = FolderAuthorization(
+        FolderAuthorizationStatus.unavailable,
+        path: grant.path,
+      );
+    } finally {
+      if (lease != null) {
+        await folderAccess.release(lease);
+      }
+    }
+    return false;
+  }
+
+  Future<bool> _restoreProviderGrants() async {
+    var changed = false;
+    for (final provider
+        in providers.whereType<FolderBackedScreenshotProvider>()) {
+      final requirement = provider.folderRequirement(settings);
+      if (requirement == null) {
+        _folderAuthorizations[provider.folderGrantId] =
+            const FolderAuthorization.notRequired();
+        continue;
+      }
+      final grant = settings.folderGrants[requirement.id];
+      if (grant == null ||
+          grant.bookmark.isEmpty ||
+          !_samePath(grant.path, requirement.path)) {
+        _folderAuthorizations[requirement.id] =
+            FolderAuthorization.needsAuthorization(path: requirement.path);
+        continue;
+      }
+
+      FolderAccessLease? lease;
+      try {
+        lease = await folderAccess.activate(grant);
+        if (requirement.automatic &&
+            !_samePath(lease.grant.path, requirement.path)) {
+          _folderAuthorizations[requirement.id] =
+              FolderAuthorization.needsAuthorization(path: requirement.path);
+          continue;
+        }
+        await _ensureReadableDirectory(lease.grant.path);
+        _folderAuthorizations[requirement.id] = FolderAuthorization(
+          FolderAuthorizationStatus.ready,
+          path: lease.grant.path,
+        );
+        if (_grantChanged(grant, lease.grant)) {
+          var next = _withGrant(settings, requirement.id, lease.grant);
+          if (!requirement.automatic) {
+            next = provider.withFolderPath(next, lease.grant.path);
+          }
+          settings = next;
+          changed = true;
+        }
+      } on FolderAccessException {
+        _folderAuthorizations[requirement.id] =
+            FolderAuthorization.needsAuthorization(path: grant.path);
+      } on FileSystemException {
+        _folderAuthorizations[requirement.id] = FolderAuthorization(
+          FolderAuthorizationStatus.unavailable,
+          path: grant.path,
+        );
+      } finally {
+        if (lease != null) {
+          await folderAccess.release(lease);
+        }
+      }
+    }
+    return changed;
   }
 
   void showTimeline() {
@@ -208,8 +438,17 @@ class LibraryController extends ChangeNotifier {
 
   Future<bool> updateSettings(AppSettings next) async {
     try {
+      final outputChanged = !_samePath(
+        settings.outputPath,
+        next.outputPath,
+        allowEmpty: true,
+      );
       await configStore.save(next);
       settings = next;
+      if (usesPersistentFolderAccess && outputChanged) {
+        await _releaseLibraryLease();
+      }
+      _refreshAuthorizationStates();
       notifyListeners();
       return true;
     } catch (exception) {
@@ -219,8 +458,213 @@ class LibraryController extends ChangeNotifier {
     }
   }
 
+  Future<FolderChoiceResult> chooseFolder(
+    SettingsFolderTarget target, {
+    String? initialPath,
+  }) async {
+    final specification = _folderSpecification(target, initialPath);
+    if (specification == null) {
+      return const FolderChoiceResult.failure(
+        'No supported automatic folder is available on this platform.',
+      );
+    }
+
+    FolderAccessLease? lease;
+    try {
+      lease = await folderAccess.choose(specification.request);
+      if (lease == null) {
+        return const FolderChoiceResult.cancelled();
+      }
+
+      if (specification.expectedPath != null &&
+          !_samePath(lease.grant.path, specification.expectedPath!)) {
+        await folderAccess.release(lease);
+        lease = null;
+        return const FolderChoiceResult.failure(
+          'Choose Steam’s “userdata” folder, not a numbered account folder.',
+        );
+      }
+
+      if (target == SettingsFolderTarget.library) {
+        await _ensureWritableDirectory(lease.grant.path);
+      } else {
+        await _ensureReadableDirectory(lease.grant.path);
+      }
+
+      var next = _settingsWithFolder(target, lease.grant.path);
+      if (usesPersistentFolderAccess) {
+        next = _withGrant(next, specification.request.id, lease.grant);
+      }
+      await configStore.save(next);
+
+      final oldLibraryLease = _libraryLease;
+      settings = next;
+      _folderAuthorizations[specification.request.id] = FolderAuthorization(
+        FolderAuthorizationStatus.ready,
+        path: lease.grant.path,
+      );
+
+      if (target == SettingsFolderTarget.library &&
+          usesPersistentFolderAccess) {
+        _libraryLease = lease;
+        lease = null;
+        if (oldLibraryLease != null) {
+          await folderAccess.release(oldLibraryLease);
+        }
+        try {
+          library = await scanner.scan(settings.outputPath);
+        } catch (_) {
+          library = const MediaLibrary.empty();
+        }
+      }
+      notifyListeners();
+      return FolderChoiceResult.success(specification.selectedPath(settings));
+    } on FileSystemException catch (exception) {
+      return FolderChoiceResult.failure(
+        exception.message.isEmpty
+            ? 'The selected folder could not be accessed.'
+            : exception.message,
+      );
+    } on FolderAccessException catch (exception) {
+      return FolderChoiceResult.failure(exception.message);
+    } catch (exception) {
+      return FolderChoiceResult.failure(
+        'Could not save folder access: $exception',
+      );
+    } finally {
+      if (lease != null) {
+        await folderAccess.release(lease);
+      }
+    }
+  }
+
+  _FolderSpecification? _folderSpecification(
+    SettingsFolderTarget target,
+    String? initialPath,
+  ) {
+    switch (target) {
+      case SettingsFolderTarget.library:
+        return _FolderSpecification(
+          request: FolderAccessRequest(
+            id: FolderGrantIds.library,
+            title: 'Choose the media library folder',
+            access: FolderGrantAccess.readWrite,
+            initialPath:
+                _nonEmpty(initialPath) ?? _nonEmpty(settings.outputPath),
+          ),
+          selectedPath: (settings) => settings.outputPath,
+        );
+      case SettingsFolderTarget.diabloIVCustom:
+        return _FolderSpecification(
+          request: FolderAccessRequest(
+            id: FolderGrantIds.diabloIV,
+            title: 'Choose the Diablo IV screenshot folder',
+            access: FolderGrantAccess.readOnly,
+            initialPath:
+                _nonEmpty(initialPath) ??
+                _nonEmpty(settings.diabloIV.sourcePath),
+          ),
+          selectedPath: (settings) => settings.diabloIV.sourcePath,
+        );
+      case SettingsFolderTarget.guildWars2Custom:
+        return _FolderSpecification(
+          request: FolderAccessRequest(
+            id: FolderGrantIds.guildWars2,
+            title: 'Choose the Guild Wars 2 screenshot folder',
+            access: FolderGrantAccess.readOnly,
+            initialPath:
+                _nonEmpty(initialPath) ??
+                _nonEmpty(settings.guildWars2.sourcePath),
+          ),
+          selectedPath: (settings) => settings.guildWars2.sourcePath,
+        );
+      case SettingsFolderTarget.steamCustom:
+        return _FolderSpecification(
+          request: FolderAccessRequest(
+            id: FolderGrantIds.steam,
+            title: 'Choose the Steam folder',
+            access: FolderGrantAccess.readOnly,
+            initialPath:
+                _nonEmpty(initialPath) ??
+                _nonEmpty(settings.steam.userdataPath),
+          ),
+          selectedPath: (settings) => settings.steam.userdataPath,
+        );
+      case SettingsFolderTarget.steamAutomatic:
+        final candidates = automaticFolderCandidates(target);
+        if (candidates.isEmpty) {
+          return null;
+        }
+        final requested = _nonEmpty(initialPath);
+        final selected = requested == null
+            ? candidates.length == 1
+                  ? candidates.single
+                  : null
+            : candidates
+                  .where((candidate) => _samePath(candidate.path, requested))
+                  .firstOrNull;
+        if (selected == null) {
+          return null;
+        }
+        final candidate = selected.path;
+        return _FolderSpecification(
+          request: FolderAccessRequest(
+            id: FolderGrantIds.steam,
+            title: 'Allow access to Steam screenshots',
+            access: FolderGrantAccess.readOnly,
+            initialPath: candidate,
+            suggestedPath: candidate,
+            message:
+                'Click Allow Access to grant Gaming Memories access to the “${selected.name}” folder. Do not open a numbered Steam account folder.',
+          ),
+          expectedPath: candidate,
+          selectedPath: (_) => candidate,
+        );
+    }
+  }
+
+  AppSettings _settingsWithFolder(SettingsFolderTarget target, String path) {
+    return switch (target) {
+      SettingsFolderTarget.library => settings.copyWith(outputPath: path),
+      SettingsFolderTarget.diabloIVCustom => settings.copyWith(
+        diabloIV: settings.diabloIV.copyWith(
+          enabled: true,
+          useCustomPath: true,
+          sourcePath: path,
+        ),
+      ),
+      SettingsFolderTarget.guildWars2Custom => settings.copyWith(
+        guildWars2: settings.guildWars2.copyWith(
+          enabled: true,
+          useCustomPath: true,
+          sourcePath: path,
+        ),
+      ),
+      SettingsFolderTarget.steamCustom => settings.copyWith(
+        steam: settings.steam.copyWith(
+          enabled: true,
+          useCustomPath: true,
+          userdataPath: path,
+        ),
+      ),
+      SettingsFolderTarget.steamAutomatic => settings.copyWith(
+        steam: settings.steam.copyWith(
+          enabled: true,
+          useCustomPath: false,
+          userdataPath: path,
+        ),
+      ),
+    };
+  }
+
   Future<void> refresh() async {
     await _run(() async {
+      if (libraryNeedsAuthorization) {
+        _setWarning(
+          'Library folder access is required. Open Settings and allow access.',
+        );
+        return;
+      }
       _setProgress('Refreshing the library…');
       library = await scanner.scan(settings.outputPath);
       _setMessage('Library refreshed.');
@@ -234,18 +678,33 @@ class LibraryController extends ChangeNotifier {
           .where((provider) => provider.isEnabled(settings))
           .toList(growable: false);
       for (final provider in enabledProviders) {
+        final usesLibraryFolder = provider is FolderBackedScreenshotProvider;
+        if (usesLibraryFolder && settings.outputPath.trim().isEmpty) {
+          results.add(
+            ImportResult.warning(
+              provider.name,
+              '${provider.name} was skipped because no library folder is selected.',
+            ),
+          );
+          continue;
+        }
+        if (usesLibraryFolder && libraryNeedsAuthorization) {
+          results.add(
+            ImportResult.warning(
+              provider.name,
+              '${provider.name} was skipped because the library folder needs access.',
+            ),
+          );
+          continue;
+        }
+
         _setProgress('Preparing ${provider.name}…');
-        results.add(
-          await provider.collect(
-            settings,
-            onProgress: (progress) {
-              _setProgress(progress.message, value: progress.value);
-            },
-          ),
-        );
+        results.add(await _collectProviderSafely(provider));
       }
-      _setProgress('Refreshing the library…');
-      library = await scanner.scan(settings.outputPath);
+      if (!libraryNeedsAuthorization) {
+        _setProgress('Refreshing the library…');
+        library = await scanner.scan(settings.outputPath);
+      }
       final imported = results.fold(0, (sum, result) => sum + result.imported);
       final skipped = results.fold(0, (sum, result) => sum + result.skipped);
       final warnings = results
@@ -265,6 +724,244 @@ class LibraryController extends ChangeNotifier {
         _setWarning(warning);
       }
     });
+  }
+
+  Future<ImportResult> _collectProviderSafely(
+    ScreenshotProvider provider,
+  ) async {
+    try {
+      return await _collectProvider(provider);
+    } catch (exception, stackTrace) {
+      _logProviderFailure(provider, exception, stackTrace);
+      return ImportResult.warning(
+        provider.name,
+        '${provider.name} could not be processed: ${_providerFailureSummary(exception)}',
+      );
+    }
+  }
+
+  void _logProviderFailure(
+    ScreenshotProvider provider,
+    Object exception,
+    StackTrace stackTrace,
+  ) {
+    final timestamp = DateTime.now().toUtc().toIso8601String();
+    debugPrint(
+      '[Gaming Memories][$timestamp] Provider "${provider.name}" failed.\n'
+      'Error: ${_redactDiagnostic('$exception')}\n'
+      'Stack trace:\n${_redactDiagnostic('$stackTrace')}',
+    );
+  }
+
+  String _providerFailureSummary(Object exception) {
+    final lines = _redactDiagnostic('$exception').split('\n');
+    final firstLine = lines.first.trim();
+    if (firstLine.isEmpty) {
+      return 'Unexpected ${exception.runtimeType} failure. See the console log for details.';
+    }
+    const maximumLength = 240;
+    final summary = firstLine.length <= maximumLength
+        ? firstLine
+        : '${firstLine.substring(0, maximumLength - 1)}…';
+    return '$summary See the console log for details.';
+  }
+
+  String _redactDiagnostic(String value) {
+    var redacted = value;
+    final apiKey = settings.steam.apiKey.trim();
+    if (apiKey.isNotEmpty) {
+      redacted = redacted.replaceAll(apiKey, '<REDACTED>');
+    }
+    return redacted.replaceAllMapped(
+      RegExp(r'([?&](?:key|api[_-]?key)=)[^&\s]+', caseSensitive: false),
+      (match) => '${match.group(1)}<REDACTED>',
+    );
+  }
+
+  Future<ImportResult> _collectProvider(ScreenshotProvider provider) async {
+    if (!usesPersistentFolderAccess ||
+        provider is! FolderBackedScreenshotProvider) {
+      return provider.collect(settings, onProgress: _providerProgress);
+    }
+
+    final requirement = provider.folderRequirement(settings);
+    if (requirement == null) {
+      return provider.collect(settings, onProgress: _providerProgress);
+    }
+    final grant = settings.folderGrants[requirement.id];
+    if (grant == null ||
+        grant.bookmark.isEmpty ||
+        !_samePath(grant.path, requirement.path)) {
+      _folderAuthorizations[requirement.id] =
+          FolderAuthorization.needsAuthorization(path: requirement.path);
+      return ImportResult.warning(
+        provider.name,
+        '${provider.name} was skipped because its screenshot folder needs access. Open Settings and allow access.',
+      );
+    }
+
+    FolderAccessLease? lease;
+    try {
+      lease = await folderAccess.activate(grant);
+      if (requirement.automatic &&
+          !_samePath(lease.grant.path, requirement.path)) {
+        _folderAuthorizations[requirement.id] =
+            FolderAuthorization.needsAuthorization(path: requirement.path);
+        return ImportResult.warning(
+          provider.name,
+          '${provider.name} was skipped because its automatically discovered folder needs access again.',
+        );
+      }
+      await _ensureReadableDirectory(lease.grant.path);
+      _folderAuthorizations[requirement.id] = FolderAuthorization(
+        FolderAuthorizationStatus.ready,
+        path: lease.grant.path,
+      );
+      if (_grantChanged(grant, lease.grant)) {
+        var next = _withGrant(settings, requirement.id, lease.grant);
+        if (!requirement.automatic) {
+          next = provider.withFolderPath(next, lease.grant.path);
+        }
+        await configStore.save(next);
+        settings = next;
+      }
+      final runtimeSettings = provider.withFolderPath(
+        settings,
+        lease.grant.path,
+      );
+      return await provider.collect(
+        runtimeSettings,
+        onProgress: _providerProgress,
+      );
+    } on FolderAccessException catch (exception, stackTrace) {
+      _logProviderFailure(provider, exception, stackTrace);
+      _folderAuthorizations[requirement.id] =
+          FolderAuthorization.needsAuthorization(path: grant.path);
+      return ImportResult.warning(
+        provider.name,
+        '${provider.name} was skipped because folder access could not be restored. Open Settings and allow access again.',
+      );
+    } on FileSystemException catch (exception, stackTrace) {
+      _logProviderFailure(provider, exception, stackTrace);
+      _folderAuthorizations[requirement.id] = FolderAuthorization(
+        FolderAuthorizationStatus.unavailable,
+        path: grant.path,
+      );
+      return ImportResult.warning(
+        provider.name,
+        '${provider.name} was skipped because its screenshot folder is unavailable.',
+      );
+    } finally {
+      if (lease != null) {
+        await folderAccess.release(lease);
+      }
+    }
+  }
+
+  void _providerProgress(ProviderProgress progress) {
+    _setProgress(progress.message, value: progress.value);
+  }
+
+  Future<void> _ensureReadableDirectory(String path) async {
+    final directory = Directory(path);
+    if (!await directory.exists()) {
+      throw FileSystemException('The selected folder does not exist.', path);
+    }
+    await directory.list(followLinks: false).take(1).toList();
+  }
+
+  Future<void> _ensureWritableDirectory(String path) async {
+    await _ensureReadableDirectory(path);
+    final probe = File(
+      p.join(
+        path,
+        '.gaming-memories-access-${DateTime.now().microsecondsSinceEpoch}.tmp',
+      ),
+    );
+    try {
+      await probe.writeAsBytes(const [], flush: true);
+    } on FileSystemException {
+      throw FileSystemException(
+        'The selected library folder is not writable.',
+        path,
+      );
+    } finally {
+      if (await probe.exists()) {
+        await probe.delete();
+      }
+    }
+  }
+
+  void _refreshAuthorizationStates() {
+    if (!usesPersistentFolderAccess) {
+      return;
+    }
+    final outputPath = settings.outputPath.trim();
+    if (outputPath.isEmpty) {
+      _folderAuthorizations[FolderGrantIds.library] =
+          const FolderAuthorization.notRequired();
+    } else if (_libraryLease == null ||
+        !_samePath(_libraryLease!.grant.path, outputPath)) {
+      _folderAuthorizations[FolderGrantIds.library] =
+          FolderAuthorization.needsAuthorization(path: outputPath);
+    }
+
+    for (final provider
+        in providers.whereType<FolderBackedScreenshotProvider>()) {
+      final requirement = provider.folderRequirement(settings);
+      if (requirement == null) {
+        _folderAuthorizations[provider.folderGrantId] =
+            const FolderAuthorization.notRequired();
+        continue;
+      }
+      final grant = settings.folderGrants[requirement.id];
+      if (grant == null || !_samePath(grant.path, requirement.path)) {
+        _folderAuthorizations[requirement.id] =
+            FolderAuthorization.needsAuthorization(path: requirement.path);
+      }
+    }
+  }
+
+  AppSettings _withGrant(AppSettings value, String id, FolderGrant grant) {
+    return value.copyWith(
+      folderGrants: Map.unmodifiable({...value.folderGrants, id: grant}),
+    );
+  }
+
+  bool _grantChanged(FolderGrant left, FolderGrant right) {
+    return left.platform != right.platform ||
+        left.path != right.path ||
+        left.access != right.access ||
+        left.bookmark != right.bookmark;
+  }
+
+  bool _samePath(String left, String right, {bool allowEmpty = false}) {
+    final leftValue = left.trim();
+    final rightValue = right.trim();
+    if (allowEmpty && leftValue.isEmpty && rightValue.isEmpty) {
+      return true;
+    }
+    if (leftValue.isEmpty || rightValue.isEmpty) {
+      return false;
+    }
+    final normalizedLeft = p.normalize(p.absolute(expandUserPath(leftValue)));
+    final normalizedRight = p.normalize(p.absolute(expandUserPath(rightValue)));
+    return Platform.isWindows
+        ? normalizedLeft.toLowerCase() == normalizedRight.toLowerCase()
+        : normalizedLeft == normalizedRight;
+  }
+
+  String? _nonEmpty(String? value) {
+    final trimmed = value?.trim();
+    return trimmed == null || trimmed.isEmpty ? null : expandUserPath(trimmed);
+  }
+
+  Future<void> _releaseLibraryLease() async {
+    final lease = _libraryLease;
+    _libraryLease = null;
+    if (lease != null) {
+      await folderAccess.release(lease);
+    }
   }
 
   Future<void> _run(Future<void> Function() action) async {
@@ -344,4 +1041,22 @@ class LibraryController extends ChangeNotifier {
       _notifications.removeAt(0);
     }
   }
+
+  @override
+  void dispose() {
+    unawaited(folderAccess.dispose());
+    super.dispose();
+  }
+}
+
+class _FolderSpecification {
+  const _FolderSpecification({
+    required this.request,
+    required this.selectedPath,
+    this.expectedPath,
+  });
+
+  final FolderAccessRequest request;
+  final String? expectedPath;
+  final String Function(AppSettings settings) selectedPath;
 }

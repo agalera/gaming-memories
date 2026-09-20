@@ -1,3 +1,56 @@
+enum FolderGrantAccess {
+  readOnly,
+  readWrite;
+
+  factory FolderGrantAccess.fromJson(Object? value) {
+    return value == readWrite.name ? readWrite : readOnly;
+  }
+}
+
+class FolderGrant {
+  const FolderGrant({
+    required this.platform,
+    required this.path,
+    required this.access,
+    required this.bookmark,
+  });
+
+  final String platform;
+  final String path;
+  final FolderGrantAccess access;
+  final String bookmark;
+
+  FolderGrant copyWith({
+    String? platform,
+    String? path,
+    FolderGrantAccess? access,
+    String? bookmark,
+  }) {
+    return FolderGrant(
+      platform: platform ?? this.platform,
+      path: path ?? this.path,
+      access: access ?? this.access,
+      bookmark: bookmark ?? this.bookmark,
+    );
+  }
+
+  factory FolderGrant.fromJson(Map<String, Object?> json) {
+    return FolderGrant(
+      platform: json['platform'] as String? ?? '',
+      path: json['path'] as String? ?? '',
+      access: FolderGrantAccess.fromJson(json['access']),
+      bookmark: json['bookmark'] as String? ?? '',
+    );
+  }
+
+  Map<String, Object?> toJson() => {
+    'platform': platform,
+    'path': path,
+    'access': access.name,
+    'bookmark': bookmark,
+  };
+}
+
 enum AppThemeMode {
   system,
   light,
@@ -94,6 +147,30 @@ class SteamSettings {
   final List<String> ignoredGames;
   final Map<String, String> customGames;
 
+  SteamSettings copyWith({
+    bool? enabled,
+    bool? useCustomPath,
+    String? userdataPath,
+    bool? onlineGallery,
+    String? userId,
+    String? apiKey,
+    bool? downloadCovers,
+    List<String>? ignoredGames,
+    Map<String, String>? customGames,
+  }) {
+    return SteamSettings(
+      enabled: enabled ?? this.enabled,
+      useCustomPath: useCustomPath ?? this.useCustomPath,
+      userdataPath: userdataPath ?? this.userdataPath,
+      onlineGallery: onlineGallery ?? this.onlineGallery,
+      userId: userId ?? this.userId,
+      apiKey: apiKey ?? this.apiKey,
+      downloadCovers: downloadCovers ?? this.downloadCovers,
+      ignoredGames: ignoredGames ?? this.ignoredGames,
+      customGames: customGames ?? this.customGames,
+    );
+  }
+
   factory SteamSettings.fromJson(Map<String, Object?> json) {
     final ignored = json['ignoredGames'];
     final custom = json['customGames'];
@@ -140,6 +217,7 @@ class AppSettings {
     this.guildWars2 = const ProviderSettings.disabled(),
     this.steam = const SteamSettings.disabled(),
     this.themeMode = AppThemeMode.system,
+    this.folderGrants = const {},
   });
 
   const AppSettings.defaults()
@@ -147,13 +225,15 @@ class AppSettings {
       diabloIV = const ProviderSettings.disabled(),
       guildWars2 = const ProviderSettings.disabled(),
       steam = const SteamSettings.disabled(),
-      themeMode = AppThemeMode.system;
+      themeMode = AppThemeMode.system,
+      folderGrants = const {};
 
   final String outputPath;
   final ProviderSettings diabloIV;
   final ProviderSettings guildWars2;
   final SteamSettings steam;
   final AppThemeMode themeMode;
+  final Map<String, FolderGrant> folderGrants;
 
   AppSettings copyWith({
     String? outputPath,
@@ -161,6 +241,7 @@ class AppSettings {
     ProviderSettings? guildWars2,
     SteamSettings? steam,
     AppThemeMode? themeMode,
+    Map<String, FolderGrant>? folderGrants,
   }) {
     return AppSettings(
       outputPath: outputPath ?? this.outputPath,
@@ -168,6 +249,7 @@ class AppSettings {
       guildWars2: guildWars2 ?? this.guildWars2,
       steam: steam ?? this.steam,
       themeMode: themeMode ?? this.themeMode,
+      folderGrants: folderGrants ?? this.folderGrants,
     );
   }
 
@@ -175,6 +257,18 @@ class AppSettings {
     final providerJson = json['diabloIV'];
     final guildWars2Json = json['guildWars2'];
     final steamJson = json['steam'];
+    final grantsJson = json['folderGrants'];
+    final grants = <String, FolderGrant>{};
+    if (grantsJson is Map) {
+      for (final entry in grantsJson.entries) {
+        final value = entry.value;
+        if (value is Map) {
+          grants[entry.key.toString()] = FolderGrant.fromJson(
+            value.map((key, value) => MapEntry(key.toString(), value)),
+          );
+        }
+      }
+    }
 
     return AppSettings(
       outputPath: json['outputPath'] as String? ?? '',
@@ -188,15 +282,19 @@ class AppSettings {
           ? SteamSettings.fromJson(steamJson)
           : const SteamSettings.disabled(),
       themeMode: AppThemeMode.fromJson(json['themeMode']),
+      folderGrants: Map.unmodifiable(grants),
     );
   }
 
   Map<String, Object?> toJson() => {
-    'version': 5,
+    'version': 6,
     'outputPath': outputPath,
     'themeMode': themeMode.name,
     'diabloIV': diabloIV.toJson(),
     'guildWars2': guildWars2.toJson(),
     'steam': steam.toJson(),
+    'folderGrants': {
+      for (final entry in folderGrants.entries) entry.key: entry.value.toJson(),
+    },
   };
 }

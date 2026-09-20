@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:io';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:gaming_memories/controllers/library_controller.dart';
 import 'package:gaming_memories/models/app_settings.dart';
@@ -9,7 +10,9 @@ import 'package:gaming_memories/providers/diablo_iv_provider.dart';
 import 'package:gaming_memories/providers/guild_wars_2_provider.dart';
 import 'package:gaming_memories/providers/screenshot_provider.dart';
 import 'package:gaming_memories/services/config_store.dart';
+import 'package:gaming_memories/services/folder_access_service.dart';
 import 'package:gaming_memories/services/library_scanner.dart';
+import 'package:gaming_memories/services/provider_paths.dart';
 import 'package:gaming_memories/services/screenshot_action_service.dart';
 import 'package:path/path.dart' as p;
 
@@ -224,6 +227,241 @@ void main() {
     expect(controller.pageTitle, 'Other');
     expect(controller.visibleMedia, [video]);
   });
+
+  test('restores library access before the first scan', () async {
+    final directory = await Directory.systemTemp.createTemp('gaming-memories-');
+    addTearDown(() => directory.delete(recursive: true));
+    final events = <String>[];
+    final access = _FakeFolderAccess(events: events);
+    final store = ConfigStore(
+      filePath: p.join(directory.path, 'settings.json'),
+    );
+    await store.save(
+      AppSettings(
+        outputPath: directory.path,
+        diabloIV: const ProviderSettings.disabled(),
+        folderGrants: {
+          FolderGrantIds.library: FolderGrant(
+            platform: 'macos',
+            path: directory.path,
+            access: FolderGrantAccess.readWrite,
+            bookmark: 'library-bookmark',
+          ),
+        },
+      ),
+    );
+    final controller = LibraryController(
+      configStore: store,
+      scanner: _RecordingScanner(events),
+      providers: const [],
+      folderAccess: access,
+    );
+
+    await controller.initialize();
+
+    expect(events, ['activate:${directory.path}', 'scan:${directory.path}']);
+    expect(controller.libraryNeedsAuthorization, isFalse);
+    expect(
+      controller.folderAuthorization(FolderGrantIds.library).status,
+      FolderAuthorizationStatus.ready,
+    );
+  });
+
+  test('does not save an invalid folder selection', () async {
+    final directory = await Directory.systemTemp.createTemp('gaming-memories-');
+    addTearDown(() => directory.delete(recursive: true));
+    final store = ConfigStore(
+      filePath: p.join(directory.path, 'settings.json'),
+    );
+    final initial = AppSettings(
+      outputPath: directory.path,
+      diabloIV: const ProviderSettings.disabled(),
+    );
+    await store.save(initial);
+    final missing = p.join(directory.path, 'missing');
+    final access = _FakeFolderAccess(
+      chosen: FolderAccessLease(
+        grant: FolderGrant(
+          platform: 'macos',
+          path: missing,
+          access: FolderGrantAccess.readWrite,
+          bookmark: 'new-bookmark',
+        ),
+        token: 'new-lease',
+      ),
+    );
+    final controller = LibraryController(
+      configStore: store,
+      scanner: const LibraryScanner(),
+      providers: const [],
+      folderAccess: access,
+    )..settings = initial;
+
+    final result = await controller.chooseFolder(SettingsFolderTarget.library);
+
+    expect(result.saved, isFalse);
+    expect(controller.settings.outputPath, directory.path);
+    expect((await store.load()).outputPath, directory.path);
+    expect(access.released, ['new-lease']);
+  });
+
+  test('warns separately for every provider missing folder access', () async {
+    final directory = await Directory.systemTemp.createTemp('gaming-memories-');
+    addTearDown(() => directory.delete(recursive: true));
+    final store = ConfigStore(
+      filePath: p.join(directory.path, 'settings.json'),
+    );
+    await store.save(
+      AppSettings(
+        outputPath: directory.path,
+        diabloIV: const ProviderSettings.disabled(),
+        folderGrants: {
+          FolderGrantIds.library: FolderGrant(
+            platform: 'macos',
+            path: directory.path,
+            access: FolderGrantAccess.readWrite,
+            bookmark: 'library-bookmark',
+          ),
+        },
+      ),
+    );
+    final controller = LibraryController(
+      configStore: store,
+      scanner: const LibraryScanner(),
+      providers: const [
+        _FolderProvider('First', FolderGrantIds.diabloIV),
+        _FolderProvider('Second', FolderGrantIds.guildWars2),
+      ],
+      folderAccess: _FakeFolderAccess(),
+    );
+    await controller.initialize();
+
+    await controller.collect();
+
+    expect(controller.error, isNull);
+    expect(
+      controller.notifications.map((notification) => notification.message),
+      [
+        'First was skipped because its screenshot folder needs access. Open Settings and allow access.',
+        'Second was skipped because its screenshot folder needs access. Open Settings and allow access.',
+      ],
+    );
+    expect(
+      controller.notifications.map((notification) => notification.kind),
+      everyElement(NotificationKind.warning),
+    );
+  });
+
+  test('releases provider access when collection fails', () async {
+    final diagnostics = <String>[];
+    final previousDebugPrint = debugPrint;
+    debugPrint = (message, {wrapWidth}) {
+      diagnostics.add(message ?? '');
+    };
+    addTearDown(() => debugPrint = previousDebugPrint);
+    final directory = await Directory.systemTemp.createTemp('gaming-memories-');
+    final source = Directory(p.join(directory.path, 'source'))..createSync();
+    addTearDown(() => directory.delete(recursive: true));
+    final store = ConfigStore(
+      filePath: p.join(directory.path, 'settings.json'),
+    );
+    await store.save(
+      AppSettings(
+        outputPath: directory.path,
+        diabloIV: const ProviderSettings.disabled(),
+        folderGrants: {
+          FolderGrantIds.library: FolderGrant(
+            platform: 'macos',
+            path: directory.path,
+            access: FolderGrantAccess.readWrite,
+            bookmark: 'library-bookmark',
+          ),
+          FolderGrantIds.diabloIV: FolderGrant(
+            platform: 'macos',
+            path: source.path,
+            access: FolderGrantAccess.readOnly,
+            bookmark: 'source-bookmark',
+          ),
+        },
+      ),
+    );
+    final access = _FakeFolderAccess();
+    final controller = LibraryController(
+      configStore: store,
+      scanner: const LibraryScanner(),
+      providers: [_ThrowingFolderProvider(source.path)],
+      folderAccess: access,
+    );
+    await controller.initialize();
+
+    await controller.collect();
+
+    expect(
+      access.released.where((token) => token == 'lease:${source.path}'),
+      hasLength(2),
+    );
+    expect(controller.notifications.single.kind, NotificationKind.warning);
+    expect(
+      diagnostics.join('\n'),
+      allOf(
+        contains('Provider "Throwing" failed'),
+        contains('Bad state: provider failed'),
+        contains('_ThrowingFolderProvider.collect'),
+      ),
+    );
+  });
+
+  test('redacts the Steam API key from provider failure diagnostics', () async {
+    const apiKey = 'super-secret-api-key';
+    final diagnostics = <String>[];
+    final previousDebugPrint = debugPrint;
+    debugPrint = (message, {wrapWidth}) {
+      diagnostics.add(message ?? '');
+    };
+    addTearDown(() => debugPrint = previousDebugPrint);
+    final controller =
+        LibraryController(
+            configStore: const ConfigStore(filePath: 'unused'),
+            scanner: const LibraryScanner(),
+            providers: const [_ThrowingProvider(apiKey)],
+          )
+          ..settings = const AppSettings.defaults().copyWith(
+            steam: const SteamSettings.disabled().copyWith(apiKey: apiKey),
+          );
+
+    await controller.collect();
+
+    final output = diagnostics.join('\n');
+    expect(output, contains('Provider "Steam" failed'));
+    expect(output, contains('key=<REDACTED>'));
+    expect(output, isNot(contains(apiKey)));
+    expect(controller.notifications.single.message, isNot(contains(apiKey)));
+  });
+
+  test('points the macOS chooser at the selected automatic folder', () async {
+    final access = _FakeFolderAccess();
+    final controller = LibraryController(
+      configStore: const ConfigStore(filePath: 'unused'),
+      scanner: const LibraryScanner(),
+      providers: const [],
+      folderAccess: access,
+      providerPaths: const _TestProviderPathResolver([
+        '/Steam One/userdata',
+        '/Steam Two/userdata',
+      ]),
+    );
+
+    final result = await controller.chooseFolder(
+      SettingsFolderTarget.steamAutomatic,
+      initialPath: '/Steam Two/userdata',
+    );
+
+    expect(result.cancelled, isTrue);
+    expect(access.requests, hasLength(1));
+    expect(access.requests.single.initialPath, '/Steam Two/userdata');
+    expect(access.requests.single.suggestedPath, '/Steam Two/userdata');
+    expect(access.requests.single.message, contains('Click Allow Access'));
+  });
 }
 
 class _FakeScreenshotActions implements ScreenshotActionService {
@@ -267,5 +505,144 @@ class _ProgressProvider implements ScreenshotProvider {
     );
     await release.future;
     return const ImportResult(provider: 'Test', imported: 1, skipped: 0);
+  }
+}
+
+class _RecordingScanner extends LibraryScanner {
+  _RecordingScanner(this.events);
+
+  final List<String> events;
+
+  @override
+  Future<MediaLibrary> scan(String outputPath) async {
+    events.add('scan:$outputPath');
+    return const MediaLibrary.empty();
+  }
+}
+
+class _FakeFolderAccess implements FolderAccessService {
+  _FakeFolderAccess({this.events, this.chosen});
+
+  final List<String>? events;
+  final FolderAccessLease? chosen;
+  final List<String> released = [];
+  final List<FolderAccessRequest> requests = [];
+
+  @override
+  bool get requiresPersistentGrant => true;
+
+  @override
+  Future<FolderAccessLease?> choose(FolderAccessRequest request) async {
+    requests.add(request);
+    return chosen;
+  }
+
+  @override
+  Future<FolderAccessLease> activate(FolderGrant grant) async {
+    events?.add('activate:${grant.path}');
+    return FolderAccessLease(grant: grant, token: 'lease:${grant.path}');
+  }
+
+  @override
+  Future<void> release(FolderAccessLease lease) async {
+    released.add(lease.token);
+  }
+
+  @override
+  Future<void> dispose() async {}
+}
+
+class _TestProviderPathResolver extends ProviderPathResolver {
+  const _TestProviderPathResolver(this.paths);
+
+  final List<String> paths;
+
+  @override
+  List<String> steamUserdataCandidates() => paths;
+}
+
+class _FolderProvider implements FolderBackedScreenshotProvider {
+  const _FolderProvider(this.name, this.folderGrantId);
+
+  @override
+  final String name;
+
+  @override
+  final String folderGrantId;
+
+  @override
+  bool isEnabled(AppSettings settings) => true;
+
+  @override
+  ProviderFolderRequirement? folderRequirement(AppSettings settings) {
+    return ProviderFolderRequirement(
+      id: folderGrantId,
+      path: '/provider/$name',
+      automatic: false,
+    );
+  }
+
+  @override
+  AppSettings withFolderPath(AppSettings settings, String path) => settings;
+
+  @override
+  Future<ImportResult> collect(
+    AppSettings settings, {
+    ProgressCallback? onProgress,
+  }) async => ImportResult.empty(name);
+}
+
+class _ThrowingFolderProvider implements FolderBackedScreenshotProvider {
+  const _ThrowingFolderProvider(this.path);
+
+  final String path;
+
+  @override
+  String get name => 'Throwing';
+
+  @override
+  String get folderGrantId => FolderGrantIds.diabloIV;
+
+  @override
+  bool isEnabled(AppSettings settings) => true;
+
+  @override
+  ProviderFolderRequirement? folderRequirement(AppSettings settings) {
+    return ProviderFolderRequirement(
+      id: folderGrantId,
+      path: path,
+      automatic: false,
+    );
+  }
+
+  @override
+  AppSettings withFolderPath(AppSettings settings, String path) => settings;
+
+  @override
+  Future<ImportResult> collect(
+    AppSettings settings, {
+    ProgressCallback? onProgress,
+  }) {
+    throw StateError('provider failed');
+  }
+}
+
+class _ThrowingProvider implements ScreenshotProvider {
+  const _ThrowingProvider(this.apiKey);
+
+  final String apiKey;
+
+  @override
+  String get name => 'Steam';
+
+  @override
+  bool isEnabled(AppSettings settings) => true;
+
+  @override
+  Future<ImportResult> collect(
+    AppSettings settings, {
+    ProgressCallback? onProgress,
+  }) {
+    throw StateError('request failed: https://example.invalid/?key=$apiKey');
   }
 }

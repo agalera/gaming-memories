@@ -42,6 +42,18 @@ class ImportResult {
   final String? warning;
 }
 
+class ProviderFolderRequirement {
+  const ProviderFolderRequirement({
+    required this.id,
+    required this.path,
+    required this.automatic,
+  });
+
+  final String id;
+  final String path;
+  final bool automatic;
+}
+
 abstract interface class ScreenshotProvider {
   String get name;
 
@@ -51,4 +63,13 @@ abstract interface class ScreenshotProvider {
     AppSettings settings, {
     ProgressCallback? onProgress,
   });
+}
+
+abstract interface class FolderBackedScreenshotProvider
+    implements ScreenshotProvider {
+  String get folderGrantId;
+
+  ProviderFolderRequirement? folderRequirement(AppSettings settings);
+
+  AppSettings withFolderPath(AppSettings settings, String path);
 }

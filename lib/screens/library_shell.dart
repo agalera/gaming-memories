@@ -224,7 +224,9 @@ class _LibraryShellState extends State<LibraryShell> {
           key: galleryKey,
           media: controller.visibleMedia,
           description: controller.pageDescription,
-          needsSetup: controller.settings.outputPath.trim().isEmpty,
+          needsSetup:
+              controller.settings.outputPath.trim().isEmpty ||
+              controller.libraryNeedsAuthorization,
           onSetup: controller.showSettings,
           controller: controller,
         ),

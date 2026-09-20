@@ -12,7 +12,9 @@ import 'providers/guild_wars_2_provider.dart';
 import 'providers/steam_provider.dart';
 import 'services/config_store.dart';
 import 'services/file_cache.dart';
+import 'services/folder_access_service.dart';
 import 'services/library_scanner.dart';
+import 'services/provider_paths.dart';
 import 'services/steam_client.dart';
 
 Future<void> main() async {
@@ -20,15 +22,23 @@ Future<void> main() async {
   MediaKit.ensureInitialized();
 
   final supportDirectory = await getApplicationSupportDirectory();
+  final folderAccess = createFolderAccessService();
+  final providerPaths = ProviderPathResolver(
+    userHomeDirectory: await platformUserHomeDirectory(),
+    allowEnvironmentHome: !Platform.isMacOS,
+  );
   final controller = LibraryController(
     configStore: ConfigStore(
       filePath: p.join(supportDirectory.path, 'gaming-memories.json'),
     ),
     scanner: const LibraryScanner(),
+    folderAccess: folderAccess,
+    providerPaths: providerPaths,
     providers: [
       const DiabloIVProvider(),
       const GuildWars2Provider(),
       SteamProvider(
+        providerPaths: providerPaths,
         api: SteamClient(
           cache: FileCache(Directory(p.join(supportDirectory.path, 'cache'))),
         ),

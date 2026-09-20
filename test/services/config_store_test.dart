@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
@@ -36,6 +37,14 @@ void main() {
         ignoredGames: ['10'],
         customGames: {'20': 'Custom Game'},
       ),
+      folderGrants: {
+        'library': FolderGrant(
+          platform: 'macos',
+          path: '/screenshots',
+          access: FolderGrantAccess.readWrite,
+          bookmark: 'Ym9va21hcms=',
+        ),
+      },
     );
 
     await store.save(expected);
@@ -58,6 +67,11 @@ void main() {
     expect(actual.steam.downloadCovers, isFalse);
     expect(actual.steam.ignoredGames, ['10']);
     expect(actual.steam.customGames, {'20': 'Custom Game'});
+    expect(actual.folderGrants['library']?.path, '/screenshots');
+    expect(actual.folderGrants['library']?.access, FolderGrantAccess.readWrite);
+    final json = jsonDecode(await File(store.filePath).readAsString()) as Map;
+    expect(json['version'], 6);
+    expect(File('${store.filePath}.tmp').existsSync(), isFalse);
   });
 
   test('migrates legacy automatic and custom path values', () async {

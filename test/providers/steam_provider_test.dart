@@ -78,6 +78,22 @@ void main() {
     );
   });
 
+  test('uses a selected userdata candidate in automatic mode', () async {
+    await addLocalScreenshot('10', 'local');
+    api.names['10'] = 'Test Game';
+    final value = settings();
+    final automatic = value.copyWith(
+      steam: value.steam.copyWith(
+        useCustomPath: false,
+        userdataPath: p.join(steam.path, 'userdata'),
+      ),
+    );
+
+    final result = await SteamProvider(api: api).collect(automatic);
+
+    expect(result.imported, 1);
+  });
+
   test('uses custom names and ignores configured app IDs', () async {
     await addLocalScreenshot('10', 'ignored');
     await addLocalScreenshot('20', 'custom');
