@@ -220,7 +220,7 @@ class SteamSettings {
 class AppSettings {
   const AppSettings({
     required this.outputPath,
-    required this.diabloIV,
+    this.battleNet = const ProviderSettings.disabled(),
     this.guildWars2 = const ProviderSettings.disabled(),
     this.hytale = const ProviderSettings.disabled(),
     this.minecraft = const ProviderSettings.disabled(),
@@ -233,7 +233,7 @@ class AppSettings {
 
   const AppSettings.defaults()
     : outputPath = '',
-      diabloIV = const ProviderSettings.disabled(),
+      battleNet = const ProviderSettings.disabled(),
       guildWars2 = const ProviderSettings.disabled(),
       hytale = const ProviderSettings.disabled(),
       minecraft = const ProviderSettings.disabled(),
@@ -244,7 +244,7 @@ class AppSettings {
       folderGrants = const {};
 
   final String outputPath;
-  final ProviderSettings diabloIV;
+  final ProviderSettings battleNet;
   final ProviderSettings guildWars2;
   final ProviderSettings hytale;
   final ProviderSettings minecraft;
@@ -256,7 +256,7 @@ class AppSettings {
 
   AppSettings copyWith({
     String? outputPath,
-    ProviderSettings? diabloIV,
+    ProviderSettings? battleNet,
     ProviderSettings? guildWars2,
     ProviderSettings? hytale,
     ProviderSettings? minecraft,
@@ -268,7 +268,7 @@ class AppSettings {
   }) {
     return AppSettings(
       outputPath: outputPath ?? this.outputPath,
-      diabloIV: diabloIV ?? this.diabloIV,
+      battleNet: battleNet ?? this.battleNet,
       guildWars2: guildWars2 ?? this.guildWars2,
       hytale: hytale ?? this.hytale,
       minecraft: minecraft ?? this.minecraft,
@@ -281,7 +281,7 @@ class AppSettings {
   }
 
   factory AppSettings.fromJson(Map<String, Object?> json) {
-    final providerJson = json['diabloIV'];
+    final battleNetJson = json['battleNet'] ?? json['diabloIV'];
     final guildWars2Json = json['guildWars2'];
     final hytaleJson = json['hytale'];
     final minecraftJson = json['minecraft'];
@@ -300,11 +300,16 @@ class AppSettings {
         }
       }
     }
+    final legacyBattleNetGrant = grants.remove('provider.diabloIV');
+    if (legacyBattleNetGrant != null &&
+        !grants.containsKey('provider.battleNet')) {
+      grants['provider.battleNet'] = legacyBattleNetGrant;
+    }
 
     return AppSettings(
       outputPath: json['outputPath'] as String? ?? '',
-      diabloIV: providerJson is Map<String, Object?>
-          ? ProviderSettings.fromJson(providerJson)
+      battleNet: battleNetJson is Map<String, Object?>
+          ? ProviderSettings.fromJson(battleNetJson)
           : const ProviderSettings.disabled(),
       guildWars2: guildWars2Json is Map<String, Object?>
           ? ProviderSettings.fromJson(guildWars2Json)
@@ -330,10 +335,10 @@ class AppSettings {
   }
 
   Map<String, Object?> toJson() => {
-    'version': 9,
+    'version': 10,
     'outputPath': outputPath,
     'themeMode': themeMode.name,
-    'diabloIV': diabloIV.toJson(),
+    'battleNet': battleNet.toJson(),
     'guildWars2': guildWars2.toJson(),
     'hytale': hytale.toJson(),
     'minecraft': minecraft.toJson(),

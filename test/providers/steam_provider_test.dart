@@ -30,7 +30,6 @@ void main() {
   }) {
     return AppSettings(
       outputPath: output.path,
-      diabloIV: const ProviderSettings.disabled(),
       steam: SteamSettings(
         enabled: true,
         useCustomPath: true,

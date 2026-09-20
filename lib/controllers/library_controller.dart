@@ -26,7 +26,8 @@ enum FolderAuthorizationStatus {
 
 enum SettingsFolderTarget {
   library,
-  diabloIVCustom,
+  battleNetCustom,
+  battleNetAutomatic,
   guildWars2Custom,
   hytaleCustom,
   hytaleAutomatic,
@@ -154,6 +155,8 @@ class LibraryController extends ChangeNotifier {
     SettingsFolderTarget target,
   ) {
     final paths = switch (target) {
+      SettingsFolderTarget.battleNetAutomatic =>
+        providerPaths.battleNetRootCandidates(),
       SettingsFolderTarget.steamAutomatic =>
         providerPaths.steamUserdataCandidates(),
       SettingsFolderTarget.hytaleAutomatic => [
@@ -566,17 +569,48 @@ class LibraryController extends ChangeNotifier {
           ),
           selectedPath: (settings) => settings.outputPath,
         );
-      case SettingsFolderTarget.diabloIVCustom:
+      case SettingsFolderTarget.battleNetCustom:
         return _FolderSpecification(
           request: FolderAccessRequest(
-            id: FolderGrantIds.diabloIV,
-            title: 'Choose the Diablo IV screenshot folder',
+            id: FolderGrantIds.battleNet,
+            title: 'Choose the Battle.net or game installation folder',
             access: FolderGrantAccess.readOnly,
             initialPath:
                 _nonEmpty(initialPath) ??
-                _nonEmpty(settings.diabloIV.sourcePath),
+                _nonEmpty(settings.battleNet.sourcePath),
           ),
-          selectedPath: (settings) => settings.diabloIV.sourcePath,
+          selectedPath: (settings) => settings.battleNet.sourcePath,
+        );
+      case SettingsFolderTarget.battleNetAutomatic:
+        final candidates = automaticFolderCandidates(target);
+        if (candidates.isEmpty) {
+          return null;
+        }
+        final requested = _nonEmpty(initialPath);
+        final selected = requested == null
+            ? candidates.length == 1
+                  ? candidates.single
+                  : null
+            : candidates
+                  .where((candidate) => _samePath(candidate.path, requested))
+                  .firstOrNull;
+        if (selected == null) {
+          return null;
+        }
+        final candidate = selected.path;
+        return _FolderSpecification(
+          request: FolderAccessRequest(
+            id: FolderGrantIds.battleNet,
+            title: 'Allow access to Battle.net screenshots',
+            access: FolderGrantAccess.readOnly,
+            initialPath: candidate,
+            suggestedPath: candidate,
+            message:
+                'Click Allow Access to grant Gaming Memories access to the “${selected.name}” installation folder.',
+          ),
+          expectedPath: candidate,
+          pathMismatchMessage: 'Choose the Battle.net game installation folder shown by Gaming Memories.',
+          selectedPath: (_) => candidate,
         );
       case SettingsFolderTarget.guildWars2Custom:
         return _FolderSpecification(
@@ -736,10 +770,17 @@ class LibraryController extends ChangeNotifier {
   AppSettings _settingsWithFolder(SettingsFolderTarget target, String path) {
     return switch (target) {
       SettingsFolderTarget.library => settings.copyWith(outputPath: path),
-      SettingsFolderTarget.diabloIVCustom => settings.copyWith(
-        diabloIV: settings.diabloIV.copyWith(
+      SettingsFolderTarget.battleNetCustom => settings.copyWith(
+        battleNet: settings.battleNet.copyWith(
           enabled: true,
           useCustomPath: true,
+          sourcePath: path,
+        ),
+      ),
+      SettingsFolderTarget.battleNetAutomatic => settings.copyWith(
+        battleNet: settings.battleNet.copyWith(
+          enabled: true,
+          useCustomPath: false,
           sourcePath: path,
         ),
       ),

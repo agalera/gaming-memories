@@ -8,7 +8,7 @@ import '../models/app_settings.dart';
 
 abstract final class FolderGrantIds {
   static const library = 'library';
-  static const diabloIV = 'provider.diabloIV';
+  static const battleNet = 'provider.battleNet';
   static const guildWars2 = 'provider.guildWars2';
   static const hytale = 'provider.hytale';
   static const minecraft = 'provider.minecraft';

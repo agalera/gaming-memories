@@ -42,7 +42,7 @@ void main() {
 
     expect(find.text('Media library'), findsOneWidget);
     expect(find.text('Color mode'), findsOneWidget);
-    expect(find.text('Diablo IV'), findsOneWidget);
+    expect(find.text('Battle.net'), findsOneWidget);
     expect(find.text('Guild Wars 2'), findsOneWidget);
     expect(
       tester
@@ -464,7 +464,6 @@ void main() {
           ..settings = const AppSettings(
             outputPath: '',
             themeMode: AppThemeMode.dark,
-            diabloIV: ProviderSettings.disabled(),
           );
 
     await tester.pumpWidget(GamingMemoriesApp(controller: controller));
@@ -509,7 +508,6 @@ void main() {
           ..view = LibraryView.settings
           ..settings = const AppSettings(
             outputPath: '',
-            diabloIV: ProviderSettings.disabled(),
             steam: SteamSettings(
               enabled: true,
               useCustomPath: false,
@@ -631,7 +629,7 @@ void main() {
           ..view = LibraryView.settings
           ..settings = const AppSettings(
             outputPath: '',
-            diabloIV: ProviderSettings(
+            battleNet: ProviderSettings(
               enabled: true,
               useCustomPath: false,
               sourcePath: '',
@@ -641,9 +639,9 @@ void main() {
     await tester.pumpWidget(GamingMemoriesApp(controller: controller));
     await tester.pumpAndSettle();
 
-    expect(find.byKey(const ValueKey('diablo-path-field')), findsNothing);
+    expect(find.byKey(const ValueKey('battle-net-path-field')), findsNothing);
 
-    final customPath = find.byKey(const ValueKey('diablo-custom-path'));
+    final customPath = find.byKey(const ValueKey('battle-net-custom-path'));
     await tester.ensureVisible(customPath);
     await tester.pumpAndSettle();
     await tester.tap(customPath);
@@ -653,10 +651,10 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    final field = find.byKey(const ValueKey('diablo-path-field'));
+    final field = find.byKey(const ValueKey('battle-net-path-field'));
     expect(field, findsOneWidget);
     expect(find.text('Choose a folder.'), findsOneWidget);
-    expect(controller.settings.diabloIV.useCustomPath, isFalse);
+    expect(controller.settings.battleNet.useCustomPath, isFalse);
 
     await tester.enterText(field, validSource.path);
     await tester.pump(const Duration(milliseconds: 400));
@@ -666,9 +664,9 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('Choose a folder.'), findsNothing);
-    expect(controller.settings.diabloIV.useCustomPath, isTrue);
-    expect(controller.settings.diabloIV.sourcePath, validSource.path);
-    expect(store.saved?.diabloIV.sourcePath, validSource.path);
+    expect(controller.settings.battleNet.useCustomPath, isTrue);
+    expect(controller.settings.battleNet.sourcePath, validSource.path);
+    expect(store.saved?.battleNet.sourcePath, validSource.path);
 
     final invalidPath = p.join(directory.path, 'missing');
     await tester.enterText(field, invalidPath);
@@ -678,12 +676,9 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    expect(
-      find.text('Diablo IV screenshot folder does not exist.'),
-      findsOneWidget,
-    );
-    expect(controller.settings.diabloIV.sourcePath, validSource.path);
-    expect(store.saved?.diabloIV.sourcePath, validSource.path);
+    expect(find.text('Battle.net folder does not exist.'), findsOneWidget);
+    expect(controller.settings.battleNet.sourcePath, validSource.path);
+    expect(store.saved?.battleNet.sourcePath, validSource.path);
 
     await tester.tap(customPath);
     await tester.pump();
@@ -692,8 +687,8 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    expect(find.byKey(const ValueKey('diablo-path-field')), findsNothing);
-    expect(controller.settings.diabloIV.useCustomPath, isFalse);
+    expect(find.byKey(const ValueKey('battle-net-path-field')), findsNothing);
+    expect(controller.settings.battleNet.useCustomPath, isFalse);
 
     await tester.pumpWidget(const SizedBox.shrink());
     await tester.pump(const Duration(milliseconds: 200));
@@ -712,7 +707,7 @@ void main() {
           ..view = LibraryView.settings
           ..settings = const AppSettings(
             outputPath: '',
-            diabloIV: ProviderSettings(
+            battleNet: ProviderSettings(
               enabled: true,
               useCustomPath: true,
               sourcePath: '/definitely/missing/gaming-memories',
@@ -726,10 +721,7 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    expect(
-      find.text('Diablo IV screenshot folder does not exist.'),
-      findsOneWidget,
-    );
+    expect(find.text('Battle.net folder does not exist.'), findsOneWidget);
 
     await tester.pumpWidget(const SizedBox.shrink());
     await tester.pump(const Duration(milliseconds: 200));
@@ -751,7 +743,6 @@ void main() {
           ..view = LibraryView.settings
           ..settings = AppSettings(
             outputPath: '',
-            diabloIV: const ProviderSettings.disabled(),
             hytale: ProviderSettings(
               enabled: true,
               useCustomPath: true,
@@ -797,7 +788,6 @@ void main() {
           ..view = LibraryView.settings
           ..settings = AppSettings(
             outputPath: '',
-            diabloIV: const ProviderSettings.disabled(),
             minecraft: ProviderSettings(
               enabled: true,
               useCustomPath: true,
@@ -839,10 +829,7 @@ void main() {
           )
           ..isInitializing = false
           ..view = LibraryView.settings
-          ..settings = const AppSettings(
-            outputPath: '/saved/library',
-            diabloIV: ProviderSettings.disabled(),
-          );
+          ..settings = const AppSettings(outputPath: '/saved/library');
 
     await tester.pumpWidget(GamingMemoriesApp(controller: controller));
     await tester.pump();
@@ -881,7 +868,6 @@ void main() {
           ..view = LibraryView.settings
           ..settings = const AppSettings(
             outputPath: '',
-            diabloIV: ProviderSettings.disabled(),
             steam: SteamSettings(
               enabled: true,
               useCustomPath: false,

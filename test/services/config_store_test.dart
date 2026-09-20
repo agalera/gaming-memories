@@ -16,7 +16,7 @@ void main() {
     const expected = AppSettings(
       outputPath: '/screenshots',
       themeMode: AppThemeMode.dark,
-      diabloIV: ProviderSettings(
+      battleNet: ProviderSettings(
         enabled: true,
         useCustomPath: true,
         sourcePath: '/diablo',
@@ -73,9 +73,9 @@ void main() {
 
     expect(actual.outputPath, expected.outputPath);
     expect(actual.themeMode, AppThemeMode.dark);
-    expect(actual.diabloIV.enabled, isTrue);
-    expect(actual.diabloIV.useCustomPath, isTrue);
-    expect(actual.diabloIV.sourcePath, expected.diabloIV.sourcePath);
+    expect(actual.battleNet.enabled, isTrue);
+    expect(actual.battleNet.useCustomPath, isTrue);
+    expect(actual.battleNet.sourcePath, expected.battleNet.sourcePath);
     expect(actual.guildWars2.enabled, isTrue);
     expect(actual.guildWars2.useCustomPath, isTrue);
     expect(actual.guildWars2.sourcePath, '/guild-wars-2');
@@ -107,7 +107,9 @@ void main() {
     expect(actual.folderGrants['library']?.path, '/screenshots');
     expect(actual.folderGrants['library']?.access, FolderGrantAccess.readWrite);
     final json = jsonDecode(await File(store.filePath).readAsString()) as Map;
-    expect(json['version'], 9);
+    expect(json['version'], 10);
+    expect(json['diabloIV'], isNull);
+    expect(json['battleNet'], isA<Map>());
     expect(File('${store.filePath}.tmp').existsSync(), isFalse);
   });
 
@@ -122,14 +124,22 @@ void main() {
   "guildWars2": {"enabled": true, "sourcePath": "/legacy/gw2"},
   "hytale": {"enabled": true, "sourcePath": "auto", "downloadCovers": true},
   "minecraft": {"enabled": true, "sourcePath": "/legacy/minecraft"},
-  "steam": {"enabled": true, "userdataPath": "auto"}
+  "steam": {"enabled": true, "userdataPath": "auto"},
+  "folderGrants": {
+    "provider.diabloIV": {
+      "platform": "macos",
+      "path": "/legacy/diablo",
+      "access": "readOnly",
+      "bookmark": "legacy-bookmark"
+    }
+  }
 }
 ''');
 
     final settings = await ConfigStore(filePath: file.path).load();
 
-    expect(settings.diabloIV.useCustomPath, isFalse);
-    expect(settings.diabloIV.sourcePath, isEmpty);
+    expect(settings.battleNet.useCustomPath, isFalse);
+    expect(settings.battleNet.sourcePath, isEmpty);
     expect(settings.guildWars2.useCustomPath, isTrue);
     expect(settings.guildWars2.sourcePath, '/legacy/gw2');
     expect(settings.hytale.useCustomPath, isFalse);
@@ -139,5 +149,10 @@ void main() {
     expect(settings.minecraft.sourcePath, '/legacy/minecraft');
     expect(settings.steam.useCustomPath, isFalse);
     expect(settings.steam.userdataPath, isEmpty);
+    expect(settings.folderGrants['provider.diabloIV'], isNull);
+    expect(
+      settings.folderGrants['provider.battleNet']?.bookmark,
+      'legacy-bookmark',
+    );
   });
 }

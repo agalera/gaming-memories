@@ -30,7 +30,6 @@ void main() {
   }) {
     return AppSettings(
       outputPath: output.path,
-      diabloIV: const ProviderSettings.disabled(),
       hytale: ProviderSettings(
         enabled: enabled,
         useCustomPath: useCustomPath,

@@ -41,6 +41,20 @@ class ProviderPathResolver {
       allowEnvironmentHome: allowEnvironmentHome,
     );
   }
+
+  List<String> battleNetRootCandidates() {
+    return ProviderPaths.battleNetRootCandidates(
+      userHomeDirectory: userHomeDirectory,
+      allowEnvironmentHome: allowEnvironmentHome,
+    );
+  }
+
+  List<String> diabloIVScreenshots() {
+    return ProviderPaths.diabloIVScreenshots(
+      userHomeDirectory: userHomeDirectory,
+      allowEnvironmentHome: allowEnvironmentHome,
+    );
+  }
 }
 
 const _folderAccessChannel = MethodChannel('gaming-memories/folder-access');
@@ -61,11 +75,16 @@ Future<String?> platformUserHomeDirectory() async {
 }
 
 abstract final class ProviderPaths {
-  static List<String> diabloIVScreenshots() {
-    if (!Platform.isWindows) {
+  static List<String> diabloIVScreenshots({
+    String? userHomeDirectory,
+    bool allowEnvironmentHome = true,
+    String? operatingSystem,
+  }) {
+    if ((operatingSystem ?? Platform.operatingSystem) != 'windows') {
       return const [];
     }
-    final home = homeDirectory();
+    final home =
+        userHomeDirectory ?? (allowEnvironmentHome ? homeDirectory() : null);
     if (home == null) {
       return const [];
     }
@@ -73,6 +92,21 @@ abstract final class ProviderPaths {
       p.join(home, 'Pictures', 'Diablo IV'),
       p.join(home, 'Documents', 'Diablo IV', 'Screenshots'),
     ];
+  }
+
+  static List<String> battleNetRootCandidates({
+    String? userHomeDirectory,
+    bool allowEnvironmentHome = true,
+    String? operatingSystem,
+  }) {
+    final platform = operatingSystem ?? Platform.operatingSystem;
+    if (platform == 'macos') {
+      return const ['/Applications/World of Warcraft'];
+    }
+    if (platform == 'windows') {
+      return const [r'C:\Program Files (x86)\World of Warcraft'];
+    }
+    return const [];
   }
 
   static String? guildWars2Screenshots() {

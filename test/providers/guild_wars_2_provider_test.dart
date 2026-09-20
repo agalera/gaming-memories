@@ -24,7 +24,6 @@ void main() {
 
   AppSettings settings({bool enabled = true}) => AppSettings(
     outputPath: output.path,
-    diabloIV: const ProviderSettings.disabled(),
     guildWars2: ProviderSettings(
       enabled: enabled,
       useCustomPath: true,

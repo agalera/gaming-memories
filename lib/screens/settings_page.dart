@@ -71,7 +71,7 @@ class _SettingsPageState extends State<SettingsPage> {
       text: widget.controller.settings.outputPath,
     );
     _diabloController = TextEditingController(
-      text: widget.controller.settings.diabloIV.sourcePath,
+      text: widget.controller.settings.battleNet.sourcePath,
     );
     _guildWars2Controller = TextEditingController(
       text: widget.controller.settings.guildWars2.sourcePath,
@@ -99,8 +99,8 @@ class _SettingsPageState extends State<SettingsPage> {
     _steamCustomGames = steam.customGames.entries
         .map((entry) => _CustomGame(entry.key, entry.value))
         .toList();
-    _diabloEnabled = widget.controller.settings.diabloIV.enabled;
-    _diabloUseCustomPath = widget.controller.settings.diabloIV.useCustomPath;
+    _diabloEnabled = widget.controller.settings.battleNet.enabled;
+    _diabloUseCustomPath = widget.controller.settings.battleNet.useCustomPath;
     _guildWars2Enabled = widget.controller.settings.guildWars2.enabled;
     _guildWars2UseCustomPath =
         widget.controller.settings.guildWars2.useCustomPath;
@@ -287,13 +287,13 @@ class _SettingsPageState extends State<SettingsPage> {
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
                                 Text(
-                                  'Diablo IV',
+                                  'Battle.net',
                                   style: context.theme.typography.body.lg
                                       .copyWith(fontWeight: FontWeight.w700),
                                 ),
                                 const SizedBox(height: 2),
                                 Text(
-                                  'PC · Screenshots',
+                                  'PC · Diablo IV and World of Warcraft',
                                   style: context.theme.typography.body.sm
                                       .copyWith(
                                         color: context
@@ -307,10 +307,10 @@ class _SettingsPageState extends State<SettingsPage> {
                           ),
                           FSwitch(
                             value: _diabloEnabled,
-                            semanticsLabel: 'Enable Diablo IV',
+                            semanticsLabel: 'Enable Battle.net',
                             onChange: (value) => unawaited(
                               _setProviderEnabled(
-                                _SettingsProvider.diabloIV,
+                                _SettingsProvider.battleNet,
                                 value,
                               ),
                             ),
@@ -319,39 +319,51 @@ class _SettingsPageState extends State<SettingsPage> {
                       ),
                       const SizedBox(height: 18),
                       FCheckbox(
-                        key: const ValueKey('diablo-custom-path'),
+                        key: const ValueKey('battle-net-custom-path'),
                         label: const Text('Use custom folder'),
                         description: const Text(
-                          'Otherwise, the screenshot folder is discovered automatically.',
+                          'Otherwise, installed Battle.net games are discovered automatically.',
                         ),
                         value: _diabloUseCustomPath,
                         enabled: _diabloEnabled,
                         onChange: (value) => unawaited(
-                          _setCustomPath(_SettingsProvider.diabloIV, value),
+                          _setCustomPath(_SettingsProvider.battleNet, value),
                         ),
                       ),
-                      if (!_diabloUseCustomPath &&
-                          _diabloPathError != null) ...[
-                        const SizedBox(height: 8),
-                        _InlinePathError(_diabloPathError!),
-                      ],
                       if (_diabloUseCustomPath) ...[
                         const SizedBox(height: 16),
                         _DirectoryField(
-                          fieldKey: const ValueKey('diablo-path-field'),
+                          fieldKey: const ValueKey('battle-net-path-field'),
                           controller: _diabloController,
-                          label: 'Screenshot folder',
-                          hint: '/path/to/Diablo IV',
+                          label: 'Battle.net or game installation folder',
+                          hint: '/path/to/World of Warcraft',
                           error: _diabloPathError,
                           enabled: _diabloEnabled,
                           readOnly:
                               widget.controller.usesPersistentFolderAccess,
                           buttonLabel: _folderButtonLabel(
-                            FolderGrantIds.diabloIV,
+                            FolderGrantIds.battleNet,
                           ),
                           onBrowse: () => _chooseDirectory(
-                            SettingsFolderTarget.diabloIVCustom,
+                            SettingsFolderTarget.battleNetCustom,
                             initialPath: _diabloController.text,
+                          ),
+                        ),
+                      ] else if (_diabloEnabled &&
+                          widget.controller.usesPersistentFolderAccess) ...[
+                        const SizedBox(height: 16),
+                        _FolderAccessRow(
+                          buttonKey: const ValueKey(
+                            'battle-net-automatic-folder-access',
+                          ),
+                          providerName: 'Battle.net',
+                          automaticDescription: 'World of Warcraft screenshots are stored in its installation folder. The macOS dialog will open it; click Allow Access to grant access.',
+                          status: widget.controller.folderAuthorization(
+                            FolderGrantIds.battleNet,
+                          ),
+                          error: _diabloPathError,
+                          onAllow: () => _chooseAutomaticDirectory(
+                            SettingsFolderTarget.battleNetAutomatic,
                           ),
                         ),
                       ],
@@ -1055,7 +1067,7 @@ class _SettingsPageState extends State<SettingsPage> {
     _suppressAutosave = true;
     final saved = widget.controller.settings;
     _outputController.text = saved.outputPath;
-    _diabloController.text = saved.diabloIV.sourcePath;
+    _diabloController.text = saved.battleNet.sourcePath;
     _guildWars2Controller.text = saved.guildWars2.sourcePath;
     _hytaleController.text = saved.hytale.sourcePath;
     _minecraftController.text = saved.minecraft.sourcePath;
@@ -1064,8 +1076,8 @@ class _SettingsPageState extends State<SettingsPage> {
     _steamPathController.text = saved.steam.userdataPath;
     _suppressAutosave = false;
     setState(() {
-      _diabloEnabled = saved.diabloIV.enabled;
-      _diabloUseCustomPath = saved.diabloIV.useCustomPath;
+      _diabloEnabled = saved.battleNet.enabled;
+      _diabloUseCustomPath = saved.battleNet.useCustomPath;
       _guildWars2Enabled = saved.guildWars2.enabled;
       _guildWars2UseCustomPath = saved.guildWars2.useCustomPath;
       _hytaleEnabled = saved.hytale.enabled;
@@ -1185,7 +1197,10 @@ class _SettingsPageState extends State<SettingsPage> {
     }
 
     final target = switch ((provider, _usesCustomPath(provider))) {
-      (_SettingsProvider.diabloIV, true) => SettingsFolderTarget.diabloIVCustom,
+      (_SettingsProvider.battleNet, true) =>
+        SettingsFolderTarget.battleNetCustom,
+      (_SettingsProvider.battleNet, false) =>
+        SettingsFolderTarget.battleNetAutomatic,
       (_SettingsProvider.guildWars2, true) =>
         SettingsFolderTarget.guildWars2Custom,
       (_SettingsProvider.hytale, true) => SettingsFolderTarget.hytaleCustom,
@@ -1229,7 +1244,7 @@ class _SettingsPageState extends State<SettingsPage> {
 
     final target = value
         ? switch (provider) {
-            _SettingsProvider.diabloIV => SettingsFolderTarget.diabloIVCustom,
+            _SettingsProvider.battleNet => SettingsFolderTarget.battleNetCustom,
             _SettingsProvider.guildWars2 =>
               SettingsFolderTarget.guildWars2Custom,
             _SettingsProvider.hytale => SettingsFolderTarget.hytaleCustom,
@@ -1241,6 +1256,8 @@ class _SettingsPageState extends State<SettingsPage> {
             _SettingsProvider.steam => SettingsFolderTarget.steamCustom,
           }
         : switch (provider) {
+            _SettingsProvider.battleNet =>
+              SettingsFolderTarget.battleNetAutomatic,
             _SettingsProvider.hytale => SettingsFolderTarget.hytaleAutomatic,
             _SettingsProvider.minecraft =>
               SettingsFolderTarget.minecraftAutomatic,
@@ -1273,7 +1290,7 @@ class _SettingsPageState extends State<SettingsPage> {
   }
 
   bool _usesCustomPath(_SettingsProvider provider) => switch (provider) {
-    _SettingsProvider.diabloIV => _diabloUseCustomPath,
+    _SettingsProvider.battleNet => _diabloUseCustomPath,
     _SettingsProvider.guildWars2 => _guildWars2UseCustomPath,
     _SettingsProvider.hytale => _hytaleUseCustomPath,
     _SettingsProvider.minecraft => _minecraftUseCustomPath,
@@ -1283,7 +1300,7 @@ class _SettingsPageState extends State<SettingsPage> {
   };
 
   String _providerPath(_SettingsProvider provider) => switch (provider) {
-    _SettingsProvider.diabloIV => _diabloController.text,
+    _SettingsProvider.battleNet => _diabloController.text,
     _SettingsProvider.guildWars2 => _guildWars2Controller.text,
     _SettingsProvider.hytale => _hytaleController.text,
     _SettingsProvider.minecraft => _minecraftController.text,
@@ -1294,7 +1311,7 @@ class _SettingsPageState extends State<SettingsPage> {
 
   bool _providerAccessReady(_SettingsProvider provider) {
     final id = switch (provider) {
-      _SettingsProvider.diabloIV => FolderGrantIds.diabloIV,
+      _SettingsProvider.battleNet => FolderGrantIds.battleNet,
       _SettingsProvider.guildWars2 => FolderGrantIds.guildWars2,
       _SettingsProvider.hytale => FolderGrantIds.hytale,
       _SettingsProvider.minecraft => FolderGrantIds.minecraft,
@@ -1307,7 +1324,7 @@ class _SettingsPageState extends State<SettingsPage> {
 
   void _setProviderEnabledValue(_SettingsProvider provider, bool value) {
     switch (provider) {
-      case _SettingsProvider.diabloIV:
+      case _SettingsProvider.battleNet:
         _diabloEnabled = value;
         break;
       case _SettingsProvider.guildWars2:
@@ -1333,7 +1350,7 @@ class _SettingsPageState extends State<SettingsPage> {
 
   void _setUseCustomPathValue(_SettingsProvider provider, bool value) {
     switch (provider) {
-      case _SettingsProvider.diabloIV:
+      case _SettingsProvider.battleNet:
         _diabloUseCustomPath = value;
         break;
       case _SettingsProvider.guildWars2:
@@ -1356,7 +1373,7 @@ class _SettingsPageState extends State<SettingsPage> {
 
   void _setProviderPathError(_SettingsProvider provider, String? value) {
     switch (provider) {
-      case _SettingsProvider.diabloIV:
+      case _SettingsProvider.battleNet:
         _diabloPathError = value;
         break;
       case _SettingsProvider.guildWars2:
@@ -1385,7 +1402,8 @@ class _SettingsPageState extends State<SettingsPage> {
       case SettingsFolderTarget.library:
         _outputPathError = value;
         break;
-      case SettingsFolderTarget.diabloIVCustom:
+      case SettingsFolderTarget.battleNetCustom:
+      case SettingsFolderTarget.battleNetAutomatic:
         _diabloPathError = value;
         break;
       case SettingsFolderTarget.guildWars2Custom:
@@ -1420,13 +1438,15 @@ class _SettingsPageState extends State<SettingsPage> {
   }
 
   bool _isAutomaticTarget(SettingsFolderTarget target) {
-    return target == SettingsFolderTarget.hytaleAutomatic ||
+    return target == SettingsFolderTarget.battleNetAutomatic ||
+        target == SettingsFolderTarget.hytaleAutomatic ||
         target == SettingsFolderTarget.minecraftAutomatic ||
         target == SettingsFolderTarget.steamAutomatic;
   }
 
   String _automaticProviderName(SettingsFolderTarget target) {
     return switch (target) {
+      SettingsFolderTarget.battleNetAutomatic => 'Battle.net',
       SettingsFolderTarget.hytaleAutomatic => 'Hytale',
       SettingsFolderTarget.minecraftAutomatic => 'Minecraft',
       SettingsFolderTarget.steamAutomatic => 'Steam',
@@ -1517,7 +1537,7 @@ class _SettingsPageState extends State<SettingsPage> {
     return AppSettings(
       outputPath: _outputController.text.trim(),
       themeMode: _themeMode,
-      diabloIV: ProviderSettings(
+      battleNet: ProviderSettings(
         enabled: _diabloEnabled,
         useCustomPath: _diabloUseCustomPath,
         sourcePath: _diabloController.text.trim(),
@@ -1595,9 +1615,9 @@ class _SettingsPageState extends State<SettingsPage> {
           ? draft.outputPath
           : saved.outputPath,
       themeMode: draft.themeMode,
-      diabloIV: errors.diabloIV == null
-          ? draft.diabloIV
-          : saved.diabloIV.copyWith(enabled: draft.diabloIV.enabled),
+      battleNet: errors.battleNet == null
+          ? draft.battleNet
+          : saved.battleNet.copyWith(enabled: draft.battleNet.enabled),
       guildWars2: errors.guildWars2 == null
           ? draft.guildWars2
           : saved.guildWars2.copyWith(enabled: draft.guildWars2.enabled),
@@ -1648,11 +1668,20 @@ class _SettingsPageState extends State<SettingsPage> {
         allowEmpty: true,
         grantId: FolderGrantIds.library,
       ),
-      draft.diabloIV.useCustomPath
+      draft.battleNet.useCustomPath
           ? _directoryError(
-              draft.diabloIV.sourcePath,
-              label: 'Diablo IV screenshot folder',
-              grantId: FolderGrantIds.diabloIV,
+              draft.battleNet.sourcePath,
+              label: 'Battle.net folder',
+              grantId: FolderGrantIds.battleNet,
+            )
+          : draft.battleNet.enabled &&
+                widget.controller.usesPersistentFolderAccess
+          ? Future.value(
+              _folderAuthorizationError(
+                FolderGrantIds.battleNet,
+                label: 'Battle.net game installation folder',
+                needsAuthorizationMessage: 'World of Warcraft screenshots are stored in its installation folder. Click Allow Access to grant access to that folder.',
+              ),
             )
           : Future.value(),
       draft.guildWars2.useCustomPath
@@ -1726,7 +1755,7 @@ class _SettingsPageState extends State<SettingsPage> {
 
     return _PathErrors(
       outputPath: results[0],
-      diabloIV: results[1],
+      battleNet: results[1],
       guildWars2: results[2],
       hytale: results[3],
       minecraft: results[4],
@@ -1779,7 +1808,7 @@ class _SettingsPageState extends State<SettingsPage> {
   void _showPathErrors(_PathErrors errors) {
     setState(() {
       _outputPathError = errors.outputPath;
-      _diabloPathError = errors.diabloIV;
+      _diabloPathError = errors.battleNet;
       _guildWars2PathError = errors.guildWars2;
       _hytalePathError = errors.hytale;
       _minecraftPathError = errors.minecraft;
@@ -1839,7 +1868,7 @@ class _SettingsPageState extends State<SettingsPage> {
 class _PathErrors {
   const _PathErrors({
     required this.outputPath,
-    required this.diabloIV,
+    required this.battleNet,
     required this.guildWars2,
     required this.hytale,
     required this.minecraft,
@@ -1849,7 +1878,7 @@ class _PathErrors {
   });
 
   final String? outputPath;
-  final String? diabloIV;
+  final String? battleNet;
   final String? guildWars2;
   final String? hytale;
   final String? minecraft;
@@ -1859,7 +1888,7 @@ class _PathErrors {
 }
 
 enum _SettingsProvider {
-  diabloIV,
+  battleNet,
   guildWars2,
   hytale,
   minecraft,

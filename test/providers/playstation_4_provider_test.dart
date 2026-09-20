@@ -25,7 +25,6 @@ void main() {
   AppSettings settings({bool enabled = true, String? sourcePath}) {
     return AppSettings(
       outputPath: output.path,
-      diabloIV: const ProviderSettings.disabled(),
       playStation4: ProviderSettings(
         enabled: enabled,
         useCustomPath: true,

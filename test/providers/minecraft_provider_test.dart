@@ -29,7 +29,6 @@ void main() {
   }) {
     return AppSettings(
       outputPath: output.path,
-      diabloIV: const ProviderSettings.disabled(),
       minecraft: ProviderSettings(
         enabled: enabled,
         useCustomPath: useCustomPath,

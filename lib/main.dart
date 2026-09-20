@@ -7,7 +7,7 @@ import 'package:path_provider/path_provider.dart';
 
 import 'app.dart';
 import 'controllers/library_controller.dart';
-import 'providers/diablo_iv_provider.dart';
+import 'providers/battle_net_provider.dart';
 import 'providers/guild_wars_2_provider.dart';
 import 'providers/hytale_provider.dart';
 import 'providers/minecraft_provider.dart';
@@ -39,7 +39,7 @@ Future<void> main() async {
     folderAccess: folderAccess,
     providerPaths: providerPaths,
     providers: [
-      const DiabloIVProvider(),
+      BattleNetProvider(providerPaths: providerPaths),
       const GuildWars2Provider(),
       HytaleProvider(providerPaths: providerPaths),
       MinecraftProvider(providerPaths: providerPaths),

@@ -8,7 +8,7 @@ The app includes these functions:
 - An album tree that groups media by platform, game, and nested folder.
 - Video thumbnails, duration details, and video playback.
 - Settings for the library folder and provider folder.
-- Diablo IV, Guild Wars 2, Hytale, Minecraft, PlayStation 4, PlayStation 5, and Steam providers.
+- Battle.net, Guild Wars 2, Hytale, Minecraft, PlayStation 4, PlayStation 5, and Steam providers.
 - SHA-1 collision names that prevent file loss.
 
 ## Requirements
@@ -34,12 +34,14 @@ make run
 Use `make run-macos` or `make run-windows` on the related operating system.
 Run `make help` to see all development commands.
 
-Open **Settings** in the sidebar. Select a library folder. Enable Diablo IV and select its screenshot folder.
+Open **Settings** in the sidebar. Select a library folder, then enable the providers you use.
 
-On Windows, you can leave the Diablo IV folder empty. The provider scans these default folders:
+The Battle.net provider detects installed Diablo IV and World of Warcraft variants and imports each game into its own album. On Windows, Diablo IV screenshots use these locations:
 
 - `Pictures\Diablo IV`
 - `Documents\Diablo IV\Screenshots`
+
+On macOS, automatic World of Warcraft discovery asks for access to its installation folder. World of Warcraft JPG and PNG screenshots keep the date from their filename; TGA screenshots are converted to PNG for gallery compatibility.
 
 On macOS and Linux, Hytale is discovered in `Pictures/Hytale Screenshots`.
 Its provider can also save the bundled Hytale cover in the library album.

@@ -6,10 +6,11 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:gaming_memories/controllers/library_controller.dart';
 import 'package:gaming_memories/models/app_settings.dart';
 import 'package:gaming_memories/models/library.dart';
-import 'package:gaming_memories/providers/diablo_iv_provider.dart';
+import 'package:gaming_memories/providers/battle_net_provider.dart';
 import 'package:gaming_memories/providers/guild_wars_2_provider.dart';
 import 'package:gaming_memories/providers/screenshot_provider.dart';
 import 'package:gaming_memories/services/config_store.dart';
+import 'package:gaming_memories/services/battle_net_catalog.dart';
 import 'package:gaming_memories/services/folder_access_service.dart';
 import 'package:gaming_memories/services/library_scanner.dart';
 import 'package:gaming_memories/services/provider_paths.dart';
@@ -104,11 +105,14 @@ void main() {
                 filePath: p.join(directory.path, 'settings.json'),
               ),
               scanner: const LibraryScanner(),
-              providers: const [DiabloIVProvider(), GuildWars2Provider()],
+              providers: const [
+                BattleNetProvider(catalog: _EmptyBattleNetCatalog()),
+                GuildWars2Provider(),
+              ],
             )
             ..settings = AppSettings(
               outputPath: directory.path,
-              diabloIV: const ProviderSettings(
+              battleNet: const ProviderSettings(
                 enabled: true,
                 useCustomPath: false,
                 sourcePath: '',
@@ -127,7 +131,7 @@ void main() {
       expect(
         controller.notifications.map((notification) => notification.message),
         [
-          'Diablo IV was skipped because no installation was found.',
+          'Battle.net was skipped because no Diablo IV or World of Warcraft screenshot folders were found.',
           'Guild Wars 2 was skipped because no installation was found.',
         ],
       );
@@ -239,7 +243,6 @@ void main() {
     await store.save(
       AppSettings(
         outputPath: directory.path,
-        diabloIV: const ProviderSettings.disabled(),
         folderGrants: {
           FolderGrantIds.library: FolderGrant(
             platform: 'macos',
@@ -273,10 +276,7 @@ void main() {
     final store = ConfigStore(
       filePath: p.join(directory.path, 'settings.json'),
     );
-    final initial = AppSettings(
-      outputPath: directory.path,
-      diabloIV: const ProviderSettings.disabled(),
-    );
+    final initial = AppSettings(outputPath: directory.path);
     await store.save(initial);
     final missing = p.join(directory.path, 'missing');
     final access = _FakeFolderAccess(
@@ -314,7 +314,6 @@ void main() {
     await store.save(
       AppSettings(
         outputPath: directory.path,
-        diabloIV: const ProviderSettings.disabled(),
         folderGrants: {
           FolderGrantIds.library: FolderGrant(
             platform: 'macos',
@@ -329,7 +328,7 @@ void main() {
       configStore: store,
       scanner: const LibraryScanner(),
       providers: const [
-        _FolderProvider('First', FolderGrantIds.diabloIV),
+        _FolderProvider('First', FolderGrantIds.battleNet),
         _FolderProvider('Second', FolderGrantIds.guildWars2),
       ],
       folderAccess: _FakeFolderAccess(),
@@ -368,7 +367,6 @@ void main() {
     await store.save(
       AppSettings(
         outputPath: directory.path,
-        diabloIV: const ProviderSettings.disabled(),
         folderGrants: {
           FolderGrantIds.library: FolderGrant(
             platform: 'macos',
@@ -376,7 +374,7 @@ void main() {
             access: FolderGrantAccess.readWrite,
             bookmark: 'library-bookmark',
           ),
-          FolderGrantIds.diabloIV: FolderGrant(
+          FolderGrantIds.battleNet: FolderGrant(
             platform: 'macos',
             path: source.path,
             access: FolderGrantAccess.readOnly,
@@ -461,6 +459,32 @@ void main() {
     expect(access.requests.single.initialPath, '/Steam Two/userdata');
     expect(access.requests.single.suggestedPath, '/Steam Two/userdata');
     expect(access.requests.single.message, contains('Click Allow Access'));
+  });
+
+  test('points the macOS chooser at the Battle.net game root', () async {
+    final access = _FakeFolderAccess();
+    final controller = LibraryController(
+      configStore: const ConfigStore(filePath: 'unused'),
+      scanner: const LibraryScanner(),
+      providers: const [],
+      folderAccess: access,
+      providerPaths: const _TestProviderPathResolver(
+        [],
+        battleNetPaths: ['/Applications/World of Warcraft'],
+      ),
+    );
+
+    final result = await controller.chooseFolder(
+      SettingsFolderTarget.battleNetAutomatic,
+      initialPath: '/Applications/World of Warcraft',
+    );
+
+    expect(result.cancelled, isTrue);
+    expect(access.requests.single.id, FolderGrantIds.battleNet);
+    expect(
+      access.requests.single.suggestedPath,
+      '/Applications/World of Warcraft',
+    );
   });
 
   test('saves PlayStation folder access as a custom provider path', () async {
@@ -698,11 +722,16 @@ class _TestProviderPathResolver extends ProviderPathResolver {
     this.paths, {
     this.hytalePath,
     this.minecraftPaths = const [],
+    this.battleNetPaths = const [],
   });
 
   final List<String> paths;
   final String? hytalePath;
   final List<String> minecraftPaths;
+  final List<String> battleNetPaths;
+
+  @override
+  List<String> battleNetRootCandidates() => battleNetPaths;
 
   @override
   String? hytaleScreenshots() => hytalePath;
@@ -712,6 +741,14 @@ class _TestProviderPathResolver extends ProviderPathResolver {
 
   @override
   List<String> steamUserdataCandidates() => paths;
+}
+
+class _EmptyBattleNetCatalog implements BattleNetCatalog {
+  const _EmptyBattleNetCatalog();
+
+  @override
+  Future<List<BattleNetInstall>> installations({String? rootPath}) async =>
+      const [];
 }
 
 class _FolderProvider implements FolderBackedScreenshotProvider {
@@ -754,7 +791,7 @@ class _ThrowingFolderProvider implements FolderBackedScreenshotProvider {
   String get name => 'Throwing';
 
   @override
-  String get folderGrantId => FolderGrantIds.diabloIV;
+  String get folderGrantId => FolderGrantIds.battleNet;
 
   @override
   bool isEnabled(AppSettings settings) => true;
