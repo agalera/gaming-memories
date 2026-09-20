@@ -5,9 +5,10 @@ import '../controllers/library_controller.dart';
 import '../models/library.dart';
 
 class LibrarySidebar extends StatelessWidget {
-  const LibrarySidebar({required this.controller, super.key});
+  const LibrarySidebar({required this.controller, this.width = 256, super.key});
 
   final LibraryController controller;
+  final double width;
 
   @override
   Widget build(BuildContext context) {
@@ -47,86 +48,66 @@ class LibrarySidebar extends StatelessWidget {
     }).toList();
 
     return FSidebar(
-      header: Padding(
-        padding: const EdgeInsets.fromLTRB(16, 12, 16, 18),
-        child: Row(
-          children: [
-            Container(
-              width: 34,
-              height: 34,
-              decoration: BoxDecoration(
-                color: context.theme.colors.primary,
-                borderRadius: BorderRadius.circular(10),
-              ),
-              child: Icon(
-                FLucideIcons.sparkles,
-                size: 18,
-                color: context.theme.colors.primaryForeground,
-              ),
-            ),
-            const SizedBox(width: 10),
-            Expanded(
-              child: Text(
-                'Gaming Memories',
-                style: context.theme.typography.body.lg.copyWith(
-                  fontWeight: FontWeight.w700,
-                ),
-              ),
-            ),
-          ],
+      key: const ValueKey('library-sidebar'),
+      style: FSidebarStyleDelta.delta(
+        constraints: BoxConstraints.tightFor(width: width),
+        contentPadding: const .value(EdgeInsets.only(top: 8)),
+        footerPadding: const .value(EdgeInsets.zero),
+        groupStyle: const FSidebarGroupStyleDelta.delta(
+          childrenPadding: .value(EdgeInsets.zero),
         ),
       ),
-      footer: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          const FDivider(),
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                FButton(
-                  key: const ValueKey('refresh-sidebar-button'),
-                  variant: FButtonVariant.outline,
-                  mainAxisSize: MainAxisSize.max,
-                  mainAxisAlignment: MainAxisAlignment.start,
-                  prefix: const Icon(FLucideIcons.refreshCw),
-                  onPress: controller.isBusy || controller.isTimelineRefreshing
-                      ? null
-                      : controller.refresh,
-                  child: const Expanded(child: Text('Refresh')),
-                ),
-                const SizedBox(height: 8),
-                FButton(
-                  key: const ValueKey('scan-sidebar-button'),
-                  variant: FButtonVariant.outline,
-                  mainAxisSize: MainAxisSize.max,
-                  mainAxisAlignment: MainAxisAlignment.start,
-                  prefix: const Icon(FLucideIcons.hardDriveDownload),
-                  onPress: controller.isBusy || controller.isTimelineRefreshing
-                      ? null
-                      : controller.collect,
-                  child: const Expanded(child: Text('Scan')),
-                ),
-                const SizedBox(height: 8),
-                FButton(
-                  key: const ValueKey('settings-sidebar-button'),
-                  variant: FButtonVariant.outline,
-                  selected: controller.view == LibraryView.settings,
-                  mainAxisSize: MainAxisSize.max,
-                  mainAxisAlignment: MainAxisAlignment.start,
-                  prefix: const Icon(FLucideIcons.settings),
-                  onPress: controller.showSettings,
-                  child: const Expanded(child: Text('Settings')),
-                ),
-              ],
-            ),
+      footer: DecoratedBox(
+        key: const ValueKey('sidebar-footer'),
+        decoration: BoxDecoration(
+          border: Border(top: BorderSide(color: context.theme.colors.border)),
+        ),
+        child: Padding(
+          key: const ValueKey('sidebar-footer-padding'),
+          padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              FButton(
+                key: const ValueKey('refresh-sidebar-button'),
+                variant: FButtonVariant.outline,
+                mainAxisSize: MainAxisSize.max,
+                mainAxisAlignment: MainAxisAlignment.start,
+                prefix: const Icon(FLucideIcons.refreshCw),
+                onPress: controller.isBusy || controller.isTimelineRefreshing
+                    ? null
+                    : controller.refresh,
+                child: const Expanded(child: Text('Refresh')),
+              ),
+              const SizedBox(height: 8),
+              FButton(
+                key: const ValueKey('scan-sidebar-button'),
+                variant: FButtonVariant.outline,
+                mainAxisSize: MainAxisSize.max,
+                mainAxisAlignment: MainAxisAlignment.start,
+                prefix: const Icon(FLucideIcons.hardDriveDownload),
+                onPress: controller.isBusy || controller.isTimelineRefreshing
+                    ? null
+                    : controller.collect,
+                child: const Expanded(child: Text('Scan')),
+              ),
+              const SizedBox(height: 8),
+              FButton(
+                key: const ValueKey('settings-sidebar-button'),
+                variant: FButtonVariant.outline,
+                selected: controller.view == LibraryView.settings,
+                mainAxisSize: MainAxisSize.max,
+                mainAxisAlignment: MainAxisAlignment.start,
+                prefix: const Icon(FLucideIcons.settings),
+                onPress: controller.showSettings,
+                child: const Expanded(child: Text('Settings')),
+              ),
+            ],
           ),
-        ],
+        ),
       ),
       children: [
         FSidebarGroup(
-          label: const Text('LIBRARY'),
           children: [
             FSidebarItem(
               icon: const Icon(FLucideIcons.clock),
@@ -134,39 +115,33 @@ class LibrarySidebar extends StatelessWidget {
               selected: controller.view == LibraryView.timeline,
               onPress: controller.showTimeline,
             ),
+            if (controller.isAlbumTreeLoading)
+              const Padding(
+                padding: EdgeInsets.symmetric(vertical: 12),
+                child: Center(
+                  child: SizedBox.square(
+                    key: ValueKey('albums-loading-spinner'),
+                    dimension: 18,
+                    child: FCircularProgress(),
+                  ),
+                ),
+              )
+            else if (albumGroups.isEmpty)
+              Padding(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 10,
+                  vertical: 8,
+                ),
+                child: Text(
+                  'Your albums will appear here.',
+                  style: context.theme.typography.body.sm.copyWith(
+                    color: context.theme.colors.mutedForeground,
+                  ),
+                ),
+              )
+            else
+              ...albumGroups,
           ],
-        ),
-        FSidebarGroup(
-          label: const Text('ALBUMS'),
-          children: controller.isAlbumTreeLoading
-              ? const [
-                  Padding(
-                    padding: EdgeInsets.symmetric(vertical: 12),
-                    child: Center(
-                      child: SizedBox.square(
-                        key: ValueKey('albums-loading-spinner'),
-                        dimension: 18,
-                        child: FCircularProgress(),
-                      ),
-                    ),
-                  ),
-                ]
-              : albumGroups.isEmpty
-              ? [
-                  Padding(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 10,
-                      vertical: 8,
-                    ),
-                    child: Text(
-                      'Your albums will appear here.',
-                      style: context.theme.typography.body.sm.copyWith(
-                        color: context.theme.colors.mutedForeground,
-                      ),
-                    ),
-                  ),
-                ]
-              : albumGroups,
         ),
       ],
     );

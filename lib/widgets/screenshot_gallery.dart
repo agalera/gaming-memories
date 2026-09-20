@@ -8,6 +8,9 @@ import '../models/library.dart';
 import 'screenshot_actions.dart';
 
 class MediaGallery extends StatelessWidget {
+  static const _contentRightPadding = 24.0;
+  static const _cardSpacing = 16.0;
+
   const MediaGallery({
     required this.media,
     required this.games,
@@ -40,7 +43,8 @@ class MediaGallery extends StatelessWidget {
     }
 
     return Padding(
-      padding: const EdgeInsets.fromLTRB(24, 10, 24, 24),
+      key: const ValueKey('media-gallery-layout'),
+      padding: const EdgeInsets.fromLTRB(24, 10, 0, 0),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -58,73 +62,88 @@ class MediaGallery extends StatelessWidget {
           Expanded(
             child: LayoutBuilder(
               builder: (context, constraints) {
-                final columns = (constraints.maxWidth / 320).floor().clamp(
-                  1,
-                  10,
-                );
+                final contentWidth =
+                    constraints.maxWidth - _contentRightPadding;
+                final columns = (contentWidth / 320).floor().clamp(1, 10);
 
                 return CustomScrollView(
                   key: const ValueKey('media-scroll-view'),
                   slivers: [
-                    if (games.isNotEmpty) ...[
-                      _sectionTitle(context, 'Games'),
-                      SliverToBoxAdapter(
-                        child: Wrap(
-                          spacing: 16,
-                          runSpacing: 16,
-                          children: [
-                            for (final game in games)
-                              SizedBox(
-                                width:
-                                    (constraints.maxWidth -
-                                        (columns - 1) * 16) /
-                                    columns,
-                                child: _GameCard(
-                                  folder: game,
-                                  controller: controller,
-                                ),
+                    SliverPadding(
+                      key: const ValueKey('media-gallery-content-padding'),
+                      padding: const EdgeInsets.only(
+                        right: _contentRightPadding,
+                      ),
+                      sliver: SliverMainAxisGroup(
+                        slivers: [
+                          if (games.isNotEmpty) ...[
+                            _sectionTitle(context, 'Games'),
+                            SliverToBoxAdapter(
+                              child: Wrap(
+                                spacing: _cardSpacing,
+                                runSpacing: _cardSpacing,
+                                children: [
+                                  for (final game in games)
+                                    SizedBox(
+                                      width:
+                                          (contentWidth -
+                                              (columns - 1) * _cardSpacing) /
+                                          columns,
+                                      child: _GameCard(
+                                        folder: game,
+                                        controller: controller,
+                                      ),
+                                    ),
+                                ],
                               ),
+                            ),
                           ],
-                        ),
+                          if (folders.isNotEmpty) ...[
+                            _sectionTitle(
+                              context,
+                              'Folders',
+                              top: games.isNotEmpty,
+                            ),
+                            SliverGrid.builder(
+                              itemCount: folders.length,
+                              gridDelegate:
+                                  SliverGridDelegateWithFixedCrossAxisCount(
+                                    crossAxisCount: columns,
+                                    crossAxisSpacing: 16,
+                                    mainAxisSpacing: 16,
+                                    mainAxisExtent: 96,
+                                  ),
+                              itemBuilder: (context, index) => _FolderCard(
+                                folder: folders[index],
+                                controller: controller,
+                              ),
+                            ),
+                          ],
+                          if (media.isNotEmpty) ...[
+                            _sectionTitle(
+                              context,
+                              'Media',
+                              top: games.isNotEmpty || folders.isNotEmpty,
+                            ),
+                            SliverGrid.builder(
+                              itemCount: media.length,
+                              gridDelegate:
+                                  SliverGridDelegateWithFixedCrossAxisCount(
+                                    crossAxisCount: columns,
+                                    crossAxisSpacing: 16,
+                                    mainAxisSpacing: 16,
+                                    mainAxisExtent: 245,
+                                  ),
+                              itemBuilder: (context, index) => _MediaCard(
+                                media: media[index],
+                                controller: controller,
+                              ),
+                            ),
+                          ],
+                          const SliverToBoxAdapter(child: SizedBox(height: 8)),
+                        ],
                       ),
-                    ],
-                    if (folders.isNotEmpty) ...[
-                      _sectionTitle(context, 'Folders', top: games.isNotEmpty),
-                      SliverGrid.builder(
-                        itemCount: folders.length,
-                        gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-                          crossAxisCount: columns,
-                          crossAxisSpacing: 16,
-                          mainAxisSpacing: 16,
-                          mainAxisExtent: 96,
-                        ),
-                        itemBuilder: (context, index) => _FolderCard(
-                          folder: folders[index],
-                          controller: controller,
-                        ),
-                      ),
-                    ],
-                    if (media.isNotEmpty) ...[
-                      _sectionTitle(
-                        context,
-                        'Media',
-                        top: games.isNotEmpty || folders.isNotEmpty,
-                      ),
-                      SliverGrid.builder(
-                        itemCount: media.length,
-                        gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-                          crossAxisCount: columns,
-                          crossAxisSpacing: 16,
-                          mainAxisSpacing: 16,
-                          mainAxisExtent: 245,
-                        ),
-                        itemBuilder: (context, index) => _MediaCard(
-                          media: media[index],
-                          controller: controller,
-                        ),
-                      ),
-                    ],
-                    const SliverToBoxAdapter(child: SizedBox(height: 8)),
+                    ),
                   ],
                 );
               },

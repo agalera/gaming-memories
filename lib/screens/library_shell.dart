@@ -18,9 +18,14 @@ class LibraryShell extends StatefulWidget {
 }
 
 class _LibraryShellState extends State<LibraryShell> {
+  static const _defaultSidebarWidth = 256.0;
+  static const _minimumSidebarWidth = 220.0;
+  static const _maximumSidebarWidth = 480.0;
+
   FToasterEntry? _progressToast;
   int _lastNotificationRevision = -1;
   bool _toastSyncScheduled = false;
+  double _sidebarWidth = _defaultSidebarWidth;
 
   @override
   void initState() {
@@ -150,6 +155,17 @@ class _LibraryShellState extends State<LibraryShell> {
     );
   }
 
+  void _resizeSidebar(DragUpdateDetails details) {
+    final width = (_sidebarWidth + details.delta.dx)
+        .clamp(_minimumSidebarWidth, _maximumSidebarWidth)
+        .toDouble();
+    if (width == _sidebarWidth) {
+      return;
+    }
+
+    setState(() => _sidebarWidth = width);
+  }
+
   @override
   Widget build(BuildContext context) {
     return AnimatedBuilder(
@@ -159,7 +175,29 @@ class _LibraryShellState extends State<LibraryShell> {
 
         return FScaffold(
           childPad: false,
-          sidebar: LibrarySidebar(controller: controller),
+          sidebar: SizedBox(
+            width: _sidebarWidth,
+            child: Stack(
+              fit: StackFit.expand,
+              children: [
+                LibrarySidebar(controller: controller, width: _sidebarWidth),
+                Positioned(
+                  top: 0,
+                  right: 0,
+                  bottom: 0,
+                  width: 8,
+                  child: MouseRegion(
+                    cursor: SystemMouseCursors.resizeLeftRight,
+                    child: GestureDetector(
+                      key: const ValueKey('sidebar-resize-handle'),
+                      behavior: HitTestBehavior.translucent,
+                      onHorizontalDragUpdate: _resizeSidebar,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
           header: _header(controller),
           child: _content(controller),
         );

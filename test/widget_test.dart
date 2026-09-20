@@ -110,6 +110,28 @@ void main() {
 
     expect(find.text('Timeline'), findsWidgets);
     expect(find.text('Choose your library folder'), findsOneWidget);
+    expect(tester.widget<FSidebar>(find.byType(FSidebar)).header, isNull);
+    expect(find.text('Gaming Memories'), findsNothing);
+    expect(find.text('LIBRARY'), findsNothing);
+    expect(find.text('ALBUMS'), findsNothing);
+    expect(find.byType(FSidebarGroup), findsOneWidget);
+    final sidebarFinder = find.byKey(const ValueKey('library-sidebar'));
+    final sidebar = tester.widget<FSidebar>(sidebarFinder);
+    final sidebarStyle = sidebar.style(
+      FTheme.of(tester.element(sidebarFinder)).sidebarStyle,
+    );
+    expect(sidebarStyle.contentPadding, const EdgeInsets.only(top: 8));
+    expect(sidebarStyle.groupStyle.childrenPadding, EdgeInsets.zero);
+    expect(sidebarStyle.footerPadding, EdgeInsets.zero);
+    expect(tester.getSize(sidebarFinder).width, 256);
+
+    await tester.drag(
+      find.byKey(const ValueKey('sidebar-resize-handle')),
+      const Offset(48, 0),
+    );
+    await tester.pump();
+    expect(tester.getSize(sidebarFinder).width, 304);
+
     for (final key in [
       'refresh-sidebar-button',
       'scan-sidebar-button',
@@ -120,7 +142,19 @@ void main() {
         FButtonVariant.outline,
       );
     }
-    expect(find.byType(FDivider), findsOneWidget);
+    expect(find.byType(FDivider), findsNothing);
+    final footer = tester.widget<DecoratedBox>(
+      find.byKey(const ValueKey('sidebar-footer')),
+    );
+    final footerBorder = (footer.decoration as BoxDecoration).border! as Border;
+    expect(footerBorder.top.style, BorderStyle.solid);
+    expect(footerBorder.top.width, greaterThan(0));
+    expect(
+      tester
+          .widget<Padding>(find.byKey(const ValueKey('sidebar-footer-padding')))
+          .padding,
+      const EdgeInsets.fromLTRB(16, 12, 16, 12),
+    );
 
     await tester.tap(find.text('Settings'));
     await tester.pump();
@@ -144,6 +178,11 @@ void main() {
   });
 
   testWidgets('selects a platform from the album tree', (tester) async {
+    tester.view.physicalSize = const Size(1400, 800);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
     final directory = Directory.systemTemp.createTempSync('gaming-memories-');
     addTearDown(() => directory.deleteSync(recursive: true));
     final controller = LibraryController(
@@ -201,6 +240,16 @@ void main() {
               ),
             ],
           ),
+          const LibraryFolder(
+            name: 'Game Two',
+            path: 'PC/Game Two',
+            relativePath: 'Game Two',
+          ),
+          const LibraryFolder(
+            name: 'Game Three',
+            path: 'PC/Game Three',
+            relativePath: 'Game Three',
+          ),
         ],
       ),
     ];
@@ -224,6 +273,20 @@ void main() {
       find.byKey(const ValueKey('game-card-PC/Diablo IV')),
       findsOneWidget,
     );
+    final gameCards = [
+      find.byKey(const ValueKey('game-card-PC/Diablo IV')),
+      find.byKey(const ValueKey('game-card-PC/Game Two')),
+      find.byKey(const ValueKey('game-card-PC/Game Three')),
+    ];
+    final firstCardTop = tester.getTopLeft(gameCards.first).dy;
+    for (final card in gameCards.skip(1)) {
+      expect(tester.getTopLeft(card).dy, firstCardTop);
+    }
+    final scrollRight = tester
+        .getTopRight(find.byKey(const ValueKey('media-scroll-view')))
+        .dx;
+    final lastCardRight = tester.getTopRight(gameCards.last).dx;
+    expect(scrollRight - lastCardRight, closeTo(24, 0.1));
     final coverFinder = find.byKey(const ValueKey('game-cover-PC/Diablo IV'));
     expect(tester.widget<Image>(coverFinder).fit, BoxFit.contain);
     expect(find.byType(SliverGrid), findsNothing);
@@ -535,6 +598,15 @@ void main() {
 
     await tester.pumpWidget(GamingMemoriesApp(controller: controller));
     await tester.pump();
+
+    final galleryLayout = tester.widget<Padding>(
+      find.byKey(const ValueKey('media-gallery-layout')),
+    );
+    expect(galleryLayout.padding, const EdgeInsets.fromLTRB(24, 10, 0, 0));
+    final galleryContentPadding = tester.widget<SliverPadding>(
+      find.byKey(const ValueKey('media-gallery-content-padding')),
+    );
+    expect(galleryContentPadding.padding, const EdgeInsets.only(right: 24));
 
     final target = find.byKey(
       const ValueKey('media-card-/library/PC/Game/screenshot-12.jpg'),
