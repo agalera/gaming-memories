@@ -23,9 +23,11 @@ class _LibraryShellState extends State<LibraryShell> {
   static const _maximumSidebarWidth = 480.0;
 
   FToasterEntry? _progressToast;
+  final ScrollController _breadcrumbScrollController = ScrollController();
   int _lastNotificationRevision = -1;
   bool _toastSyncScheduled = false;
   double _sidebarWidth = _defaultSidebarWidth;
+  String? _breadcrumbMediaPath;
 
   @override
   void initState() {
@@ -56,6 +58,7 @@ class _LibraryShellState extends State<LibraryShell> {
   void dispose() {
     widget.controller.removeListener(_scheduleToastSync);
     _progressToast = null;
+    _breadcrumbScrollController.dispose();
     super.dispose();
   }
 
@@ -166,6 +169,24 @@ class _LibraryShellState extends State<LibraryShell> {
     setState(() => _sidebarWidth = width);
   }
 
+  void _showBreadcrumbEnd(String mediaPath) {
+    if (_breadcrumbMediaPath == mediaPath) {
+      return;
+    }
+
+    _breadcrumbMediaPath = mediaPath;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted ||
+          _breadcrumbMediaPath != mediaPath ||
+          !_breadcrumbScrollController.hasClients) {
+        return;
+      }
+      _breadcrumbScrollController.jumpTo(
+        _breadcrumbScrollController.position.maxScrollExtent,
+      );
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
     return AnimatedBuilder(
@@ -231,6 +252,11 @@ class _LibraryShellState extends State<LibraryShell> {
   Widget _breadcrumb(LibraryController controller) {
     final media = controller.selectedMedia;
     final isMediaDetail = media != null;
+    if (media == null) {
+      _breadcrumbMediaPath = null;
+    } else {
+      _showBreadcrumbEnd(media.path);
+    }
     final items = <Widget>[
       FBreadcrumbItem(
         key: const ValueKey('breadcrumb-library'),
@@ -241,7 +267,7 @@ class _LibraryShellState extends State<LibraryShell> {
         child: const Text('Library'),
       ),
     ];
-    final platform = controller.selectedPlatform;
+    final platform = controller.selectedPlatform ?? media?.platform;
     if (platform != null) {
       items.add(
         FBreadcrumbItem(
@@ -254,7 +280,7 @@ class _LibraryShellState extends State<LibraryShell> {
         ),
       );
     }
-    final game = controller.selectedGame;
+    final game = controller.selectedGame ?? media?.game;
     if (platform != null && game != null) {
       items.add(
         FBreadcrumbItem(
@@ -267,20 +293,30 @@ class _LibraryShellState extends State<LibraryShell> {
         ),
       );
     }
-    final subAlbumPath = controller.selectedSubAlbumPath;
+    final mediaSubAlbumPath = media?.subAlbumPath.trim();
+    final subAlbumPath =
+        controller.selectedSubAlbumPath ??
+        (mediaSubAlbumPath == null || mediaSubAlbumPath.isEmpty
+            ? null
+            : mediaSubAlbumPath);
     if (platform != null && game != null && subAlbumPath != null) {
       var currentPath = '';
       final segments = p.split(subAlbumPath);
-      for (final (index, segment) in segments.indexed) {
+      for (final segment in segments) {
         currentPath = currentPath.isEmpty
             ? segment
             : p.join(currentPath, segment);
         final targetPath = currentPath;
+        final isCurrentSubAlbum =
+            controller.view == LibraryView.subAlbum &&
+            controller.selectedPlatform == platform &&
+            controller.selectedGame == game &&
+            controller.selectedSubAlbumPath == targetPath;
         items.add(
           FBreadcrumbItem(
             key: ValueKey('breadcrumb-folder-$targetPath'),
-            current: index == segments.length - 1 && !isMediaDetail,
-            onPress: index == segments.length - 1
+            current: isCurrentSubAlbum && !isMediaDetail,
+            onPress: isCurrentSubAlbum
                 ? (isMediaDetail ? controller.closeMedia : null)
                 : () => controller.showSubAlbum(platform, game, targetPath),
             child: Text(segment),
@@ -298,6 +334,7 @@ class _LibraryShellState extends State<LibraryShell> {
       );
     }
     return SingleChildScrollView(
+      controller: _breadcrumbScrollController,
       scrollDirection: Axis.horizontal,
       child: FBreadcrumb(children: items),
     );

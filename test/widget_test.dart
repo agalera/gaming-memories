@@ -584,6 +584,7 @@ void main() {
         game: 'Game',
         capturedAt: DateTime(2026, 1, 1).add(Duration(days: index)),
         kind: MediaKind.image,
+        subAlbumPath: p.join('Chapter One', 'Boss fights'),
       ),
     );
     final controller = LibraryController(
@@ -627,6 +628,21 @@ void main() {
     expect(controller.selectedMedia, same(media[12]));
     expect(find.byKey(const ValueKey('breadcrumb-library')), findsOneWidget);
     expect(
+      find.byKey(const ValueKey('breadcrumb-platform-PC')),
+      findsOneWidget,
+    );
+    expect(find.byKey(const ValueKey('breadcrumb-game-Game')), findsOneWidget);
+    expect(
+      find.byKey(const ValueKey('breadcrumb-folder-Chapter One')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(
+        ValueKey('breadcrumb-folder-${p.join('Chapter One', 'Boss fights')}'),
+      ),
+      findsOneWidget,
+    );
+    expect(
       find.byKey(
         const ValueKey('breadcrumb-media-/library/PC/Game/screenshot-12.jpg'),
       ),
@@ -655,6 +671,22 @@ void main() {
     expect(find.text('Image details'), findsNothing);
     expect(scrollState.mounted, isTrue);
     expect(scrollState.position.pixels, offset);
+
+    await tester.tap(target);
+    await tester.pump(const Duration(milliseconds: 200));
+    await tester.tap(
+      find.byKey(
+        ValueKey('breadcrumb-folder-${p.join('Chapter One', 'Boss fights')}'),
+      ),
+    );
+    await tester.pump();
+
+    expect(controller.view, LibraryView.subAlbum);
+    expect(
+      controller.selectedSubAlbumPath,
+      p.join('Chapter One', 'Boss fights'),
+    );
+    expect(controller.selectedMedia, isNull);
 
     await tester.pumpWidget(const SizedBox.shrink());
     await tester.pump(const Duration(milliseconds: 200));
