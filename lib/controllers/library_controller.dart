@@ -139,6 +139,7 @@ class LibraryController extends ChangeNotifier {
   double? progressValue;
   int notificationRevision = 0;
   final List<AppNotification> _notifications = [];
+  Map<String, String> _providerValidationErrors = const {};
   final Map<String, FolderAuthorization> _folderAuthorizations = {};
   FolderAccessLease? _libraryLease;
   Future<void>? _timelineRefresh;
@@ -147,6 +148,11 @@ class LibraryController extends ChangeNotifier {
   bool _disposed = false;
 
   List<AppNotification> get notifications => List.unmodifiable(_notifications);
+
+  Map<String, String> get providerValidationErrors => _providerValidationErrors;
+
+  String? providerValidationError(String providerName) =>
+      _providerValidationErrors[providerName];
 
   bool get usesPersistentFolderAccess => folderAccess.requiresPersistentGrant;
 
@@ -402,9 +408,22 @@ class LibraryController extends ChangeNotifier {
       if (usesPersistentFolderAccess) {
         var changed = await _restoreLibraryGrant();
         changed = await _restoreProviderGrants() || changed;
+        final validation = await _validateEnabledProviders(settings);
+        settings = validation.settings;
+        _providerValidationErrors = Map.unmodifiable(validation.errors);
+        changed = validation.disabledProviders.isNotEmpty || changed;
         if (changed) {
           await configStore.save(settings);
         }
+        _showProviderValidationErrors(validation.errors);
+      } else {
+        final validation = await _validateEnabledProviders(settings);
+        settings = validation.settings;
+        _providerValidationErrors = Map.unmodifiable(validation.errors);
+        if (validation.disabledProviders.isNotEmpty) {
+          await configStore.save(settings);
+        }
+        _showProviderValidationErrors(validation.errors);
       }
 
       if (!libraryNeedsAuthorization) {
@@ -700,19 +719,36 @@ class LibraryController extends ChangeNotifier {
     notifyListeners();
   }
 
-  Future<bool> updateSettings(AppSettings next) async {
+  Future<bool> updateSettings(
+    AppSettings next, {
+    bool showNotification = true,
+    Map<String, String> providerErrors = const {},
+  }) async {
     try {
+      final validation = await _validateEnabledProviders(
+        next,
+        knownErrors: providerErrors,
+      );
+      final validated = validation.settings;
+      _providerValidationErrors = Map.unmodifiable(validation.errors);
       final outputChanged = !_samePath(
         settings.outputPath,
-        next.outputPath,
+        validated.outputPath,
         allowEmpty: true,
       );
-      await configStore.save(next);
-      settings = next;
+      await configStore.save(validated);
+      settings = validated;
       if (usesPersistentFolderAccess && outputChanged) {
         await _releaseLibraryLease();
       }
       _refreshAuthorizationStates();
+      if (showNotification) {
+        if (validation.disabledProviders.isEmpty) {
+          _setMessage('Settings saved.');
+        } else {
+          _setError(_providerValidationMessage(validation.errors));
+        }
+      }
       notifyListeners();
       if (outputChanged && !libraryNeedsAuthorization) {
         await _loadLibrarySnapshot();
@@ -724,6 +760,153 @@ class LibraryController extends ChangeNotifier {
       notifyListeners();
       return false;
     }
+  }
+
+  Future<String?> providerConfigurationError(
+    String providerName,
+    AppSettings value,
+  ) async {
+    for (final provider in providers) {
+      if (provider.name == providerName) {
+        return _providerConfigurationError(provider, value);
+      }
+    }
+    return null;
+  }
+
+  Future<_ProviderValidation> _validateEnabledProviders(
+    AppSettings candidate, {
+    Map<String, String> knownErrors = const {},
+  }) async {
+    var validated = candidate;
+    final errors = <String, String>{};
+    for (final provider in providers) {
+      if (!provider.isEnabled(validated) ||
+          !_supportsProviderSettings(provider.name)) {
+        continue;
+      }
+      final error =
+          knownErrors[provider.name] ??
+          await _providerConfigurationError(provider, validated);
+      if (error == null) {
+        continue;
+      }
+      validated = _withProviderEnabled(validated, provider.name, false);
+      errors[provider.name] = error;
+    }
+    return _ProviderValidation(validated, errors);
+  }
+
+  Future<String?> _providerConfigurationError(
+    ScreenshotProvider provider,
+    AppSettings candidate,
+  ) async {
+    if (provider case FolderBackedScreenshotProvider folderProvider) {
+      final requirement = folderProvider.folderRequirement(candidate);
+      if (requirement == null) {
+        if (provider.name == 'Nintendo Switch 2' && Platform.isLinux) {
+          return null;
+        }
+        return 'No supported ${provider.name} folder is configured.';
+      }
+      if (usesPersistentFolderAccess) {
+        final authorization = folderAuthorization(requirement.id);
+        if (!authorization.isReady ||
+            !_samePath(authorization.path ?? '', requirement.path)) {
+          return 'Folder access is required for ${provider.name}.';
+        }
+      } else if (!await _providerFolderExists(provider, requirement)) {
+        return '${provider.name} folder does not exist.';
+      }
+    }
+    if (provider is ProviderConfigurationValidator) {
+      return (provider as ProviderConfigurationValidator).configurationError(
+        candidate,
+      );
+    }
+    return null;
+  }
+
+  Future<bool> _providerFolderExists(
+    ScreenshotProvider provider,
+    ProviderFolderRequirement requirement,
+  ) async {
+    if (await Directory(requirement.path).exists()) {
+      return true;
+    }
+    if (!requirement.automatic) {
+      return false;
+    }
+    final candidates = switch (provider.name) {
+      'Battle.net' => providerPaths.battleNetRootCandidates(),
+      'Hytale' => [providerPaths.hytaleScreenshots()],
+      'Minecraft' => providerPaths.minecraftScreenshots(),
+      'Steam' => providerPaths.steamUserdataCandidates(),
+      _ => <String?>[],
+    };
+    for (final path in candidates.whereType<String>()) {
+      if (await Directory(path).exists()) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  AppSettings _withProviderEnabled(
+    AppSettings value,
+    String providerName,
+    bool enabled,
+  ) => switch (providerName) {
+    'Battle.net' => value.copyWith(
+      battleNet: value.battleNet.copyWith(enabled: enabled),
+    ),
+    'Guild Wars 2' => value.copyWith(
+      guildWars2: value.guildWars2.copyWith(enabled: enabled),
+    ),
+    'Hytale' => value.copyWith(hytale: value.hytale.copyWith(enabled: enabled)),
+    'Minecraft' => value.copyWith(
+      minecraft: value.minecraft.copyWith(enabled: enabled),
+    ),
+    'Nintendo Switch 2' => value.copyWith(
+      nintendoSwitch2: value.nintendoSwitch2.copyWith(enabled: enabled),
+    ),
+    'PlayStation 4' => value.copyWith(
+      playStation4: value.playStation4.copyWith(enabled: enabled),
+    ),
+    'PlayStation 5' => value.copyWith(
+      playStation5: value.playStation5.copyWith(enabled: enabled),
+    ),
+    'Steam' => value.copyWith(steam: value.steam.copyWith(enabled: enabled)),
+    _ => value,
+  };
+
+  bool _supportsProviderSettings(String providerName) => switch (providerName) {
+    'Battle.net' ||
+    'Guild Wars 2' ||
+    'Hytale' ||
+    'Minecraft' ||
+    'Nintendo Switch 2' ||
+    'PlayStation 4' ||
+    'PlayStation 5' ||
+    'Steam' => true,
+    _ => false,
+  };
+
+  void _showProviderValidationErrors(Map<String, String> errors) {
+    if (errors.isNotEmpty) {
+      _setError(_providerValidationMessage(errors));
+    }
+  }
+
+  String _providerValidationMessage(Map<String, String> errors) {
+    if (errors.length == 1) {
+      final error = errors.entries.single;
+      return '${error.key} was disabled: ${error.value}';
+    }
+    final details = errors.entries
+        .map((error) => '${error.key}: ${error.value}')
+        .join(' ');
+    return 'Invalid providers were disabled. $details';
   }
 
   Future<FolderChoiceResult> chooseFolder(
@@ -764,14 +947,17 @@ class LibraryController extends ChangeNotifier {
       if (usesPersistentFolderAccess) {
         next = _withGrant(next, specification.request.id, lease.grant);
       }
-      await configStore.save(next);
-
-      final oldLibraryLease = _libraryLease;
-      settings = next;
       _folderAuthorizations[specification.request.id] = FolderAuthorization(
         FolderAuthorizationStatus.ready,
         path: lease.grant.path,
       );
+      final validation = await _validateEnabledProviders(next);
+      next = validation.settings;
+      _providerValidationErrors = Map.unmodifiable(validation.errors);
+      await configStore.save(next);
+
+      final oldLibraryLease = _libraryLease;
+      settings = next;
 
       if (target == SettingsFolderTarget.library) {
         if (usesPersistentFolderAccess) {
@@ -783,6 +969,11 @@ class LibraryController extends ChangeNotifier {
         }
         await _loadLibrarySnapshot();
         unawaited(_refreshTimeline(showResult: false));
+      }
+      if (validation.disabledProviders.isEmpty) {
+        _setMessage('Settings saved.');
+      } else {
+        _setError(_providerValidationMessage(validation.errors));
       }
       notifyListeners();
       return FolderChoiceResult.success(specification.selectedPath(settings));
@@ -1599,6 +1790,15 @@ class LibraryController extends ChangeNotifier {
     unawaited(folderAccess.dispose());
     super.dispose();
   }
+}
+
+class _ProviderValidation {
+  const _ProviderValidation(this.settings, this.errors);
+
+  final AppSettings settings;
+  final Map<String, String> errors;
+
+  List<String> get disabledProviders => errors.keys.toList(growable: false);
 }
 
 class _FolderSpecification {

@@ -65,6 +65,10 @@ abstract interface class ScreenshotProvider {
   });
 }
 
+abstract interface class ProviderConfigurationValidator {
+  Future<String?> configurationError(AppSettings settings);
+}
+
 abstract interface class FolderBackedScreenshotProvider
     implements ScreenshotProvider {
   String get folderGrantId;

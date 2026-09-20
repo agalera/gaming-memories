@@ -18,6 +18,7 @@ class SteamPublishedScreenshot {
 }
 
 abstract interface class SteamApi {
+  Future<void> validateCredentials(String userId, String apiKey);
   Future<String?> gameName(String appId, String apiKey);
   Future<String?> appIdForName(String name, String apiKey);
   Future<List<SteamPublishedScreenshot>> publishedScreenshots(
@@ -36,6 +37,8 @@ class SteamClient implements SteamApi {
       'https://api.steampowered.com/IStoreService/GetAppList/v1/';
   static const _publishedUrl =
       'https://api.steampowered.com/IPublishedFileService/GetUserFiles/v1/';
+  static const _playerSummariesUrl =
+      'https://api.steampowered.com/ISteamUser/GetPlayerSummaries/v2/';
   static const _detailsUrl = 'https://store.steampowered.com/api/appdetails';
   static const _legacyCoverUrl =
       'https://cdn.cloudflare.steamstatic.com/steam/apps';
@@ -47,6 +50,48 @@ class SteamClient implements SteamApi {
   final HttpClient _httpClient;
   Map<String, String>? _appsById;
   Map<String, String>? _idsByName;
+  String? _validatedUserId;
+  String? _validatedApiKey;
+
+  @override
+  Future<void> validateCredentials(String userId, String apiKey) async {
+    final normalizedUserId = userId.trim();
+    final normalizedApiKey = apiKey.trim();
+    if (normalizedApiKey.isEmpty) {
+      throw const FormatException('Enter a Steam Web API key.');
+    }
+    if (_validatedUserId == normalizedUserId &&
+        _validatedApiKey == normalizedApiKey) {
+      return;
+    }
+
+    if (normalizedUserId.isEmpty) {
+      final uri = Uri.parse(
+        _appListUrl,
+      ).replace(queryParameters: {'key': normalizedApiKey, 'max_results': '1'});
+      await _get(uri);
+    } else {
+      final uri = Uri.parse(_playerSummariesUrl).replace(
+        queryParameters: {
+          'key': normalizedApiKey,
+          'steamids': normalizedUserId,
+        },
+      );
+      final decoded = jsonDecode(utf8.decode(await _get(uri))) as Map;
+      final response = decoded['response'] as Map? ?? const {};
+      final players = response['players'] as List? ?? const [];
+      final matchesUser = players.whereType<Map>().any(
+        (player) => '${player['steamid'] ?? ''}' == normalizedUserId,
+      );
+      if (!matchesUser) {
+        throw const FormatException(
+          'The Steam user ID does not match a Steam account.',
+        );
+      }
+    }
+    _validatedUserId = normalizedUserId;
+    _validatedApiKey = normalizedApiKey;
+  }
 
   @override
   Future<String?> gameName(String appId, String apiKey) async {

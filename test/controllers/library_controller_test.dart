@@ -8,17 +8,141 @@ import 'package:gaming_memories/models/app_settings.dart';
 import 'package:gaming_memories/models/library.dart';
 import 'package:gaming_memories/providers/battle_net_provider.dart';
 import 'package:gaming_memories/providers/guild_wars_2_provider.dart';
+import 'package:gaming_memories/providers/playstation_4_provider.dart';
 import 'package:gaming_memories/providers/screenshot_provider.dart';
+import 'package:gaming_memories/providers/steam_provider.dart';
 import 'package:gaming_memories/services/config_store.dart';
 import 'package:gaming_memories/services/battle_net_catalog.dart';
 import 'package:gaming_memories/services/folder_access_service.dart';
 import 'package:gaming_memories/services/library_scanner.dart';
 import 'package:gaming_memories/services/provider_paths.dart';
 import 'package:gaming_memories/services/screenshot_action_service.dart';
+import 'package:gaming_memories/services/steam_client.dart';
 import 'package:gaming_memories/services/timeline_cache.dart';
 import 'package:path/path.dart' as p;
 
 void main() {
+  test('disables an invalid provider during startup', () async {
+    final directory = await Directory.systemTemp.createTemp(
+      'gaming-memories-controller-',
+    );
+    addTearDown(() => directory.delete(recursive: true));
+    final store = ConfigStore(
+      filePath: p.join(directory.path, 'settings.json'),
+    );
+    await store.save(
+      const AppSettings(
+        outputPath: '',
+        playStation4: ProviderSettings(
+          enabled: true,
+          useCustomPath: true,
+          sourcePath: '/definitely/missing/gaming-memories',
+        ),
+      ),
+    );
+    final controller = LibraryController(
+      configStore: store,
+      scanner: const LibraryScanner(),
+      providers: const [PlayStation4Provider()],
+    );
+
+    await controller.initialize();
+
+    expect(controller.settings.playStation4.enabled, isFalse);
+    expect((await store.load()).playStation4.enabled, isFalse);
+    expect(controller.notificationKind, NotificationKind.error);
+    expect(
+      controller.error,
+      'PlayStation 4 was disabled: PlayStation 4 folder does not exist.',
+    );
+    expect(controller.providerValidationErrors, {
+      'PlayStation 4': 'PlayStation 4 folder does not exist.',
+    });
+  });
+
+  test('disables an invalid provider during a settings save', () async {
+    final directory = await Directory.systemTemp.createTemp(
+      'gaming-memories-controller-',
+    );
+    addTearDown(() => directory.delete(recursive: true));
+    final store = ConfigStore(
+      filePath: p.join(directory.path, 'settings.json'),
+    );
+    final controller = LibraryController(
+      configStore: store,
+      scanner: const LibraryScanner(),
+      providers: const [PlayStation4Provider()],
+    )..isInitializing = false;
+
+    final saved = await controller.updateSettings(
+      const AppSettings(
+        outputPath: '',
+        playStation4: ProviderSettings(
+          enabled: true,
+          useCustomPath: true,
+          sourcePath: '/definitely/missing/gaming-memories',
+        ),
+      ),
+    );
+
+    expect(saved, isTrue);
+    expect(controller.settings.playStation4.enabled, isFalse);
+    expect((await store.load()).playStation4.enabled, isFalse);
+    expect(controller.notificationKind, NotificationKind.error);
+    expect(
+      controller.error,
+      'PlayStation 4 was disabled: PlayStation 4 folder does not exist.',
+    );
+  });
+
+  test(
+    'disables Steam when its active online option lacks a user ID',
+    () async {
+      final directory = await Directory.systemTemp.createTemp(
+        'gaming-memories-controller-',
+      );
+      addTearDown(() => directory.delete(recursive: true));
+      final steamFolder = Directory(p.join(directory.path, 'steam'));
+      await steamFolder.create();
+      final store = ConfigStore(
+        filePath: p.join(directory.path, 'settings.json'),
+      );
+      final controller = LibraryController(
+        configStore: store,
+        scanner: const LibraryScanner(),
+        providers: [SteamProvider(api: const _ControllerSteamApi())],
+      )..isInitializing = false;
+
+      await controller.updateSettings(
+        AppSettings(
+          outputPath: '',
+          steam: SteamSettings(
+            enabled: true,
+            useCustomPath: true,
+            userdataPath: steamFolder.path,
+            onlineGallery: true,
+            userId: '',
+            apiKey: '0123456789abcdef0123456789abcdef',
+            downloadCovers: false,
+            ignoredGames: const [],
+            customGames: const {},
+          ),
+        ),
+      );
+
+      expect(controller.settings.steam.enabled, isFalse);
+      expect((await store.load()).steam.enabled, isFalse);
+      expect(controller.providerValidationErrors, {
+        'Steam': 'Enter a Steam user ID for online gallery imports.',
+      });
+      expect(controller.notificationKind, NotificationKind.error);
+      expect(
+        controller.error,
+        'Steam was disabled: Enter a Steam user ID for online gallery imports.',
+      );
+    },
+  );
+
   test(
     'publishes the album tree before the timeline cache completes',
     () async {
@@ -1061,6 +1185,31 @@ class _EmptyBattleNetCatalog implements BattleNetCatalog {
   @override
   Future<List<BattleNetInstall>> installations({String? rootPath}) async =>
       const [];
+}
+
+class _ControllerSteamApi implements SteamApi {
+  const _ControllerSteamApi();
+
+  @override
+  Future<void> validateCredentials(String userId, String apiKey) async {}
+
+  @override
+  Future<String?> appIdForName(String name, String apiKey) async => null;
+
+  @override
+  Future<List<int>> download(String url) async => const [];
+
+  @override
+  Future<List<int>?> gameCover(String appId) async => null;
+
+  @override
+  Future<String?> gameName(String appId, String apiKey) async => null;
+
+  @override
+  Future<List<SteamPublishedScreenshot>> publishedScreenshots(
+    String userId,
+    String apiKey,
+  ) async => const [];
 }
 
 class _FolderProvider implements FolderBackedScreenshotProvider {

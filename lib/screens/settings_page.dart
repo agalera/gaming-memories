@@ -68,6 +68,9 @@ class _SettingsPageState extends State<SettingsPage> {
   var _draftRevision = 0;
   var _hasPendingChanges = false;
   var _suppressAutosave = false;
+  var _settingsTab = 0;
+  _SettingsProvider? _expandedProvider;
+  final _providerActivationErrors = <_SettingsProvider, String>{};
   Future<void> _saveQueue = Future.value();
 
   @override
@@ -130,6 +133,17 @@ class _SettingsPageState extends State<SettingsPage> {
     _steamOnlineGallery = steam.onlineGallery;
     _steamDownloadCovers = steam.downloadCovers;
     _themeMode = widget.controller.settings.themeMode;
+    for (final provider in _SettingsProvider.values) {
+      final error = widget.controller.providerValidationError(
+        _providerName(provider),
+      );
+      if (error != null) {
+        _providerActivationErrors[provider] = error;
+      }
+    }
+    if (_providerActivationErrors.isNotEmpty) {
+      _expandedProvider = _providerActivationErrors.keys.first;
+    }
 
     for (final controller in [
       _outputController,
@@ -194,7 +208,8 @@ class _SettingsPageState extends State<SettingsPage> {
         alignment: Alignment.topLeft,
         child: ConstrainedBox(
           constraints: const BoxConstraints(maxWidth: 760),
-          child: Column(
+          child: _SettingsSections(
+            sortProviders: _settingsTab == 2,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(
@@ -203,998 +218,911 @@ class _SettingsPageState extends State<SettingsPage> {
                   color: context.theme.colors.mutedForeground,
                 ),
               ),
+              const SizedBox(height: 18),
+              FTabs(
+                key: const ValueKey('settings-tabs'),
+                control: FTabControl.lifted(
+                  index: _settingsTab,
+                  onChange: (index) => setState(() => _settingsTab = index),
+                ),
+                children: const [
+                  FTabEntry(
+                    label: Text(
+                      'Appearance',
+                      key: ValueKey('settings-tab-appearance'),
+                    ),
+                    child: SizedBox.shrink(),
+                  ),
+                  FTabEntry(
+                    label: Text(
+                      'Library',
+                      key: ValueKey('settings-tab-library'),
+                    ),
+                    child: SizedBox.shrink(),
+                  ),
+                  FTabEntry(
+                    label: Text(
+                      'Providers',
+                      key: ValueKey('settings-tab-providers'),
+                    ),
+                    child: SizedBox.shrink(),
+                  ),
+                ],
+              ),
               const SizedBox(height: 22),
-              _sectionTitle(context, 'Appearance'),
-              const SizedBox(height: 10),
-              FCard(
-                child: Padding(
-                  padding: const EdgeInsets.all(20),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        'Color mode',
-                        style: context.theme.typography.body.lg.copyWith(
-                          fontWeight: FontWeight.w700,
+              if (_settingsTab == 0) ...[
+                _sectionTitle(context, 'Appearance'),
+                const SizedBox(height: 10),
+                FCard(
+                  child: Padding(
+                    padding: const EdgeInsets.all(20),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Color mode',
+                          style: context.theme.typography.body.lg.copyWith(
+                            fontWeight: FontWeight.w700,
+                          ),
                         ),
-                      ),
-                      const SizedBox(height: 6),
-                      Text(
-                        'Use the system mode or choose a fixed app mode.',
-                        style: context.theme.typography.body.sm.copyWith(
-                          color: context.theme.colors.mutedForeground,
+                        const SizedBox(height: 6),
+                        Text(
+                          'Use the system mode or choose a fixed app mode.',
+                          style: context.theme.typography.body.sm.copyWith(
+                            color: context.theme.colors.mutedForeground,
+                          ),
                         ),
-                      ),
-                      const SizedBox(height: 16),
-                      _ThemeModeSelector(
-                        value: _themeMode,
-                        onChange: (value) {
-                          setState(() => _themeMode = value);
-                          widget.controller.previewTheme(value);
-                          _scheduleAutosave();
-                        },
-                      ),
-                    ],
+                        const SizedBox(height: 16),
+                        _ThemeModeSelector(
+                          value: _themeMode,
+                          onChange: (value) {
+                            setState(() => _themeMode = value);
+                            widget.controller.previewTheme(value);
+                            _scheduleAutosave();
+                          },
+                        ),
+                      ],
+                    ),
                   ),
                 ),
-              ),
-              const SizedBox(height: 28),
-              _sectionTitle(context, 'Library'),
-              const SizedBox(height: 10),
-              FCard(
-                child: Padding(
-                  padding: const EdgeInsets.all(20),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        'Media library',
-                        style: context.theme.typography.body.lg.copyWith(
-                          fontWeight: FontWeight.w700,
+              ],
+              if (_settingsTab == 1) ...[
+                _sectionTitle(context, 'Library'),
+                const SizedBox(height: 10),
+                FCard(
+                  child: Padding(
+                    padding: const EdgeInsets.all(20),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Media library',
+                          style: context.theme.typography.body.lg.copyWith(
+                            fontWeight: FontWeight.w700,
+                          ),
                         ),
-                      ),
-                      const SizedBox(height: 6),
-                      Text(
-                        'Gaming Memories stores albums below this folder.',
-                        style: context.theme.typography.body.sm.copyWith(
-                          color: context.theme.colors.mutedForeground,
+                        const SizedBox(height: 6),
+                        Text(
+                          'Gaming Memories stores albums below this folder.',
+                          style: context.theme.typography.body.sm.copyWith(
+                            color: context.theme.colors.mutedForeground,
+                          ),
                         ),
-                      ),
-                      const SizedBox(height: 18),
-                      _DirectoryField(
-                        fieldKey: const ValueKey('library-path-field'),
-                        controller: _outputController,
-                        label: 'Library folder',
-                        hint: '/path/to/media',
-                        error: _outputPathError,
-                        readOnly: widget.controller.usesPersistentFolderAccess,
-                        buttonLabel: _folderButtonLabel(FolderGrantIds.library),
-                        onBrowse: () => _chooseDirectory(
-                          SettingsFolderTarget.library,
-                          initialPath: _outputController.text,
+                        const SizedBox(height: 18),
+                        _DirectoryField(
+                          fieldKey: const ValueKey('library-path-field'),
+                          controller: _outputController,
+                          label: 'Library folder',
+                          hint: '/path/to/media',
+                          error: _outputPathError,
+                          readOnly:
+                              widget.controller.usesPersistentFolderAccess,
+                          buttonLabel: _folderButtonLabel(
+                            FolderGrantIds.library,
+                          ),
+                          onBrowse: () => _chooseDirectory(
+                            SettingsFolderTarget.library,
+                            initialPath: _outputController.text,
+                          ),
                         ),
-                      ),
-                    ],
+                      ],
+                    ),
                   ),
                 ),
-              ),
-              const SizedBox(height: 28),
-              _sectionTitle(context, 'Providers'),
-              const SizedBox(height: 10),
-              FCard(
-                child: Padding(
-                  padding: const EdgeInsets.all(20),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Row(
-                        children: [
-                          Container(
-                            width: 44,
-                            height: 44,
-                            decoration: BoxDecoration(
-                              color: context.theme.colors.muted,
-                              borderRadius: BorderRadius.circular(12),
-                            ),
-                            child: const Icon(FLucideIcons.gamepad2),
-                          ),
-                          const SizedBox(width: 12),
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(
-                                  'Battle.net',
-                                  style: context.theme.typography.body.lg
-                                      .copyWith(fontWeight: FontWeight.w700),
-                                ),
-                                const SizedBox(height: 2),
-                                Text(
-                                  'PC · Diablo IV and World of Warcraft',
-                                  style: context.theme.typography.body.sm
-                                      .copyWith(
-                                        color: context
-                                            .theme
-                                            .colors
-                                            .mutedForeground,
-                                      ),
-                                ),
-                              ],
+              ],
+              if (_settingsTab == 2)
+                FCard(
+                  key: const ValueKey('provider-sort-Battle.net'),
+                  child: Padding(
+                    padding: const EdgeInsets.all(20),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        _ProviderHeader(
+                          headerKey: const ValueKey('provider-card-battle-net'),
+                          switchKey: const ValueKey('battle-net-enabled'),
+                          name: 'Battle.net',
+                          description: 'PC · Diablo IV and World of Warcraft',
+                          expanded:
+                              _expandedProvider == _SettingsProvider.battleNet,
+                          enabled: _diabloEnabled,
+                          error:
+                              _providerActivationErrors[_SettingsProvider
+                                  .battleNet],
+                          onTap: () =>
+                              _toggleProvider(_SettingsProvider.battleNet),
+                          onEnabled: (value) => unawaited(
+                            _setProviderEnabled(
+                              _SettingsProvider.battleNet,
+                              value,
                             ),
                           ),
-                          FSwitch(
-                            value: _diabloEnabled,
-                            semanticsLabel: 'Enable Battle.net',
+                        ),
+                        if (_expandedProvider ==
+                            _SettingsProvider.battleNet) ...[
+                          const SizedBox(height: 18),
+                          FCheckbox(
+                            key: const ValueKey('battle-net-custom-path'),
+                            label: const Text('Use custom folder'),
+                            description: const Text(
+                              'Otherwise, installed Battle.net games are discovered automatically.',
+                            ),
+                            value: _diabloUseCustomPath,
+                            enabled: true,
                             onChange: (value) => unawaited(
-                              _setProviderEnabled(
+                              _setCustomPath(
                                 _SettingsProvider.battleNet,
                                 value,
                               ),
                             ),
                           ),
-                        ],
-                      ),
-                      const SizedBox(height: 18),
-                      FCheckbox(
-                        key: const ValueKey('battle-net-custom-path'),
-                        label: const Text('Use custom folder'),
-                        description: const Text(
-                          'Otherwise, installed Battle.net games are discovered automatically.',
-                        ),
-                        value: _diabloUseCustomPath,
-                        enabled: _diabloEnabled,
-                        onChange: (value) => unawaited(
-                          _setCustomPath(_SettingsProvider.battleNet, value),
-                        ),
-                      ),
-                      if (_diabloUseCustomPath) ...[
-                        const SizedBox(height: 16),
-                        _DirectoryField(
-                          fieldKey: const ValueKey('battle-net-path-field'),
-                          controller: _diabloController,
-                          label: 'Battle.net or game installation folder',
-                          hint: '/path/to/World of Warcraft',
-                          error: _diabloPathError,
-                          enabled: _diabloEnabled,
-                          readOnly:
-                              widget.controller.usesPersistentFolderAccess,
-                          buttonLabel: _folderButtonLabel(
-                            FolderGrantIds.battleNet,
-                          ),
-                          onBrowse: () => _chooseDirectory(
-                            SettingsFolderTarget.battleNetCustom,
-                            initialPath: _diabloController.text,
-                          ),
-                        ),
-                      ] else if (_diabloEnabled &&
-                          widget.controller.usesPersistentFolderAccess) ...[
-                        const SizedBox(height: 16),
-                        _FolderAccessRow(
-                          buttonKey: const ValueKey(
-                            'battle-net-automatic-folder-access',
-                          ),
-                          providerName: 'Battle.net',
-                          automaticDescription: 'World of Warcraft screenshots are stored in its installation folder. The macOS dialog will open it; click Allow Access to grant access.',
-                          status: widget.controller.folderAuthorization(
-                            FolderGrantIds.battleNet,
-                          ),
-                          error: _diabloPathError,
-                          onAllow: () => _chooseAutomaticDirectory(
-                            SettingsFolderTarget.battleNetAutomatic,
-                          ),
-                        ),
-                      ],
-                    ],
-                  ),
-                ),
-              ),
-              const SizedBox(height: 16),
-              FCard(
-                child: Padding(
-                  padding: const EdgeInsets.all(20),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Row(
-                        children: [
-                          Container(
-                            width: 44,
-                            height: 44,
-                            decoration: BoxDecoration(
-                              color: context.theme.colors.muted,
-                              borderRadius: BorderRadius.circular(12),
-                            ),
-                            child: const Icon(FLucideIcons.gamepad2),
-                          ),
-                          const SizedBox(width: 12),
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(
-                                  'Hytale',
-                                  style: context.theme.typography.body.lg
-                                      .copyWith(fontWeight: FontWeight.w700),
-                                ),
-                                const SizedBox(height: 2),
-                                Text(
-                                  'PC · Screenshots',
-                                  style: context.theme.typography.body.sm
-                                      .copyWith(
-                                        color: context
-                                            .theme
-                                            .colors
-                                            .mutedForeground,
-                                      ),
-                                ),
-                              ],
-                            ),
-                          ),
-                          FSwitch(
-                            key: const ValueKey('hytale-enabled'),
-                            value: _hytaleEnabled,
-                            semanticsLabel: 'Enable Hytale',
-                            onChange: (value) => unawaited(
-                              _setProviderEnabled(
-                                _SettingsProvider.hytale,
-                                value,
+                          if (_diabloUseCustomPath) ...[
+                            const SizedBox(height: 16),
+                            _DirectoryField(
+                              fieldKey: const ValueKey('battle-net-path-field'),
+                              controller: _diabloController,
+                              label: 'Battle.net or game installation folder',
+                              hint: '/path/to/World of Warcraft',
+                              error: _diabloPathError,
+                              readOnly:
+                                  widget.controller.usesPersistentFolderAccess,
+                              buttonLabel: _folderButtonLabel(
+                                FolderGrantIds.battleNet,
+                              ),
+                              onBrowse: () => _chooseDirectory(
+                                SettingsFolderTarget.battleNetCustom,
+                                initialPath: _diabloController.text,
                               ),
                             ),
-                          ),
+                          ] else if (widget
+                              .controller
+                              .usesPersistentFolderAccess) ...[
+                            const SizedBox(height: 16),
+                            _FolderAccessRow(
+                              buttonKey: const ValueKey(
+                                'battle-net-automatic-folder-access',
+                              ),
+                              providerName: 'Battle.net',
+                              automaticDescription: 'World of Warcraft screenshots are stored in its installation folder. The macOS dialog will open it; click Allow Access to grant access.',
+                              status: widget.controller.folderAuthorization(
+                                FolderGrantIds.battleNet,
+                              ),
+                              error: _diabloPathError,
+                              onAllow: () => _chooseAutomaticDirectory(
+                                SettingsFolderTarget.battleNetAutomatic,
+                              ),
+                            ),
+                          ],
                         ],
-                      ),
-                      const SizedBox(height: 18),
-                      FCheckbox(
-                        key: const ValueKey('hytale-custom-path'),
-                        label: const Text('Use custom folder'),
-                        description: const Text(
-                          'Otherwise, the screenshot folder is discovered automatically.',
-                        ),
-                        value: _hytaleUseCustomPath,
-                        enabled: _hytaleEnabled,
-                        onChange: (value) => unawaited(
-                          _setCustomPath(_SettingsProvider.hytale, value),
-                        ),
-                      ),
-                      if (_hytaleUseCustomPath) ...[
-                        const SizedBox(height: 16),
-                        _DirectoryField(
-                          fieldKey: const ValueKey('hytale-path-field'),
-                          controller: _hytaleController,
-                          label: 'Screenshot folder',
-                          hint: '/path/to/Hytale Screenshots',
-                          error: _hytalePathError,
-                          enabled: _hytaleEnabled,
-                          readOnly:
-                              widget.controller.usesPersistentFolderAccess,
-                          buttonLabel: _folderButtonLabel(
-                            FolderGrantIds.hytale,
-                          ),
-                          onBrowse: () => _chooseDirectory(
-                            SettingsFolderTarget.hytaleCustom,
-                            initialPath: _hytaleController.text,
-                          ),
-                        ),
-                      ] else if (_hytaleEnabled &&
-                          widget.controller.usesPersistentFolderAccess) ...[
-                        const SizedBox(height: 16),
-                        _FolderAccessRow(
-                          buttonKey: const ValueKey(
-                            'hytale-automatic-folder-access',
-                          ),
-                          providerName: 'Hytale',
-                          automaticDescription: 'Hytale screenshots are stored in “Pictures/Hytale Screenshots”. The macOS dialog will open that folder; click Allow Access to grant access.',
-                          status: widget.controller.folderAuthorization(
-                            FolderGrantIds.hytale,
-                          ),
-                          error: _hytalePathError,
-                          onAllow: () => _chooseAutomaticDirectory(
-                            SettingsFolderTarget.hytaleAutomatic,
-                          ),
-                        ),
                       ],
-                      const SizedBox(height: 16),
-                      _SwitchSetting(
-                        switchKey: const ValueKey('hytale-bundled-cover'),
-                        label: 'Use bundled game cover',
-                        description:
-                            'Save the included cover.png in the album.',
-                        value: _hytaleDownloadCovers,
-                        enabled: _hytaleEnabled,
-                        onChange: (value) {
-                          setState(() => _hytaleDownloadCovers = value);
-                          _scheduleAutosave();
-                        },
-                      ),
-                    ],
+                    ),
                   ),
                 ),
-              ),
-              const SizedBox(height: 16),
-              _PlayStationProviderCard(
-                name: 'PlayStation 4',
-                description: 'Screenshots and 30-second clips',
-                fieldKey: const ValueKey('playstation-4-path-field'),
-                switchKey: const ValueKey('playstation-4-enabled'),
-                controller: _playStation4Controller,
-                enabled: _playStation4Enabled,
-                error: _playStation4PathError,
-                readOnly: widget.controller.usesPersistentFolderAccess,
-                buttonLabel: _playStation4Enabled
-                    ? _folderButtonLabel(FolderGrantIds.playStation4)
-                    : 'Select Folder',
-                requirement: 'Requires ExifTool to read screenshot dates.',
-                onEnabled: (value) => unawaited(
-                  _setProviderEnabled(_SettingsProvider.playStation4, value),
-                ),
-                onBrowse: () => _chooseDirectory(
-                  SettingsFolderTarget.playStation4Custom,
-                  initialPath: _playStation4Controller.text,
-                ),
-              ),
-              const SizedBox(height: 16),
-              _PlayStationProviderCard(
-                name: 'PlayStation 5',
-                description: 'Screenshots and 30-second clips',
-                fieldKey: const ValueKey('playstation-5-path-field'),
-                switchKey: const ValueKey('playstation-5-enabled'),
-                controller: _playStation5Controller,
-                enabled: _playStation5Enabled,
-                error: _playStation5PathError,
-                readOnly: widget.controller.usesPersistentFolderAccess,
-                buttonLabel: _playStation5Enabled
-                    ? _folderButtonLabel(FolderGrantIds.playStation5)
-                    : 'Select Folder',
-                requirement: 'FFprobe is optional. Without it, clips use the end time in their filename.',
-                onEnabled: (value) => unawaited(
-                  _setProviderEnabled(_SettingsProvider.playStation5, value),
-                ),
-                onBrowse: () => _chooseDirectory(
-                  SettingsFolderTarget.playStation5Custom,
-                  initialPath: _playStation5Controller.text,
-                ),
-              ),
-              const SizedBox(height: 16),
-              FCard(
-                child: Padding(
-                  padding: const EdgeInsets.all(20),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Row(
-                        children: [
-                          Container(
-                            width: 44,
-                            height: 44,
-                            decoration: BoxDecoration(
-                              color: context.theme.colors.muted,
-                              borderRadius: BorderRadius.circular(12),
-                            ),
-                            child: const Icon(FLucideIcons.gamepad2),
-                          ),
-                          const SizedBox(width: 12),
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(
-                                  'Nintendo Switch 2',
-                                  style: context.theme.typography.body.lg
-                                      .copyWith(fontWeight: FontWeight.w700),
-                                ),
-                                const SizedBox(height: 2),
-                                Text(
-                                  'Console · Screenshots and clips',
-                                  style: context.theme.typography.body.sm
-                                      .copyWith(
-                                        color: context
-                                            .theme
-                                            .colors
-                                            .mutedForeground,
-                                      ),
-                                ),
-                              ],
+              if (_settingsTab == 2) const SizedBox(height: 12),
+              if (_settingsTab == 2)
+                FCard(
+                  key: const ValueKey('provider-sort-Hytale'),
+                  child: Padding(
+                    padding: const EdgeInsets.all(20),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        _ProviderHeader(
+                          headerKey: const ValueKey('provider-card-hytale'),
+                          switchKey: const ValueKey('hytale-enabled'),
+                          name: 'Hytale',
+                          description: 'PC · Screenshots',
+                          expanded:
+                              _expandedProvider == _SettingsProvider.hytale,
+                          enabled: _hytaleEnabled,
+                          error:
+                              _providerActivationErrors[_SettingsProvider
+                                  .hytale],
+                          onTap: () =>
+                              _toggleProvider(_SettingsProvider.hytale),
+                          onEnabled: (value) => unawaited(
+                            _setProviderEnabled(
+                              _SettingsProvider.hytale,
+                              value,
                             ),
                           ),
-                          FSwitch(
-                            key: const ValueKey('nintendo-switch-2-enabled'),
-                            value: _nintendoSwitch2Enabled,
-                            semanticsLabel: 'Enable Nintendo Switch 2',
+                        ),
+                        if (_expandedProvider == _SettingsProvider.hytale) ...[
+                          const SizedBox(height: 18),
+                          FCheckbox(
+                            key: const ValueKey('hytale-custom-path'),
+                            label: const Text('Use custom folder'),
+                            description: const Text(
+                              'Otherwise, the screenshot folder is discovered automatically.',
+                            ),
+                            value: _hytaleUseCustomPath,
+                            enabled: true,
                             onChange: (value) => unawaited(
-                              _setProviderEnabled(
+                              _setCustomPath(_SettingsProvider.hytale, value),
+                            ),
+                          ),
+                          if (_hytaleUseCustomPath) ...[
+                            const SizedBox(height: 16),
+                            _DirectoryField(
+                              fieldKey: const ValueKey('hytale-path-field'),
+                              controller: _hytaleController,
+                              label: 'Screenshot folder',
+                              hint: '/path/to/Hytale Screenshots',
+                              error: _hytalePathError,
+                              readOnly:
+                                  widget.controller.usesPersistentFolderAccess,
+                              buttonLabel: _folderButtonLabel(
+                                FolderGrantIds.hytale,
+                              ),
+                              onBrowse: () => _chooseDirectory(
+                                SettingsFolderTarget.hytaleCustom,
+                                initialPath: _hytaleController.text,
+                              ),
+                            ),
+                          ] else if (widget
+                              .controller
+                              .usesPersistentFolderAccess) ...[
+                            const SizedBox(height: 16),
+                            _FolderAccessRow(
+                              buttonKey: const ValueKey(
+                                'hytale-automatic-folder-access',
+                              ),
+                              providerName: 'Hytale',
+                              automaticDescription: 'Hytale screenshots are stored in “Pictures/Hytale Screenshots”. The macOS dialog will open that folder; click Allow Access to grant access.',
+                              status: widget.controller.folderAuthorization(
+                                FolderGrantIds.hytale,
+                              ),
+                              error: _hytalePathError,
+                              onAllow: () => _chooseAutomaticDirectory(
+                                SettingsFolderTarget.hytaleAutomatic,
+                              ),
+                            ),
+                          ],
+                          const SizedBox(height: 16),
+                          _SwitchSetting(
+                            switchKey: const ValueKey('hytale-bundled-cover'),
+                            label: 'Use bundled game cover',
+                            description:
+                                'Save the included cover.png in the album.',
+                            value: _hytaleDownloadCovers,
+                            enabled: true,
+                            onChange: (value) {
+                              setState(() => _hytaleDownloadCovers = value);
+                              _scheduleAutosave();
+                            },
+                          ),
+                        ],
+                      ],
+                    ),
+                  ),
+                ),
+              if (_settingsTab == 2) const SizedBox(height: 12),
+              if (_settingsTab == 2)
+                _PlayStationProviderCard(
+                  headerKey: const ValueKey('provider-card-playstation-4'),
+                  name: 'PlayStation 4',
+                  description: 'Screenshots and 30-second clips',
+                  fieldKey: const ValueKey('playstation-4-path-field'),
+                  switchKey: const ValueKey('playstation-4-enabled'),
+                  controller: _playStation4Controller,
+                  expanded: _expandedProvider == _SettingsProvider.playStation4,
+                  enabled: _playStation4Enabled,
+                  activationError:
+                      _providerActivationErrors[_SettingsProvider.playStation4],
+                  error: _playStation4PathError,
+                  readOnly: widget.controller.usesPersistentFolderAccess,
+                  buttonLabel: _playStation4Enabled
+                      ? _folderButtonLabel(FolderGrantIds.playStation4)
+                      : 'Select Folder',
+                  requirement: 'Requires ExifTool to read screenshot dates.',
+                  onTap: () => _toggleProvider(_SettingsProvider.playStation4),
+                  onEnabled: (value) => unawaited(
+                    _setProviderEnabled(_SettingsProvider.playStation4, value),
+                  ),
+                  onBrowse: () => _chooseDirectory(
+                    SettingsFolderTarget.playStation4Custom,
+                    initialPath: _playStation4Controller.text,
+                  ),
+                ),
+              if (_settingsTab == 2) const SizedBox(height: 12),
+              if (_settingsTab == 2)
+                _PlayStationProviderCard(
+                  headerKey: const ValueKey('provider-card-playstation-5'),
+                  name: 'PlayStation 5',
+                  description: 'Screenshots and 30-second clips',
+                  fieldKey: const ValueKey('playstation-5-path-field'),
+                  switchKey: const ValueKey('playstation-5-enabled'),
+                  controller: _playStation5Controller,
+                  expanded: _expandedProvider == _SettingsProvider.playStation5,
+                  enabled: _playStation5Enabled,
+                  activationError:
+                      _providerActivationErrors[_SettingsProvider.playStation5],
+                  error: _playStation5PathError,
+                  readOnly: widget.controller.usesPersistentFolderAccess,
+                  buttonLabel: _playStation5Enabled
+                      ? _folderButtonLabel(FolderGrantIds.playStation5)
+                      : 'Select Folder',
+                  requirement: 'FFprobe is optional. Without it, clips use the end time in their filename.',
+                  onTap: () => _toggleProvider(_SettingsProvider.playStation5),
+                  onEnabled: (value) => unawaited(
+                    _setProviderEnabled(_SettingsProvider.playStation5, value),
+                  ),
+                  onBrowse: () => _chooseDirectory(
+                    SettingsFolderTarget.playStation5Custom,
+                    initialPath: _playStation5Controller.text,
+                  ),
+                ),
+              if (_settingsTab == 2) const SizedBox(height: 12),
+              if (_settingsTab == 2)
+                FCard(
+                  key: const ValueKey('provider-sort-Nintendo Switch 2'),
+                  child: Padding(
+                    padding: const EdgeInsets.all(20),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        _ProviderHeader(
+                          headerKey: const ValueKey(
+                            'provider-card-nintendo-switch-2',
+                          ),
+                          switchKey: const ValueKey(
+                            'nintendo-switch-2-enabled',
+                          ),
+                          name: 'Nintendo Switch 2',
+                          description: 'Console · Screenshots and clips',
+                          expanded:
+                              _expandedProvider ==
+                              _SettingsProvider.nintendoSwitch2,
+                          enabled: _nintendoSwitch2Enabled,
+                          error:
+                              _providerActivationErrors[_SettingsProvider
+                                  .nintendoSwitch2],
+                          onTap: () => _toggleProvider(
+                            _SettingsProvider.nintendoSwitch2,
+                          ),
+                          onEnabled: (value) => unawaited(
+                            _setProviderEnabled(
+                              _SettingsProvider.nintendoSwitch2,
+                              value,
+                            ),
+                          ),
+                        ),
+                        if (_expandedProvider ==
+                            _SettingsProvider.nintendoSwitch2) ...[
+                          const SizedBox(height: 18),
+                          FCheckbox(
+                            key: const ValueKey(
+                              'nintendo-switch-2-custom-path',
+                            ),
+                            label: const Text('Use copied album folder'),
+                            description: const Text(
+                              'Otherwise, read a connected console over USB on Linux.',
+                            ),
+                            value: _nintendoSwitch2UseCustomPath,
+                            enabled: true,
+                            onChange: (value) => unawaited(
+                              _setCustomPath(
                                 _SettingsProvider.nintendoSwitch2,
                                 value,
                               ),
                             ),
                           ),
+                          if (_nintendoSwitch2UseCustomPath) ...[
+                            const SizedBox(height: 16),
+                            _DirectoryField(
+                              fieldKey: const ValueKey(
+                                'nintendo-switch-2-path-field',
+                              ),
+                              controller: _nintendoSwitch2Controller,
+                              label: 'Copied album folder',
+                              hint: '/path/to/Nintendo Switch 2 album',
+                              error: _nintendoSwitch2PathError,
+                              readOnly:
+                                  widget.controller.usesPersistentFolderAccess,
+                              buttonLabel: _folderButtonLabel(
+                                FolderGrantIds.nintendoSwitch2,
+                              ),
+                              onBrowse: () => _chooseDirectory(
+                                SettingsFolderTarget.nintendoSwitch2Custom,
+                                initialPath: _nintendoSwitch2Controller.text,
+                              ),
+                            ),
+                          ] else ...[
+                            const SizedBox(height: 10),
+                            Text(
+                              'Direct collection requires Linux and the mtp-folders, mtp-files, and mtp-connect tools from libmtp.',
+                              style: context.theme.typography.body.xs.copyWith(
+                                color: context.theme.colors.mutedForeground,
+                              ),
+                            ),
+                          ],
+                          const SizedBox(height: 16),
+                          Row(
+                            crossAxisAlignment: CrossAxisAlignment.end,
+                            children: [
+                              Expanded(
+                                child: FTextField(
+                                  key: const ValueKey(
+                                    'nintendo-switch-2-ignored-input',
+                                  ),
+                                  control: FTextFieldControl.managed(
+                                    controller:
+                                        _nintendoSwitch2IgnoredInputController,
+                                  ),
+                                  label: const Text('Ignored album folder'),
+                                  hint: 'Other folder',
+                                  onSubmit: (_) =>
+                                      _addNintendoSwitch2IgnoredFolder(),
+                                ),
+                              ),
+                              const SizedBox(width: 10),
+                              FButton(
+                                key: const ValueKey(
+                                  'nintendo-switch-2-ignored-add',
+                                ),
+                                variant: FButtonVariant.outline,
+                                mainAxisSize: MainAxisSize.min,
+                                onPress: _addNintendoSwitch2IgnoredFolder,
+                                prefix: const Icon(FLucideIcons.plus),
+                                child: const Text('Add'),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 6),
+                          Text(
+                            'Skip the console folder used for captures outside games, or any game you do not want to import.',
+                            style: context.theme.typography.body.xs.copyWith(
+                              color: context.theme.colors.mutedForeground,
+                            ),
+                          ),
+                          const SizedBox(height: 10),
+                          _IgnoredFoldersList(
+                            folders: _nintendoSwitch2IgnoredFolders,
+                            enabled: true,
+                            onRemove: _removeNintendoSwitch2IgnoredFolder,
+                          ),
                         ],
-                      ),
-                      const SizedBox(height: 18),
-                      FCheckbox(
-                        key: const ValueKey('nintendo-switch-2-custom-path'),
-                        label: const Text('Use copied album folder'),
-                        description: const Text(
-                          'Otherwise, read a connected console over USB on Linux.',
-                        ),
-                        value: _nintendoSwitch2UseCustomPath,
-                        enabled: _nintendoSwitch2Enabled,
-                        onChange: (value) => unawaited(
-                          _setCustomPath(
-                            _SettingsProvider.nintendoSwitch2,
-                            value,
-                          ),
-                        ),
-                      ),
-                      if (_nintendoSwitch2UseCustomPath) ...[
-                        const SizedBox(height: 16),
-                        _DirectoryField(
-                          fieldKey: const ValueKey(
-                            'nintendo-switch-2-path-field',
-                          ),
-                          controller: _nintendoSwitch2Controller,
-                          label: 'Copied album folder',
-                          hint: '/path/to/Nintendo Switch 2 album',
-                          error: _nintendoSwitch2PathError,
-                          enabled: _nintendoSwitch2Enabled,
-                          readOnly:
-                              widget.controller.usesPersistentFolderAccess,
-                          buttonLabel: _folderButtonLabel(
-                            FolderGrantIds.nintendoSwitch2,
-                          ),
-                          onBrowse: () => _chooseDirectory(
-                            SettingsFolderTarget.nintendoSwitch2Custom,
-                            initialPath: _nintendoSwitch2Controller.text,
-                          ),
-                        ),
-                      ] else ...[
-                        const SizedBox(height: 10),
-                        Text(
-                          'Direct collection requires Linux and the mtp-folders, mtp-files, and mtp-connect tools from libmtp.',
-                          style: context.theme.typography.body.xs.copyWith(
-                            color: context.theme.colors.mutedForeground,
-                          ),
-                        ),
                       ],
-                      const SizedBox(height: 16),
-                      Row(
-                        crossAxisAlignment: CrossAxisAlignment.end,
-                        children: [
-                          Expanded(
-                            child: FTextField(
-                              key: const ValueKey(
-                                'nintendo-switch-2-ignored-input',
-                              ),
-                              control: FTextFieldControl.managed(
-                                controller:
-                                    _nintendoSwitch2IgnoredInputController,
-                              ),
-                              label: const Text('Ignored album folder'),
-                              hint: 'Other folder',
-                              enabled: _nintendoSwitch2Enabled,
-                              onSubmit: (_) =>
-                                  _addNintendoSwitch2IgnoredFolder(),
-                            ),
-                          ),
-                          const SizedBox(width: 10),
-                          FButton(
-                            key: const ValueKey(
-                              'nintendo-switch-2-ignored-add',
-                            ),
-                            variant: FButtonVariant.outline,
-                            mainAxisSize: MainAxisSize.min,
-                            onPress: _nintendoSwitch2Enabled
-                                ? _addNintendoSwitch2IgnoredFolder
-                                : null,
-                            prefix: const Icon(FLucideIcons.plus),
-                            child: const Text('Add'),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 6),
-                      Text(
-                        'Skip the console folder used for captures outside games, or any game you do not want to import.',
-                        style: context.theme.typography.body.xs.copyWith(
-                          color: context.theme.colors.mutedForeground,
-                        ),
-                      ),
-                      const SizedBox(height: 10),
-                      _IgnoredFoldersList(
-                        folders: _nintendoSwitch2IgnoredFolders,
-                        enabled: _nintendoSwitch2Enabled,
-                        onRemove: _removeNintendoSwitch2IgnoredFolder,
-                      ),
-                    ],
+                    ),
                   ),
                 ),
-              ),
-              const SizedBox(height: 16),
-              FCard(
-                child: Padding(
-                  padding: const EdgeInsets.all(20),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Row(
-                        children: [
-                          Container(
-                            width: 44,
-                            height: 44,
-                            decoration: BoxDecoration(
-                              color: context.theme.colors.muted,
-                              borderRadius: BorderRadius.circular(12),
-                            ),
-                            child: const Icon(FLucideIcons.gamepad2),
-                          ),
-                          const SizedBox(width: 12),
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(
-                                  'Minecraft',
-                                  style: context.theme.typography.body.lg
-                                      .copyWith(fontWeight: FontWeight.w700),
-                                ),
-                                const SizedBox(height: 2),
-                                Text(
-                                  'PC · Launcher and Flatpak screenshots',
-                                  style: context.theme.typography.body.sm
-                                      .copyWith(
-                                        color: context
-                                            .theme
-                                            .colors
-                                            .mutedForeground,
-                                      ),
-                                ),
-                              ],
+              if (_settingsTab == 2) const SizedBox(height: 12),
+              if (_settingsTab == 2)
+                FCard(
+                  key: const ValueKey('provider-sort-Minecraft'),
+                  child: Padding(
+                    padding: const EdgeInsets.all(20),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        _ProviderHeader(
+                          headerKey: const ValueKey('provider-card-minecraft'),
+                          switchKey: const ValueKey('minecraft-enabled'),
+                          name: 'Minecraft',
+                          description: 'PC · Launcher and Flatpak screenshots',
+                          expanded:
+                              _expandedProvider == _SettingsProvider.minecraft,
+                          enabled: _minecraftEnabled,
+                          error:
+                              _providerActivationErrors[_SettingsProvider
+                                  .minecraft],
+                          onTap: () =>
+                              _toggleProvider(_SettingsProvider.minecraft),
+                          onEnabled: (value) => unawaited(
+                            _setProviderEnabled(
+                              _SettingsProvider.minecraft,
+                              value,
                             ),
                           ),
-                          FSwitch(
-                            key: const ValueKey('minecraft-enabled'),
-                            value: _minecraftEnabled,
-                            semanticsLabel: 'Enable Minecraft',
+                        ),
+                        if (_expandedProvider ==
+                            _SettingsProvider.minecraft) ...[
+                          const SizedBox(height: 18),
+                          FCheckbox(
+                            key: const ValueKey('minecraft-custom-path'),
+                            label: const Text('Use custom folder'),
+                            description: const Text(
+                              'Otherwise, launcher and Flatpak folders are discovered automatically.',
+                            ),
+                            value: _minecraftUseCustomPath,
+                            enabled: true,
                             onChange: (value) => unawaited(
-                              _setProviderEnabled(
+                              _setCustomPath(
                                 _SettingsProvider.minecraft,
                                 value,
                               ),
                             ),
                           ),
+                          if (_minecraftUseCustomPath) ...[
+                            const SizedBox(height: 16),
+                            _DirectoryField(
+                              fieldKey: const ValueKey('minecraft-path-field'),
+                              controller: _minecraftController,
+                              label: 'Screenshot folder',
+                              hint: '/path/to/.minecraft/screenshots',
+                              error: _minecraftPathError,
+                              readOnly:
+                                  widget.controller.usesPersistentFolderAccess,
+                              buttonLabel: _folderButtonLabel(
+                                FolderGrantIds.minecraft,
+                              ),
+                              onBrowse: () => _chooseDirectory(
+                                SettingsFolderTarget.minecraftCustom,
+                                initialPath: _minecraftController.text,
+                              ),
+                            ),
+                          ] else if (widget
+                              .controller
+                              .usesPersistentFolderAccess) ...[
+                            const SizedBox(height: 16),
+                            _FolderAccessRow(
+                              buttonKey: const ValueKey(
+                                'minecraft-automatic-folder-access',
+                              ),
+                              providerName: 'Minecraft',
+                              automaticDescription: 'Minecraft screenshots are stored in the launcher screenshots folder. The macOS dialog will open it; click Allow Access to grant access.',
+                              status: widget.controller.folderAuthorization(
+                                FolderGrantIds.minecraft,
+                              ),
+                              error: _minecraftPathError,
+                              onAllow: () => _chooseAutomaticDirectory(
+                                SettingsFolderTarget.minecraftAutomatic,
+                              ),
+                            ),
+                          ],
                         ],
-                      ),
-                      const SizedBox(height: 18),
-                      FCheckbox(
-                        key: const ValueKey('minecraft-custom-path'),
-                        label: const Text('Use custom folder'),
-                        description: const Text(
-                          'Otherwise, launcher and Flatpak folders are discovered automatically.',
-                        ),
-                        value: _minecraftUseCustomPath,
-                        enabled: _minecraftEnabled,
-                        onChange: (value) => unawaited(
-                          _setCustomPath(_SettingsProvider.minecraft, value),
-                        ),
-                      ),
-                      if (_minecraftUseCustomPath) ...[
-                        const SizedBox(height: 16),
-                        _DirectoryField(
-                          fieldKey: const ValueKey('minecraft-path-field'),
-                          controller: _minecraftController,
-                          label: 'Screenshot folder',
-                          hint: '/path/to/.minecraft/screenshots',
-                          error: _minecraftPathError,
-                          enabled: _minecraftEnabled,
-                          readOnly:
-                              widget.controller.usesPersistentFolderAccess,
-                          buttonLabel: _folderButtonLabel(
-                            FolderGrantIds.minecraft,
-                          ),
-                          onBrowse: () => _chooseDirectory(
-                            SettingsFolderTarget.minecraftCustom,
-                            initialPath: _minecraftController.text,
-                          ),
-                        ),
-                      ] else if (_minecraftEnabled &&
-                          widget.controller.usesPersistentFolderAccess) ...[
-                        const SizedBox(height: 16),
-                        _FolderAccessRow(
-                          buttonKey: const ValueKey(
-                            'minecraft-automatic-folder-access',
-                          ),
-                          providerName: 'Minecraft',
-                          automaticDescription: 'Minecraft screenshots are stored in the launcher screenshots folder. The macOS dialog will open it; click Allow Access to grant access.',
-                          status: widget.controller.folderAuthorization(
-                            FolderGrantIds.minecraft,
-                          ),
-                          error: _minecraftPathError,
-                          onAllow: () => _chooseAutomaticDirectory(
-                            SettingsFolderTarget.minecraftAutomatic,
-                          ),
-                        ),
                       ],
-                    ],
+                    ),
                   ),
                 ),
-              ),
-              const SizedBox(height: 16),
-              FCard(
-                child: Padding(
-                  padding: const EdgeInsets.all(20),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Row(
-                        children: [
-                          Container(
-                            width: 44,
-                            height: 44,
-                            decoration: BoxDecoration(
-                              color: context.theme.colors.muted,
-                              borderRadius: BorderRadius.circular(12),
-                            ),
-                            child: const Icon(FLucideIcons.gamepad2),
+              if (_settingsTab == 2) const SizedBox(height: 12),
+              if (_settingsTab == 2)
+                FCard(
+                  key: const ValueKey('provider-sort-Guild Wars 2'),
+                  child: Padding(
+                    padding: const EdgeInsets.all(20),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        _ProviderHeader(
+                          headerKey: const ValueKey(
+                            'provider-card-guild-wars-2',
                           ),
-                          const SizedBox(width: 12),
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(
-                                  'Guild Wars 2',
-                                  style: context.theme.typography.body.lg
-                                      .copyWith(fontWeight: FontWeight.w700),
-                                ),
-                                const SizedBox(height: 2),
-                                Text(
-                                  'PC · Screenshots',
-                                  style: context.theme.typography.body.sm
-                                      .copyWith(
-                                        color: context
-                                            .theme
-                                            .colors
-                                            .mutedForeground,
-                                      ),
-                                ),
-                              ],
+                          switchKey: const ValueKey('guild-wars-2-enabled'),
+                          name: 'Guild Wars 2',
+                          description: 'PC · Screenshots',
+                          expanded:
+                              _expandedProvider == _SettingsProvider.guildWars2,
+                          enabled: _guildWars2Enabled,
+                          error:
+                              _providerActivationErrors[_SettingsProvider
+                                  .guildWars2],
+                          onTap: () =>
+                              _toggleProvider(_SettingsProvider.guildWars2),
+                          onEnabled: (value) => unawaited(
+                            _setProviderEnabled(
+                              _SettingsProvider.guildWars2,
+                              value,
                             ),
                           ),
-                          FSwitch(
-                            key: const ValueKey('guild-wars-2-enabled'),
-                            value: _guildWars2Enabled,
-                            semanticsLabel: 'Enable Guild Wars 2',
+                        ),
+                        if (_expandedProvider ==
+                            _SettingsProvider.guildWars2) ...[
+                          const SizedBox(height: 18),
+                          FCheckbox(
+                            key: const ValueKey('guild-wars-2-custom-path'),
+                            label: const Text('Use custom folder'),
+                            description: const Text(
+                              'Otherwise, the screenshot folder is discovered automatically.',
+                            ),
+                            value: _guildWars2UseCustomPath,
+                            enabled: true,
                             onChange: (value) => unawaited(
-                              _setProviderEnabled(
+                              _setCustomPath(
                                 _SettingsProvider.guildWars2,
                                 value,
                               ),
                             ),
                           ),
-                        ],
-                      ),
-                      const SizedBox(height: 18),
-                      FCheckbox(
-                        key: const ValueKey('guild-wars-2-custom-path'),
-                        label: const Text('Use custom folder'),
-                        description: const Text(
-                          'Otherwise, the screenshot folder is discovered automatically.',
-                        ),
-                        value: _guildWars2UseCustomPath,
-                        enabled: _guildWars2Enabled,
-                        onChange: (value) => unawaited(
-                          _setCustomPath(_SettingsProvider.guildWars2, value),
-                        ),
-                      ),
-                      if (!_guildWars2UseCustomPath &&
-                          _guildWars2PathError != null) ...[
-                        const SizedBox(height: 8),
-                        _InlinePathError(_guildWars2PathError!),
-                      ],
-                      if (_guildWars2UseCustomPath) ...[
-                        const SizedBox(height: 16),
-                        _DirectoryField(
-                          fieldKey: const ValueKey('guild-wars-2-path-field'),
-                          controller: _guildWars2Controller,
-                          label: 'Screenshot folder',
-                          hint: '/path/to/Guild Wars 2/Screens',
-                          error: _guildWars2PathError,
-                          enabled: _guildWars2Enabled,
-                          readOnly:
-                              widget.controller.usesPersistentFolderAccess,
-                          buttonLabel: _folderButtonLabel(
-                            FolderGrantIds.guildWars2,
-                          ),
-                          onBrowse: () => _chooseDirectory(
-                            SettingsFolderTarget.guildWars2Custom,
-                            initialPath: _guildWars2Controller.text,
-                          ),
-                        ),
-                      ],
-                      const SizedBox(height: 10),
-                      Text(
-                        'Requires ExifTool.',
-                        style: context.theme.typography.body.xs.copyWith(
-                          color: context.theme.colors.mutedForeground,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-              const SizedBox(height: 16),
-              FCard(
-                child: Padding(
-                  padding: const EdgeInsets.all(20),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Row(
-                        children: [
-                          Container(
-                            width: 44,
-                            height: 44,
-                            decoration: BoxDecoration(
-                              color: context.theme.colors.muted,
-                              borderRadius: BorderRadius.circular(12),
-                            ),
-                            child: const Icon(FLucideIcons.gamepad2),
-                          ),
-                          const SizedBox(width: 12),
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(
-                                  'Steam',
-                                  style: context.theme.typography.body.lg
-                                      .copyWith(fontWeight: FontWeight.w700),
-                                ),
-                                const SizedBox(height: 2),
-                                Text(
-                                  'PC · Local and online screenshots',
-                                  style: context.theme.typography.body.sm
-                                      .copyWith(
-                                        color: context
-                                            .theme
-                                            .colors
-                                            .mutedForeground,
-                                      ),
-                                ),
-                              ],
-                            ),
-                          ),
-                          FSwitch(
-                            value: _steamEnabled,
-                            semanticsLabel: 'Enable Steam',
-                            onChange: (value) => unawaited(
-                              _setProviderEnabled(
-                                _SettingsProvider.steam,
-                                value,
+                          if (!_guildWars2UseCustomPath &&
+                              _guildWars2PathError != null) ...[
+                            const SizedBox(height: 8),
+                            _InlinePathError(_guildWars2PathError!),
+                          ],
+                          if (_guildWars2UseCustomPath) ...[
+                            const SizedBox(height: 16),
+                            _DirectoryField(
+                              fieldKey: const ValueKey(
+                                'guild-wars-2-path-field',
+                              ),
+                              controller: _guildWars2Controller,
+                              label: 'Screenshot folder',
+                              hint: '/path/to/Guild Wars 2/Screens',
+                              error: _guildWars2PathError,
+                              readOnly:
+                                  widget.controller.usesPersistentFolderAccess,
+                              buttonLabel: _folderButtonLabel(
+                                FolderGrantIds.guildWars2,
+                              ),
+                              onBrowse: () => _chooseDirectory(
+                                SettingsFolderTarget.guildWars2Custom,
+                                initialPath: _guildWars2Controller.text,
                               ),
                             ),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 18),
-                      FCheckbox(
-                        key: const ValueKey('steam-custom-path'),
-                        label: const Text('Use custom folder'),
-                        description: const Text(
-                          'Otherwise, the Steam folder is discovered automatically.',
-                        ),
-                        value: _steamUseCustomPath,
-                        enabled: _steamEnabled,
-                        onChange: (value) => unawaited(
-                          _setCustomPath(_SettingsProvider.steam, value),
-                        ),
-                      ),
-                      if (_steamUseCustomPath) ...[
-                        const SizedBox(height: 16),
-                        _DirectoryField(
-                          fieldKey: const ValueKey('steam-path-field'),
-                          controller: _steamPathController,
-                          label: 'Steam folder',
-                          hint: '/path/to/Steam',
-                          error: _steamPathError,
-                          enabled: _steamEnabled,
-                          readOnly:
-                              widget.controller.usesPersistentFolderAccess,
-                          buttonLabel: _folderButtonLabel(FolderGrantIds.steam),
-                          onBrowse: () => _chooseDirectory(
-                            SettingsFolderTarget.steamCustom,
-                            initialPath: _steamPathController.text,
-                          ),
-                        ),
-                      ] else if (_steamEnabled &&
-                          widget.controller.usesPersistentFolderAccess) ...[
-                        const SizedBox(height: 16),
-                        _FolderAccessRow(
-                          buttonKey: const ValueKey(
-                            'steam-automatic-folder-access',
-                          ),
-                          providerName: 'Steam',
-                          automaticDescription: 'Steam screenshots are stored in its “userdata” folder. The macOS dialog will open Steam; click Allow Access to grant access to that folder.',
-                          status: widget.controller.folderAuthorization(
-                            FolderGrantIds.steam,
-                          ),
-                          error: _steamPathError,
-                          onAllow: () => _chooseAutomaticDirectory(
-                            SettingsFolderTarget.steamAutomatic,
-                          ),
-                        ),
-                      ],
-                      const SizedBox(height: 16),
-                      _SwitchSetting(
-                        label: 'Download game covers',
-                        description: 'Save a cover.jpg file in each album.',
-                        value: _steamDownloadCovers,
-                        enabled: _steamEnabled,
-                        onChange: (value) {
-                          setState(() => _steamDownloadCovers = value);
-                          _scheduleAutosave();
-                        },
-                      ),
-                      const SizedBox(height: 12),
-                      _SwitchSetting(
-                        label: 'Import online gallery',
-                        description: 'Import public screenshots from Steam.',
-                        value: _steamOnlineGallery,
-                        enabled: _steamEnabled,
-                        onChange: (value) {
-                          setState(() => _steamOnlineGallery = value);
-                          _scheduleAutosave();
-                        },
-                      ),
-                      const SizedBox(height: 16),
-                      Row(
-                        children: [
+                          ],
+                          const SizedBox(height: 10),
                           Text(
-                            'Steam online credentials',
-                            style: context.theme.typography.body.sm.copyWith(
-                              fontWeight: FontWeight.w600,
-                            ),
-                          ),
-                          const SizedBox(width: 6),
-                          FButton.icon(
-                            key: const ValueKey('steam-credentials-help'),
-                            variant: FButtonVariant.ghost,
-                            size: FButtonSizeVariant.xs,
-                            semanticsLabel: 'Help with Steam credentials',
-                            onPress: _showSteamCredentialHelp,
-                            child: const Icon(FLucideIcons.circleHelp),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 8),
-                      Row(
-                        children: [
-                          Expanded(
-                            child: FTextField(
-                              control: FTextFieldControl.managed(
-                                controller: _steamUserController,
-                              ),
-                              label: const Text('Steam user ID'),
-                              hint: '7656119…',
-                              enabled: _steamEnabled,
-                            ),
-                          ),
-                          const SizedBox(width: 12),
-                          Expanded(
-                            child: FTextField.password(
-                              control: FTextFieldControl.managed(
-                                controller: _steamKeyController,
-                              ),
-                              label: const Text('Steam Web API key'),
-                              hint: 'Required for game names',
-                              enabled: _steamEnabled,
+                            'Requires ExifTool.',
+                            style: context.theme.typography.body.xs.copyWith(
+                              color: context.theme.colors.mutedForeground,
                             ),
                           ),
                         ],
-                      ),
-                      const SizedBox(height: 16),
-                      Row(
-                        crossAxisAlignment: CrossAxisAlignment.end,
-                        children: [
-                          Expanded(
-                            child: FTextField(
-                              key: const ValueKey('steam-ignored-input'),
-                              control: FTextFieldControl.managed(
-                                controller: _steamIgnoredInputController,
-                              ),
-                              label: const Text('Ignored app ID'),
-                              hint: '1234',
-                              enabled: _steamEnabled,
-                              onSubmit: (_) => _addIgnoredGame(),
-                            ),
-                          ),
-                          const SizedBox(width: 10),
-                          FButton(
-                            key: const ValueKey('steam-ignored-add'),
-                            variant: FButtonVariant.outline,
-                            mainAxisSize: MainAxisSize.min,
-                            onPress: _steamEnabled ? _addIgnoredGame : null,
-                            prefix: const Icon(FLucideIcons.plus),
-                            child: const Text('Add'),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 6),
-                      Text(
-                        'Add one Steam app ID at a time.',
-                        style: context.theme.typography.body.xs.copyWith(
-                          color: context.theme.colors.mutedForeground,
-                        ),
-                      ),
-                      const SizedBox(height: 10),
-                      _IgnoredGamesList(
-                        games: _steamIgnoredGames,
-                        enabled: _steamEnabled,
-                        onRemove: _removeIgnoredGame,
-                      ),
-                      const SizedBox(height: 16),
-                      Row(
-                        crossAxisAlignment: CrossAxisAlignment.end,
-                        children: [
-                          Expanded(
-                            child: FTextField(
-                              key: const ValueKey('steam-custom-id-input'),
-                              control: FTextFieldControl.managed(
-                                controller: _steamCustomIdController,
-                              ),
-                              label: const Text('Custom app ID'),
-                              hint: '1234',
-                              enabled: _steamEnabled,
-                            ),
-                          ),
-                          const SizedBox(width: 10),
-                          Expanded(
-                            flex: 2,
-                            child: FTextField(
-                              key: const ValueKey('steam-custom-name-input'),
-                              control: FTextFieldControl.managed(
-                                controller: _steamCustomNameController,
-                              ),
-                              label: const Text('Custom game name'),
-                              hint: 'My Game',
-                              enabled: _steamEnabled,
-                              onSubmit: (_) => _addCustomGame(),
-                            ),
-                          ),
-                          const SizedBox(width: 10),
-                          FButton(
-                            key: const ValueKey('steam-custom-add'),
-                            variant: FButtonVariant.outline,
-                            mainAxisSize: MainAxisSize.min,
-                            onPress: _steamEnabled ? _addCustomGame : null,
-                            prefix: const Icon(FLucideIcons.plus),
-                            child: const Text('Add'),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 6),
-                      Text(
-                        'A custom name replaces the Steam store name.',
-                        style: context.theme.typography.body.xs.copyWith(
-                          color: context.theme.colors.mutedForeground,
-                        ),
-                      ),
-                      const SizedBox(height: 10),
-                      _CustomGamesList(
-                        games: _steamCustomGames,
-                        enabled: _steamEnabled,
-                        onRemove: _removeCustomGame,
-                      ),
-                    ],
+                      ],
+                    ),
                   ),
                 ),
-              ),
-              const SizedBox(height: 24),
-              Text(
-                'Changes are validated and saved automatically.',
-                key: const ValueKey('settings-autosave-note'),
-                style: context.theme.typography.body.sm.copyWith(
-                  color: context.theme.colors.mutedForeground,
+              if (_settingsTab == 2) const SizedBox(height: 12),
+              if (_settingsTab == 2)
+                FCard(
+                  key: const ValueKey('provider-sort-Steam'),
+                  child: Padding(
+                    padding: const EdgeInsets.all(20),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        _ProviderHeader(
+                          headerKey: const ValueKey('provider-card-steam'),
+                          switchKey: const ValueKey('steam-enabled'),
+                          name: 'Steam',
+                          description: 'PC · Local and online screenshots',
+                          expanded:
+                              _expandedProvider == _SettingsProvider.steam,
+                          enabled: _steamEnabled,
+                          error:
+                              _providerActivationErrors[_SettingsProvider
+                                  .steam],
+                          onTap: () => _toggleProvider(_SettingsProvider.steam),
+                          onEnabled: (value) => unawaited(
+                            _setProviderEnabled(_SettingsProvider.steam, value),
+                          ),
+                        ),
+                        if (_expandedProvider == _SettingsProvider.steam) ...[
+                          const SizedBox(height: 18),
+                          FCheckbox(
+                            key: const ValueKey('steam-custom-path'),
+                            label: const Text('Use custom folder'),
+                            description: const Text(
+                              'Otherwise, the Steam folder is discovered automatically.',
+                            ),
+                            value: _steamUseCustomPath,
+                            enabled: true,
+                            onChange: (value) => unawaited(
+                              _setCustomPath(_SettingsProvider.steam, value),
+                            ),
+                          ),
+                          if (_steamUseCustomPath) ...[
+                            const SizedBox(height: 16),
+                            _DirectoryField(
+                              fieldKey: const ValueKey('steam-path-field'),
+                              controller: _steamPathController,
+                              label: 'Steam folder',
+                              hint: '/path/to/Steam',
+                              error: _steamPathError,
+                              readOnly:
+                                  widget.controller.usesPersistentFolderAccess,
+                              buttonLabel: _folderButtonLabel(
+                                FolderGrantIds.steam,
+                              ),
+                              onBrowse: () => _chooseDirectory(
+                                SettingsFolderTarget.steamCustom,
+                                initialPath: _steamPathController.text,
+                              ),
+                            ),
+                          ] else if (widget
+                              .controller
+                              .usesPersistentFolderAccess) ...[
+                            const SizedBox(height: 16),
+                            _FolderAccessRow(
+                              buttonKey: const ValueKey(
+                                'steam-automatic-folder-access',
+                              ),
+                              providerName: 'Steam',
+                              automaticDescription: 'Steam screenshots are stored in its “userdata” folder. The macOS dialog will open Steam; click Allow Access to grant access to that folder.',
+                              status: widget.controller.folderAuthorization(
+                                FolderGrantIds.steam,
+                              ),
+                              error: _steamPathError,
+                              onAllow: () => _chooseAutomaticDirectory(
+                                SettingsFolderTarget.steamAutomatic,
+                              ),
+                            ),
+                          ],
+                          const SizedBox(height: 16),
+                          _SwitchSetting(
+                            label: 'Download game covers',
+                            description: 'Save a cover.jpg file in each album.',
+                            value: _steamDownloadCovers,
+                            enabled: true,
+                            onChange: (value) {
+                              setState(() => _steamDownloadCovers = value);
+                              _scheduleAutosave();
+                            },
+                          ),
+                          const SizedBox(height: 12),
+                          _SwitchSetting(
+                            label: 'Import online gallery',
+                            description:
+                                'Import public screenshots from Steam.',
+                            value: _steamOnlineGallery,
+                            enabled: true,
+                            onChange: (value) {
+                              setState(() => _steamOnlineGallery = value);
+                              _scheduleAutosave();
+                            },
+                          ),
+                          const SizedBox(height: 16),
+                          Row(
+                            children: [
+                              Text(
+                                'Steam credentials',
+                                style: context.theme.typography.body.sm
+                                    .copyWith(fontWeight: FontWeight.w600),
+                              ),
+                              const SizedBox(width: 6),
+                              FButton.icon(
+                                key: const ValueKey('steam-credentials-help'),
+                                variant: FButtonVariant.ghost,
+                                size: FButtonSizeVariant.xs,
+                                semanticsLabel: 'Help with Steam credentials',
+                                onPress: _showSteamCredentialHelp,
+                                child: const Icon(FLucideIcons.circleHelp),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 8),
+                          Row(
+                            children: [
+                              Expanded(
+                                child: FTextField(
+                                  key: const ValueKey('steam-user-id'),
+                                  control: FTextFieldControl.managed(
+                                    controller: _steamUserController,
+                                  ),
+                                  label: const Text('Steam user ID'),
+                                  hint: '7656119…',
+                                ),
+                              ),
+                              const SizedBox(width: 12),
+                              Expanded(
+                                child: FTextField.password(
+                                  key: const ValueKey('steam-api-key'),
+                                  control: FTextFieldControl.managed(
+                                    controller: _steamKeyController,
+                                  ),
+                                  label: const Text('Steam Web API key'),
+                                  hint: 'Required for game names',
+                                ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 16),
+                          Row(
+                            crossAxisAlignment: CrossAxisAlignment.end,
+                            children: [
+                              Expanded(
+                                child: FTextField(
+                                  key: const ValueKey('steam-ignored-input'),
+                                  control: FTextFieldControl.managed(
+                                    controller: _steamIgnoredInputController,
+                                  ),
+                                  label: const Text('Ignored app ID'),
+                                  hint: '1234',
+                                  onSubmit: (_) => _addIgnoredGame(),
+                                ),
+                              ),
+                              const SizedBox(width: 10),
+                              FButton(
+                                key: const ValueKey('steam-ignored-add'),
+                                variant: FButtonVariant.outline,
+                                mainAxisSize: MainAxisSize.min,
+                                onPress: _addIgnoredGame,
+                                prefix: const Icon(FLucideIcons.plus),
+                                child: const Text('Add'),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 6),
+                          Text(
+                            'Add one Steam app ID at a time.',
+                            style: context.theme.typography.body.xs.copyWith(
+                              color: context.theme.colors.mutedForeground,
+                            ),
+                          ),
+                          const SizedBox(height: 10),
+                          _IgnoredGamesList(
+                            games: _steamIgnoredGames,
+                            enabled: true,
+                            onRemove: _removeIgnoredGame,
+                          ),
+                          const SizedBox(height: 16),
+                          Row(
+                            crossAxisAlignment: CrossAxisAlignment.end,
+                            children: [
+                              Expanded(
+                                child: FTextField(
+                                  key: const ValueKey('steam-custom-id-input'),
+                                  control: FTextFieldControl.managed(
+                                    controller: _steamCustomIdController,
+                                  ),
+                                  label: const Text('Custom app ID'),
+                                  hint: '1234',
+                                ),
+                              ),
+                              const SizedBox(width: 10),
+                              Expanded(
+                                flex: 2,
+                                child: FTextField(
+                                  key: const ValueKey(
+                                    'steam-custom-name-input',
+                                  ),
+                                  control: FTextFieldControl.managed(
+                                    controller: _steamCustomNameController,
+                                  ),
+                                  label: const Text('Custom game name'),
+                                  hint: 'My Game',
+                                  onSubmit: (_) => _addCustomGame(),
+                                ),
+                              ),
+                              const SizedBox(width: 10),
+                              FButton(
+                                key: const ValueKey('steam-custom-add'),
+                                variant: FButtonVariant.outline,
+                                mainAxisSize: MainAxisSize.min,
+                                onPress: _addCustomGame,
+                                prefix: const Icon(FLucideIcons.plus),
+                                child: const Text('Add'),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 6),
+                          Text(
+                            'A custom name replaces the Steam store name.',
+                            style: context.theme.typography.body.xs.copyWith(
+                              color: context.theme.colors.mutedForeground,
+                            ),
+                          ),
+                          const SizedBox(height: 10),
+                          _CustomGamesList(
+                            games: _steamCustomGames,
+                            enabled: true,
+                            onRemove: _removeCustomGame,
+                          ),
+                        ],
+                      ],
+                    ),
+                  ),
                 ),
-              ),
             ],
           ),
         ),
@@ -1213,10 +1141,18 @@ class _SettingsPageState extends State<SettingsPage> {
     );
   }
 
+  void _toggleProvider(_SettingsProvider provider) {
+    setState(() {
+      _expandedProvider = _expandedProvider == provider ? null : provider;
+    });
+  }
+
   Future<void> _chooseDirectory(
     SettingsFolderTarget target, {
     String? initialPath,
   }) async {
+    final provider = _providerForFolderTarget(target);
+    final wasEnabled = provider == null ? null : _providerEnabled(provider);
     await _flushPendingChanges();
     if (!mounted) {
       return;
@@ -1232,6 +1168,20 @@ class _SettingsPageState extends State<SettingsPage> {
     if (!result.saved) {
       setState(() => _setFolderError(target, result.message));
       return;
+    }
+
+    if (provider != null && wasEnabled == false) {
+      await widget.controller.updateSettings(
+        _settingsWithProviderEnabled(
+          widget.controller.settings,
+          provider,
+          false,
+        ),
+        showNotification: false,
+      );
+      if (!mounted) {
+        return;
+      }
     }
 
     _suppressAutosave = true;
@@ -1363,9 +1313,22 @@ class _SettingsPageState extends State<SettingsPage> {
     _SettingsProvider provider,
     bool value,
   ) async {
-    if (!value || !widget.controller.usesPersistentFolderAccess) {
-      setState(() => _setProviderEnabledValue(provider, value));
+    if (!value) {
+      setState(() {
+        _setProviderEnabledValue(provider, false);
+        _providerActivationErrors.remove(provider);
+      });
       _scheduleAutosave(immediate: true);
+      return;
+    }
+
+    setState(() {
+      _expandedProvider = provider;
+      _providerActivationErrors.remove(provider);
+    });
+
+    if (!widget.controller.usesPersistentFolderAccess) {
+      await _enableProviderIfValid(provider);
       return;
     }
 
@@ -1393,8 +1356,7 @@ class _SettingsPageState extends State<SettingsPage> {
       _ => null,
     };
     if (target == null || _providerAccessReady(provider)) {
-      setState(() => _setProviderEnabledValue(provider, value));
-      _scheduleAutosave(immediate: true);
+      await _enableProviderIfValid(provider);
       return;
     }
 
@@ -1403,7 +1365,122 @@ class _SettingsPageState extends State<SettingsPage> {
     } else {
       await _chooseDirectory(target, initialPath: _providerPath(provider));
     }
+    if (mounted && _providerAccessReady(provider)) {
+      await _enableProviderIfValid(provider);
+    }
   }
+
+  Future<void> _enableProviderIfValid(_SettingsProvider provider) async {
+    final draft = _settingsWithProviderEnabled(
+      _draftSettings(),
+      provider,
+      true,
+    );
+
+    final pathErrors = await _validatePaths(draft);
+    if (!mounted) {
+      return;
+    }
+    _showPathErrors(pathErrors);
+    final pathError = pathErrors.forProvider(provider);
+    final configurationError = pathError == null
+        ? await widget.controller.providerConfigurationError(
+            _providerName(provider),
+            draft,
+          )
+        : null;
+    if (!mounted) {
+      return;
+    }
+    final error = pathError ?? configurationError;
+    if (error != null) {
+      setState(() {
+        _setProviderEnabledValue(provider, false);
+        _expandedProvider = provider;
+        _providerActivationErrors[provider] = error;
+      });
+      _scheduleAutosave(immediate: true);
+      return;
+    }
+
+    setState(() {
+      _setProviderEnabledValue(provider, true);
+      _providerActivationErrors.remove(provider);
+    });
+    _scheduleAutosave(immediate: true);
+  }
+
+  bool _providerEnabled(_SettingsProvider provider) => switch (provider) {
+    _SettingsProvider.battleNet => _diabloEnabled,
+    _SettingsProvider.guildWars2 => _guildWars2Enabled,
+    _SettingsProvider.hytale => _hytaleEnabled,
+    _SettingsProvider.minecraft => _minecraftEnabled,
+    _SettingsProvider.nintendoSwitch2 => _nintendoSwitch2Enabled,
+    _SettingsProvider.playStation4 => _playStation4Enabled,
+    _SettingsProvider.playStation5 => _playStation5Enabled,
+    _SettingsProvider.steam => _steamEnabled,
+  };
+
+  String _providerName(_SettingsProvider provider) => switch (provider) {
+    _SettingsProvider.battleNet => 'Battle.net',
+    _SettingsProvider.guildWars2 => 'Guild Wars 2',
+    _SettingsProvider.hytale => 'Hytale',
+    _SettingsProvider.minecraft => 'Minecraft',
+    _SettingsProvider.nintendoSwitch2 => 'Nintendo Switch 2',
+    _SettingsProvider.playStation4 => 'PlayStation 4',
+    _SettingsProvider.playStation5 => 'PlayStation 5',
+    _SettingsProvider.steam => 'Steam',
+  };
+
+  _SettingsProvider? _providerForFolderTarget(
+    SettingsFolderTarget target,
+  ) => switch (target) {
+    SettingsFolderTarget.library => null,
+    SettingsFolderTarget.battleNetCustom ||
+    SettingsFolderTarget.battleNetAutomatic => _SettingsProvider.battleNet,
+    SettingsFolderTarget.guildWars2Custom => _SettingsProvider.guildWars2,
+    SettingsFolderTarget.hytaleCustom ||
+    SettingsFolderTarget.hytaleAutomatic => _SettingsProvider.hytale,
+    SettingsFolderTarget.minecraftCustom ||
+    SettingsFolderTarget.minecraftAutomatic => _SettingsProvider.minecraft,
+    SettingsFolderTarget.nintendoSwitch2Custom =>
+      _SettingsProvider.nintendoSwitch2,
+    SettingsFolderTarget.playStation4Custom => _SettingsProvider.playStation4,
+    SettingsFolderTarget.playStation5Custom => _SettingsProvider.playStation5,
+    SettingsFolderTarget.steamCustom ||
+    SettingsFolderTarget.steamAutomatic => _SettingsProvider.steam,
+  };
+
+  AppSettings _settingsWithProviderEnabled(
+    AppSettings settings,
+    _SettingsProvider provider,
+    bool enabled,
+  ) => switch (provider) {
+    _SettingsProvider.battleNet => settings.copyWith(
+      battleNet: settings.battleNet.copyWith(enabled: enabled),
+    ),
+    _SettingsProvider.guildWars2 => settings.copyWith(
+      guildWars2: settings.guildWars2.copyWith(enabled: enabled),
+    ),
+    _SettingsProvider.hytale => settings.copyWith(
+      hytale: settings.hytale.copyWith(enabled: enabled),
+    ),
+    _SettingsProvider.minecraft => settings.copyWith(
+      minecraft: settings.minecraft.copyWith(enabled: enabled),
+    ),
+    _SettingsProvider.nintendoSwitch2 => settings.copyWith(
+      nintendoSwitch2: settings.nintendoSwitch2.copyWith(enabled: enabled),
+    ),
+    _SettingsProvider.playStation4 => settings.copyWith(
+      playStation4: settings.playStation4.copyWith(enabled: enabled),
+    ),
+    _SettingsProvider.playStation5 => settings.copyWith(
+      playStation5: settings.playStation5.copyWith(enabled: enabled),
+    ),
+    _SettingsProvider.steam => settings.copyWith(
+      steam: settings.steam.copyWith(enabled: enabled),
+    ),
+  };
 
   Future<void> _setCustomPath(_SettingsProvider provider, bool value) async {
     if (!widget.controller.usesPersistentFolderAccess) {
@@ -1808,6 +1885,23 @@ class _SettingsPageState extends State<SettingsPage> {
     }
 
     final saved = widget.controller.settings;
+    final providerErrors = <String, String>{
+      if (draft.battleNet.enabled && errors.battleNet != null)
+        'Battle.net': errors.battleNet!,
+      if (draft.guildWars2.enabled && errors.guildWars2 != null)
+        'Guild Wars 2': errors.guildWars2!,
+      if (draft.hytale.enabled && errors.hytale != null)
+        'Hytale': errors.hytale!,
+      if (draft.minecraft.enabled && errors.minecraft != null)
+        'Minecraft': errors.minecraft!,
+      if (draft.nintendoSwitch2.enabled && errors.nintendoSwitch2 != null)
+        'Nintendo Switch 2': errors.nintendoSwitch2!,
+      if (draft.playStation4.enabled && errors.playStation4 != null)
+        'PlayStation 4': errors.playStation4!,
+      if (draft.playStation5.enabled && errors.playStation5 != null)
+        'PlayStation 5': errors.playStation5!,
+      if (draft.steam.enabled && errors.steam != null) 'Steam': errors.steam!,
+    };
     final safeSettings = AppSettings(
       outputPath: errors.outputPath == null
           ? draft.outputPath
@@ -1859,9 +1953,39 @@ class _SettingsPageState extends State<SettingsPage> {
     );
 
     _saveQueue = _saveQueue.then((_) async {
-      await widget.controller.updateSettings(safeSettings);
+      await widget.controller.updateSettings(
+        safeSettings,
+        providerErrors: providerErrors,
+      );
     });
     await _saveQueue;
+    if (mounted) {
+      final saved = widget.controller.settings;
+      final validationErrors = widget.controller.providerValidationErrors;
+      setState(() {
+        _diabloEnabled = saved.battleNet.enabled;
+        _guildWars2Enabled = saved.guildWars2.enabled;
+        _hytaleEnabled = saved.hytale.enabled;
+        _minecraftEnabled = saved.minecraft.enabled;
+        _nintendoSwitch2Enabled = saved.nintendoSwitch2.enabled;
+        _playStation4Enabled = saved.playStation4.enabled;
+        _playStation5Enabled = saved.playStation5.enabled;
+        _steamEnabled = saved.steam.enabled;
+        for (final provider in _SettingsProvider.values) {
+          final error = validationErrors[_providerName(provider)];
+          if (error != null) {
+            _providerActivationErrors[provider] = error;
+          } else if (_providerEnabled(provider)) {
+            _providerActivationErrors.remove(provider);
+          }
+        }
+        if (validationErrors.isNotEmpty) {
+          _expandedProvider = _SettingsProvider.values.firstWhere(
+            (provider) => validationErrors.containsKey(_providerName(provider)),
+          );
+        }
+      });
+    }
   }
 
   Future<_PathErrors> _validatePaths(AppSettings draft) async {
@@ -2118,6 +2242,17 @@ class _PathErrors {
   final String? playStation4;
   final String? playStation5;
   final String? steam;
+
+  String? forProvider(_SettingsProvider provider) => switch (provider) {
+    _SettingsProvider.battleNet => battleNet,
+    _SettingsProvider.guildWars2 => guildWars2,
+    _SettingsProvider.hytale => hytale,
+    _SettingsProvider.minecraft => minecraft,
+    _SettingsProvider.nintendoSwitch2 => nintendoSwitch2,
+    _SettingsProvider.playStation4 => playStation4,
+    _SettingsProvider.playStation5 => playStation5,
+    _SettingsProvider.steam => steam,
+  };
 }
 
 enum _SettingsProvider {
@@ -2411,32 +2546,100 @@ class _CustomGamesList extends StatelessWidget {
   }
 }
 
+class _SettingsSections extends StatelessWidget {
+  const _SettingsSections({
+    required this.sortProviders,
+    required this.crossAxisAlignment,
+    required this.children,
+  });
+
+  final bool sortProviders;
+  final CrossAxisAlignment crossAxisAlignment;
+  final List<Widget> children;
+
+  @override
+  Widget build(BuildContext context) {
+    if (!sortProviders) {
+      return Column(crossAxisAlignment: crossAxisAlignment, children: children);
+    }
+
+    final providers =
+        children
+            .map((child) => (name: _providerName(child), child: child))
+            .where((entry) => entry.name != null)
+            .toList(growable: false)
+          ..sort(
+            (left, right) =>
+                left.name!.toLowerCase().compareTo(right.name!.toLowerCase()),
+          );
+    if (providers.isEmpty) {
+      return Column(crossAxisAlignment: crossAxisAlignment, children: children);
+    }
+
+    final firstProvider = children.indexWhere(
+      (child) => _providerName(child) != null,
+    );
+    return Column(
+      crossAxisAlignment: crossAxisAlignment,
+      children: [
+        ...children.take(firstProvider),
+        for (var index = 0; index < providers.length; index++) ...[
+          if (index > 0) const SizedBox(height: 12),
+          providers[index].child,
+        ],
+      ],
+    );
+  }
+
+  String? _providerName(Widget child) {
+    if (child case _PlayStationProviderCard card) {
+      return card.name;
+    }
+    final key = child.key;
+    if (key case ValueKey<String> valueKey) {
+      const prefix = 'provider-sort-';
+      if (valueKey.value.startsWith(prefix)) {
+        return valueKey.value.substring(prefix.length);
+      }
+    }
+    return null;
+  }
+}
+
 class _PlayStationProviderCard extends StatelessWidget {
   const _PlayStationProviderCard({
+    required this.headerKey,
     required this.name,
     required this.description,
     required this.fieldKey,
     required this.switchKey,
     required this.controller,
+    required this.expanded,
     required this.enabled,
+    required this.activationError,
     required this.error,
     required this.readOnly,
     required this.buttonLabel,
     required this.requirement,
+    required this.onTap,
     required this.onEnabled,
     required this.onBrowse,
   });
 
+  final Key headerKey;
   final String name;
   final String description;
   final Key fieldKey;
   final Key switchKey;
   final TextEditingController controller;
+  final bool expanded;
   final bool enabled;
+  final String? activationError;
   final String? error;
   final bool readOnly;
   final String buttonLabel;
   final String requirement;
+  final VoidCallback onTap;
   final ValueChanged<bool> onEnabled;
   final VoidCallback onBrowse;
 
@@ -2448,68 +2651,139 @@ class _PlayStationProviderCard extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Row(
-              children: [
-                Container(
-                  width: 44,
-                  height: 44,
-                  decoration: BoxDecoration(
-                    color: context.theme.colors.muted,
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  child: const Icon(FLucideIcons.gamepad2),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        name,
-                        style: context.theme.typography.body.lg.copyWith(
-                          fontWeight: FontWeight.w700,
-                        ),
-                      ),
-                      const SizedBox(height: 2),
-                      Text(
-                        description,
-                        style: context.theme.typography.body.sm.copyWith(
-                          color: context.theme.colors.mutedForeground,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                FSwitch(
-                  key: switchKey,
-                  value: enabled,
-                  semanticsLabel: 'Enable $name',
-                  onChange: onEnabled,
-                ),
-              ],
-            ),
-            const SizedBox(height: 18),
-            _DirectoryField(
-              fieldKey: fieldKey,
-              controller: controller,
-              label: 'Exported media folder',
-              hint: '/path/to/$name/Captures',
-              error: error,
+            _ProviderHeader(
+              headerKey: headerKey,
+              switchKey: switchKey,
+              name: name,
+              description: description,
+              expanded: expanded,
               enabled: enabled,
-              readOnly: readOnly,
-              buttonLabel: buttonLabel,
-              onBrowse: onBrowse,
+              error: activationError,
+              onTap: onTap,
+              onEnabled: onEnabled,
             ),
-            const SizedBox(height: 10),
-            Text(
-              'Select the folder copied from your console. $requirement',
-              style: context.theme.typography.body.xs.copyWith(
-                color: context.theme.colors.mutedForeground,
+            if (expanded) ...[
+              const SizedBox(height: 18),
+              _DirectoryField(
+                fieldKey: fieldKey,
+                controller: controller,
+                label: 'Exported media folder',
+                hint: '/path/to/$name/Captures',
+                error: error,
+                readOnly: readOnly,
+                buttonLabel: buttonLabel,
+                onBrowse: onBrowse,
               ),
-            ),
+              const SizedBox(height: 10),
+              Text(
+                'Select the folder copied from your console. $requirement',
+                style: context.theme.typography.body.xs.copyWith(
+                  color: context.theme.colors.mutedForeground,
+                ),
+              ),
+            ],
           ],
         ),
       ),
+    );
+  }
+}
+
+class _ProviderHeader extends StatelessWidget {
+  const _ProviderHeader({
+    required this.headerKey,
+    required this.name,
+    required this.description,
+    required this.expanded,
+    required this.enabled,
+    required this.onTap,
+    required this.onEnabled,
+    this.error,
+    this.switchKey,
+  });
+
+  final Key headerKey;
+  final Key? switchKey;
+  final String name;
+  final String description;
+  final bool expanded;
+  final bool enabled;
+  final String? error;
+  final VoidCallback onTap;
+  final ValueChanged<bool> onEnabled;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        Expanded(
+          child: MouseRegion(
+            cursor: SystemMouseCursors.click,
+            child: GestureDetector(
+              key: headerKey,
+              behavior: HitTestBehavior.opaque,
+              onTap: onTap,
+              child: Row(
+                children: [
+                  Container(
+                    width: 44,
+                    height: 44,
+                    decoration: BoxDecoration(
+                      color: context.theme.colors.muted,
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: const Icon(FLucideIcons.gamepad2),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          name,
+                          style: context.theme.typography.body.lg.copyWith(
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                        const SizedBox(height: 2),
+                        Text(
+                          description,
+                          style: context.theme.typography.body.sm.copyWith(
+                            color: context.theme.colors.mutedForeground,
+                          ),
+                        ),
+                        if (error != null) ...[
+                          const SizedBox(height: 4),
+                          Text(
+                            error!,
+                            style: context.theme.typography.body.xs.copyWith(
+                              color: context.theme.colors.destructive,
+                            ),
+                          ),
+                        ],
+                      ],
+                    ),
+                  ),
+                  Icon(
+                    expanded
+                        ? FLucideIcons.chevronUp
+                        : FLucideIcons.chevronDown,
+                    size: 18,
+                    color: context.theme.colors.mutedForeground,
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+        const SizedBox(width: 12),
+        FSwitch(
+          key: switchKey,
+          value: enabled,
+          semanticsLabel: 'Enable $name',
+          onChange: onEnabled,
+        ),
+      ],
     );
   }
 }
@@ -2570,7 +2844,6 @@ class _DirectoryField extends StatelessWidget {
     required this.hint,
     required this.onBrowse,
     this.error,
-    this.enabled = true,
     this.readOnly = false,
     this.buttonLabel = 'Browse',
   });
@@ -2581,7 +2854,6 @@ class _DirectoryField extends StatelessWidget {
   final String hint;
   final VoidCallback onBrowse;
   final String? error;
-  final bool enabled;
   final bool readOnly;
   final String buttonLabel;
 
@@ -2601,7 +2873,6 @@ class _DirectoryField extends StatelessWidget {
                 control: FTextFieldControl.managed(controller: controller),
                 hint: hint,
                 error: error == null ? null : Text(error!),
-                enabled: enabled,
                 readOnly: readOnly,
               ),
             ),
@@ -2609,7 +2880,7 @@ class _DirectoryField extends StatelessWidget {
             FButton(
               variant: FButtonVariant.outline,
               mainAxisSize: MainAxisSize.min,
-              onPress: enabled ? onBrowse : null,
+              onPress: onBrowse,
               child: Text(buttonLabel),
             ),
           ],

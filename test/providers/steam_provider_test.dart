@@ -7,6 +7,8 @@ import 'package:gaming_memories/services/steam_client.dart';
 import 'package:path/path.dart' as p;
 
 void main() {
+  const validUserId = '76561198000000000';
+  const validApiKey = '0123456789abcdef0123456789abcdef';
   late Directory steam;
   late Directory output;
   late _FakeSteamApi api;
@@ -35,8 +37,8 @@ void main() {
         useCustomPath: true,
         userdataPath: steam.path,
         onlineGallery: onlineGallery,
-        userId: 'user',
-        apiKey: 'key',
+        userId: validUserId,
+        apiKey: validApiKey,
         downloadCovers: downloadCovers,
         ignoredGames: ignoredGames,
         customGames: customGames,
@@ -75,6 +77,83 @@ void main() {
           .existsSync(),
       isTrue,
     );
+  });
+
+  test('rejects invalid Steam authentication', () async {
+    api.credentialFailure = const FormatException(
+      'Steam credentials are invalid.',
+    );
+
+    final error = await SteamProvider(api: api)
+        .configurationError(settings(onlineGallery: true));
+
+    expect(error, 'Steam credentials are invalid.');
+  });
+
+  test('requires an API key for local Steam imports', () async {
+    final value = settings();
+
+    final error = await SteamProvider(api: api).configurationError(
+      value.copyWith(steam: value.steam.copyWith(apiKey: '')),
+    );
+
+    expect(error, 'Enter a Steam Web API key.');
+    expect(api.validatedCredentials, isEmpty);
+  });
+
+  test('rejects an invalid API key format', () async {
+    final value = settings();
+
+    final error = await SteamProvider(api: api).configurationError(
+      value.copyWith(steam: value.steam.copyWith(apiKey: 'invalid')),
+    );
+
+    expect(error, 'Enter a valid 32-character Steam Web API key.');
+    expect(api.validatedCredentials, isEmpty);
+  });
+
+  test('requires a SteamID64 for online gallery imports', () async {
+    final value = settings(onlineGallery: true);
+
+    final error = await SteamProvider(api: api).configurationError(
+      value.copyWith(steam: value.steam.copyWith(userId: '')),
+    );
+
+    expect(error, 'Enter a Steam user ID for online gallery imports.');
+    expect(api.validatedCredentials, isEmpty);
+  });
+
+  test('rejects an invalid SteamID64 format', () async {
+    final value = settings(onlineGallery: true);
+
+    final error = await SteamProvider(api: api).configurationError(
+      value.copyWith(steam: value.steam.copyWith(userId: '1234')),
+    );
+
+    expect(error, 'Enter a valid 17-digit SteamID64.');
+    expect(api.validatedCredentials, isEmpty);
+  });
+
+  test('ignores the user ID when online gallery imports are off', () async {
+    final value = settings();
+
+    final error = await SteamProvider(api: api).configurationError(
+      value.copyWith(steam: value.steam.copyWith(userId: 'not-used')),
+    );
+
+    expect(error, isNull);
+    expect(api.validatedCredentials, [('', validApiKey)]);
+  });
+
+  test('validates Steam authentication for local imports', () async {
+    final value = settings();
+
+    final error = await SteamProvider(api: api).configurationError(
+      value.copyWith(steam: value.steam.copyWith(userId: '')),
+    );
+
+    expect(error, isNull);
+    expect(api.validatedCredentials, [('', validApiKey)]);
   });
 
   test('uses a selected userdata candidate in automatic mode', () async {
@@ -195,6 +274,17 @@ class _FakeSteamApi implements SteamApi {
   final downloads = <String, List<int>>{};
   final covers = <String, List<int>>{};
   List<SteamPublishedScreenshot> published = const [];
+  Exception? credentialFailure;
+  final validatedCredentials = <(String, String)>[];
+
+  @override
+  Future<void> validateCredentials(String userId, String apiKey) async {
+    validatedCredentials.add((userId, apiKey));
+    final failure = credentialFailure;
+    if (failure != null) {
+      throw failure;
+    }
+  }
 
   @override
   Future<String?> appIdForName(String name, String apiKey) async => ids[name];

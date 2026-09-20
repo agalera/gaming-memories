@@ -9,6 +9,7 @@ import 'package:gaming_memories/app.dart';
 import 'package:gaming_memories/controllers/library_controller.dart';
 import 'package:gaming_memories/models/app_settings.dart';
 import 'package:gaming_memories/models/library.dart';
+import 'package:gaming_memories/providers/playstation_4_provider.dart';
 import 'package:gaming_memories/providers/screenshot_provider.dart';
 import 'package:gaming_memories/services/config_store.dart';
 import 'package:gaming_memories/services/folder_access_service.dart';
@@ -160,11 +161,64 @@ void main() {
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 200));
 
-    expect(find.text('Media library'), findsOneWidget);
+    expect(find.text('Media library'), findsNothing);
     expect(find.text('Color mode'), findsOneWidget);
+    expect(find.byKey(const ValueKey('settings-tabs')), findsOneWidget);
+    expect(
+      find.byKey(const ValueKey('settings-tab-appearance')),
+      findsOneWidget,
+    );
+    expect(find.byKey(const ValueKey('settings-tab-library')), findsOneWidget);
+    expect(
+      find.byKey(const ValueKey('settings-tab-providers')),
+      findsOneWidget,
+    );
+    expect(find.text('Battle.net'), findsNothing);
+    expect(find.byKey(const ValueKey('battle-net-custom-path')), findsNothing);
+
+    await _openSettingsTab(tester, 'library');
+    expect(find.text('Media library'), findsOneWidget);
+    expect(find.text('Color mode'), findsNothing);
+
+    await _openSettingsTab(tester, 'providers');
     expect(find.text('Battle.net'), findsOneWidget);
     expect(find.text('Guild Wars 2'), findsOneWidget);
     expect(find.text('Nintendo Switch 2'), findsOneWidget);
+    expect(find.byKey(const ValueKey('battle-net-custom-path')), findsNothing);
+    final providerNames = [
+      'Battle.net',
+      'Guild Wars 2',
+      'Hytale',
+      'Minecraft',
+      'Nintendo Switch 2',
+      'PlayStation 4',
+      'PlayStation 5',
+      'Steam',
+    ];
+    final providerOffsets = providerNames
+        .map((name) => tester.getTopLeft(find.text(name)).dy)
+        .toList(growable: false);
+    expect(providerOffsets, orderedEquals([...providerOffsets]..sort()));
+
+    await _openSettingsTab(tester, 'battle-net');
+
+    expect(find.text('Media library'), findsNothing);
+    expect(
+      find.byKey(const ValueKey('battle-net-custom-path')),
+      findsOneWidget,
+    );
+    for (final entry in {
+      'hytale': 'hytale-enabled',
+      'playstation-4': 'playstation-4-enabled',
+      'playstation-5': 'playstation-5-enabled',
+      'nintendo-switch-2': 'nintendo-switch-2-enabled',
+      'minecraft': 'minecraft-enabled',
+      'guild-wars-2': 'guild-wars-2-enabled',
+      'steam': 'steam-credentials-help',
+    }.entries) {
+      await _openSettingsTab(tester, entry.key);
+      expect(find.byKey(ValueKey(entry.value)), findsOneWidget);
+    }
     expect(
       tester
           .widget<FButton>(
@@ -967,12 +1021,13 @@ void main() {
 
     await tester.pumpWidget(GamingMemoriesApp(controller: controller));
     await tester.pump();
+    await _openSettingsTab(tester, 'steam');
     final help = find.byKey(const ValueKey('steam-credentials-help'));
     await tester.ensureVisible(help);
     await tester.tap(help);
     await tester.pumpAndSettle();
 
-    expect(find.text('Steam credentials'), findsOneWidget);
+    expect(find.text('Steam credentials'), findsWidgets);
     expect(find.text('Steam user ID'), findsWidgets);
     expect(find.text('Steam Web API key'), findsWidgets);
     expect(find.text('https://steamcommunity.com/dev/apikey'), findsOneWidget);
@@ -1036,6 +1091,7 @@ void main() {
     expect(find.text('Another Game'), findsOneWidget);
 
     await tester.pump(const Duration(milliseconds: 400));
+    await tester.pump();
 
     expect(controller.settings.steam.customGames, {
       '40': 'New Game',
@@ -1045,9 +1101,85 @@ void main() {
       '40': 'New Game',
       '50': 'Another Game',
     });
+    expect(find.text('Settings saved.'), findsWidgets);
     expect(find.text('Save settings'), findsNothing);
+    expect(find.byKey(const ValueKey('settings-autosave-note')), findsNothing);
+
+    await tester.pumpWidget(const SizedBox.shrink());
+    await tester.pump(const Duration(milliseconds: 200));
+  });
+
+  testWidgets('disables Steam when an active option lacks its user ID', (
+    tester,
+  ) async {
+    final store = _MemoryConfigStore();
+    final controller =
+        LibraryController(
+            configStore: store,
+            scanner: const LibraryScanner(),
+            providers: const [_WidgetSteamProvider()],
+          )
+          ..isInitializing = false
+          ..view = LibraryView.settings
+          ..settings = AppSettings(
+            outputPath: '',
+            steam: SteamSettings(
+              enabled: true,
+              useCustomPath: false,
+              userdataPath: '',
+              onlineGallery: true,
+              userId: '76561198000000000',
+              apiKey: '0123456789abcdef0123456789abcdef',
+              downloadCovers: false,
+              ignoredGames: const [],
+              customGames: const {},
+            ),
+          );
+
+    await tester.pumpWidget(GamingMemoriesApp(controller: controller));
+    await tester.pump();
+    await _openSettingsTab(tester, 'steam');
+
+    final userId = find.byKey(const ValueKey('steam-user-id'));
+    await tester.ensureVisible(userId);
+    await tester.enterText(userId, '');
+    await tester.pump(const Duration(milliseconds: 400));
+    await tester.pumpAndSettle();
+
     expect(
-      find.byKey(const ValueKey('settings-autosave-note')),
+      tester
+          .widget<EditableText>(
+            find.descendant(of: userId, matching: find.byType(EditableText)),
+          )
+          .controller
+          .text,
+      isEmpty,
+    );
+    expect(store.saved, isNotNull);
+    expect(controller.settings.steam.enabled, isFalse);
+    expect(store.saved?.steam.enabled, isFalse);
+    expect(
+      tester.widget<FSwitch>(find.byKey(const ValueKey('steam-enabled'))).value,
+      isFalse,
+    );
+    expect(
+      find.text('Enter a Steam user ID for online gallery imports.'),
+      findsWidgets,
+    );
+    expect(
+      find.text(
+        'Steam was disabled: Enter a Steam user ID for online gallery imports.',
+      ),
+      findsOneWidget,
+    );
+    final toast = find.byKey(
+      ValueKey('notification-toast-${controller.notificationRevision}'),
+    );
+    expect(tester.widget<FToast>(toast).variant, FToastVariant.destructive);
+    expect(
+      find.byKey(
+        ValueKey('notification-toast-close-${controller.notificationRevision}'),
+      ),
       findsOneWidget,
     );
 
@@ -1082,6 +1214,7 @@ void main() {
 
     await tester.pumpWidget(GamingMemoriesApp(controller: controller));
     await tester.pumpAndSettle();
+    await _openSettingsTab(tester, 'battle-net');
 
     expect(find.byKey(const ValueKey('battle-net-path-field')), findsNothing);
 
@@ -1164,8 +1297,110 @@ void main() {
       () => Future<void>.delayed(const Duration(milliseconds: 20)),
     );
     await tester.pumpAndSettle();
+    await _openSettingsTab(tester, 'battle-net');
 
     expect(find.text('Battle.net folder does not exist.'), findsOneWidget);
+
+    await tester.pumpWidget(const SizedBox.shrink());
+    await tester.pump(const Duration(milliseconds: 200));
+  });
+
+  testWidgets('disables an active provider after an invalid folder edit', (
+    tester,
+  ) async {
+    final directory = Directory.systemTemp.createTempSync('gaming-memories-');
+    final validSource = Directory(p.join(directory.path, 'captures'))
+      ..createSync();
+    addTearDown(() => directory.deleteSync(recursive: true));
+    final store = _MemoryConfigStore();
+    final controller =
+        LibraryController(
+            configStore: store,
+            scanner: const LibraryScanner(),
+            providers: const [PlayStation4Provider()],
+          )
+          ..isInitializing = false
+          ..view = LibraryView.settings
+          ..settings = AppSettings(
+            outputPath: '',
+            playStation4: ProviderSettings(
+              enabled: true,
+              useCustomPath: true,
+              sourcePath: validSource.path,
+            ),
+          );
+
+    await tester.pumpWidget(GamingMemoriesApp(controller: controller));
+    await tester.pump();
+    await _openSettingsTab(tester, 'playstation-4');
+
+    final field = find.byKey(const ValueKey('playstation-4-path-field'));
+    await tester.enterText(field, p.join(directory.path, 'missing'));
+    await tester.pump(const Duration(milliseconds: 400));
+    await tester.runAsync(
+      () => Future<void>.delayed(const Duration(milliseconds: 20)),
+    );
+    await tester.pumpAndSettle();
+
+    expect(controller.settings.playStation4.enabled, isFalse);
+    expect(controller.settings.playStation4.sourcePath, validSource.path);
+    expect(store.saved?.playStation4.enabled, isFalse);
+    expect(
+      tester
+          .widget<FSwitch>(find.byKey(const ValueKey('playstation-4-enabled')))
+          .value,
+      isFalse,
+    );
+    expect(
+      find.text('PlayStation 4 exported media folder does not exist.'),
+      findsWidgets,
+    );
+    expect(
+      find.text(
+        'PlayStation 4 was disabled: PlayStation 4 exported media folder does not exist.',
+      ),
+      findsOneWidget,
+    );
+
+    await tester.pumpWidget(const SizedBox.shrink());
+    await tester.pump(const Duration(milliseconds: 200));
+  });
+
+  testWidgets('keeps a provider disabled when its folder is invalid', (
+    tester,
+  ) async {
+    final controller =
+        LibraryController(
+            configStore: _MemoryConfigStore(),
+            scanner: const LibraryScanner(),
+            providers: const [],
+          )
+          ..isInitializing = false
+          ..view = LibraryView.settings
+          ..settings = const AppSettings(
+            outputPath: '',
+            battleNet: ProviderSettings(
+              enabled: false,
+              useCustomPath: true,
+              sourcePath: '/definitely/missing/gaming-memories',
+            ),
+          );
+
+    await tester.pumpWidget(GamingMemoriesApp(controller: controller));
+    await tester.pumpAndSettle();
+    await _openSettingsTab(tester, 'battle-net');
+
+    final enabled = find.byKey(const ValueKey('battle-net-enabled'));
+    expect(tester.widget<FSwitch>(enabled).value, isFalse);
+    tester.widget<FSwitch>(enabled).onChange!(true);
+    await tester.runAsync(
+      () => Future<void>.delayed(const Duration(milliseconds: 20)),
+    );
+    await tester.pumpAndSettle();
+
+    expect(tester.widget<FSwitch>(enabled).value, isFalse);
+    expect(controller.settings.battleNet.enabled, isFalse);
+    expect(find.text('Battle.net folder does not exist.'), findsWidgets);
 
     await tester.pumpWidget(const SizedBox.shrink());
     await tester.pump(const Duration(milliseconds: 200));
@@ -1196,6 +1431,7 @@ void main() {
 
     await tester.pumpWidget(GamingMemoriesApp(controller: controller));
     await tester.pumpAndSettle();
+    await _openSettingsTab(tester, 'hytale');
 
     expect(find.byKey(const ValueKey('hytale-path-field')), findsOneWidget);
     final cover = find.byKey(const ValueKey('hytale-bundled-cover'));
@@ -1241,6 +1477,7 @@ void main() {
 
     await tester.pumpWidget(GamingMemoriesApp(controller: controller));
     await tester.pumpAndSettle();
+    await _openSettingsTab(tester, 'minecraft');
 
     expect(find.byKey(const ValueKey('minecraft-path-field')), findsOneWidget);
     expect(find.text('PC · Launcher and Flatpak screenshots'), findsOneWidget);
@@ -1283,6 +1520,7 @@ void main() {
 
     await tester.pumpWidget(GamingMemoriesApp(controller: controller));
     await tester.pumpAndSettle();
+    await _openSettingsTab(tester, 'nintendo-switch-2');
 
     final input = find.byKey(const ValueKey('nintendo-switch-2-ignored-input'));
     final add = find.byKey(const ValueKey('nintendo-switch-2-ignored-add'));
@@ -1329,6 +1567,8 @@ void main() {
     );
     await tester.pumpAndSettle();
 
+    await _openSettingsTab(tester, 'library');
+
     final field = tester.widget<FTextField>(
       find.byKey(const ValueKey('library-path-field')),
     );
@@ -1374,6 +1614,7 @@ void main() {
 
     await tester.pumpWidget(GamingMemoriesApp(controller: controller));
     await tester.pumpAndSettle();
+    await _openSettingsTab(tester, 'steam');
 
     final allow = find.byKey(const ValueKey('steam-automatic-folder-access'));
     await tester.ensureVisible(allow);
@@ -1398,6 +1639,22 @@ void main() {
     await tester.pumpWidget(const SizedBox.shrink());
     await tester.pump(const Duration(milliseconds: 200));
   });
+}
+
+Future<void> _openSettingsTab(WidgetTester tester, String name) async {
+  const directTabs = {'appearance', 'library', 'providers'};
+  final tabName = directTabs.contains(name) ? name : 'providers';
+  final tab = find.byKey(ValueKey('settings-tab-$tabName'));
+  await tester.ensureVisible(tab);
+  await tester.pumpAndSettle();
+  await tester.tap(tab);
+  await tester.pumpAndSettle();
+  if (!directTabs.contains(name)) {
+    final card = find.byKey(ValueKey('provider-card-$name'));
+    await tester.ensureVisible(card);
+    await tester.tap(card);
+    await tester.pumpAndSettle();
+  }
 }
 
 class _LazySubAlbumScanner extends LibraryScanner {
@@ -1427,6 +1684,31 @@ class _MemoryConfigStore extends ConfigStore {
 
   @override
   Future<void> save(AppSettings settings) async => saved = settings;
+}
+
+class _WidgetSteamProvider
+    implements ScreenshotProvider, ProviderConfigurationValidator {
+  const _WidgetSteamProvider();
+
+  @override
+  String get name => 'Steam';
+
+  @override
+  bool isEnabled(AppSettings settings) => settings.steam.enabled;
+
+  @override
+  Future<String?> configurationError(AppSettings settings) async {
+    if (settings.steam.onlineGallery && settings.steam.userId.trim().isEmpty) {
+      return 'Enter a Steam user ID for online gallery imports.';
+    }
+    return null;
+  }
+
+  @override
+  Future<ImportResult> collect(
+    AppSettings settings, {
+    ProgressCallback? onProgress,
+  }) async => ImportResult.empty(name);
 }
 
 class _MemoryScreenshotActions implements ScreenshotActionService {

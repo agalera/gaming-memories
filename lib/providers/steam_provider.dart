@@ -11,7 +11,8 @@ import '../services/provider_paths.dart';
 import '../services/steam_client.dart';
 import 'screenshot_provider.dart';
 
-class SteamProvider implements FolderBackedScreenshotProvider {
+class SteamProvider
+    implements FolderBackedScreenshotProvider, ProviderConfigurationValidator {
   const SteamProvider({
     required this.api,
     this.importer = const MediaImporter(),
@@ -30,6 +31,35 @@ class SteamProvider implements FolderBackedScreenshotProvider {
 
   @override
   bool isEnabled(AppSettings settings) => settings.steam.enabled;
+
+  @override
+  Future<String?> configurationError(AppSettings settings) async {
+    final steam = settings.steam;
+    final apiKey = steam.apiKey.trim();
+    final userId = steam.userId.trim();
+    if (apiKey.isEmpty) {
+      return 'Enter a Steam Web API key.';
+    }
+    if (!RegExp(r'^[0-9a-fA-F]{32}$').hasMatch(apiKey)) {
+      return 'Enter a valid 32-character Steam Web API key.';
+    }
+    if (steam.onlineGallery) {
+      if (userId.isEmpty) {
+        return 'Enter a Steam user ID for online gallery imports.';
+      }
+      if (!RegExp(r'^\d{17}$').hasMatch(userId)) {
+        return 'Enter a valid 17-digit SteamID64.';
+      }
+    }
+    try {
+      await api.validateCredentials(steam.onlineGallery ? userId : '', apiKey);
+      return null;
+    } on FormatException catch (error) {
+      return error.message;
+    } on Exception {
+      return 'Steam authentication could not be verified.';
+    }
+  }
 
   @override
   ProviderFolderRequirement? folderRequirement(AppSettings settings) {
