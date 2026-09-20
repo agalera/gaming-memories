@@ -33,6 +33,7 @@ void main() {
       diabloIV: const ProviderSettings.disabled(),
       steam: SteamSettings(
         enabled: true,
+        useCustomPath: true,
         userdataPath: steam.path,
         onlineGallery: onlineGallery,
         userId: 'user',

@@ -95,18 +95,24 @@ class _LibraryShellState extends State<LibraryShell> {
       return;
     }
 
+    final notifications = controller.notifications
+        .where(
+          (notification) => notification.revision > _lastNotificationRevision,
+        )
+        .toList(growable: false);
     _lastNotificationRevision = controller.notificationRevision;
-    final error = controller.error;
-    final message = controller.message;
-    if (error != null) {
-      _showResultToast(error, isError: true);
-    } else if (message != null) {
-      _showResultToast(message, isError: false);
+    for (final notification in notifications) {
+      _showResultToast(notification);
     }
   }
 
-  void _showResultToast(String message, {required bool isError}) {
-    final revision = widget.controller.notificationRevision;
+  void _showResultToast(AppNotification notification) {
+    final revision = notification.revision;
+    final kind = notification.kind;
+    final isError = kind == NotificationKind.error;
+    final warningColor = context.theme.colors.brightness == Brightness.dark
+        ? const Color(0xfffbbf24)
+        : const Color(0xffb45309);
     showRawFToast(
       context: context,
       alignment: FToastAlignment.bottomRight,
@@ -115,10 +121,19 @@ class _LibraryShellState extends State<LibraryShell> {
       builder: (context, entry) => FToast(
         key: ValueKey('notification-toast-$revision'),
         variant: isError ? FToastVariant.destructive : FToastVariant.primary,
-        icon: Icon(
-          isError ? FLucideIcons.alertCircle : FLucideIcons.circleCheck,
-        ),
-        title: Text(message),
+        style: kind == NotificationKind.warning
+            ? FToastStyleDelta.delta(
+                iconStyle: .delta(color: warningColor),
+                titleTextStyle: .delta(color: warningColor),
+                descriptionTextStyle: .delta(color: warningColor),
+              )
+            : const FToastStyleDelta.context(),
+        icon: Icon(switch (kind) {
+          NotificationKind.success => FLucideIcons.circleCheck,
+          NotificationKind.warning => FLucideIcons.alertTriangle,
+          NotificationKind.error => FLucideIcons.alertCircle,
+        }),
+        title: Text(notification.message),
         suffix: isError
             ? FButton.icon(
                 key: ValueKey('notification-toast-close-$revision'),
@@ -190,14 +205,7 @@ class _LibraryShellState extends State<LibraryShell> {
 
     if (controller.view == LibraryView.settings) {
       return SettingsPage(
-        key: ValueKey(
-          '${controller.settings.outputPath}|'
-          '${controller.settings.diabloIV.enabled}|'
-          '${controller.settings.diabloIV.sourcePath}|'
-          '${controller.settings.guildWars2.enabled}|'
-          '${controller.settings.guildWars2.sourcePath}|'
-          '${controller.settings.steam.toJson()}',
-        ),
+        key: const ValueKey('settings-page'),
         controller: controller,
       );
     }

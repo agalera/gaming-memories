@@ -14,29 +14,48 @@ enum AppThemeMode {
 }
 
 class ProviderSettings {
-  const ProviderSettings({required this.enabled, required this.sourcePath});
+  const ProviderSettings({
+    required this.enabled,
+    required this.useCustomPath,
+    required this.sourcePath,
+  });
 
-  const ProviderSettings.disabled() : enabled = false, sourcePath = '';
+  const ProviderSettings.disabled()
+    : enabled = false,
+      useCustomPath = false,
+      sourcePath = '';
 
   final bool enabled;
+  final bool useCustomPath;
   final String sourcePath;
 
-  ProviderSettings copyWith({bool? enabled, String? sourcePath}) {
+  ProviderSettings copyWith({
+    bool? enabled,
+    bool? useCustomPath,
+    String? sourcePath,
+  }) {
     return ProviderSettings(
       enabled: enabled ?? this.enabled,
+      useCustomPath: useCustomPath ?? this.useCustomPath,
       sourcePath: sourcePath ?? this.sourcePath,
     );
   }
 
   factory ProviderSettings.fromJson(Map<String, Object?> json) {
+    final storedPath = json['sourcePath'] as String? ?? '';
+    final hasLegacyCustomPath =
+        storedPath.trim().isNotEmpty && storedPath.trim() != 'auto';
+
     return ProviderSettings(
       enabled: json['enabled'] as bool? ?? false,
-      sourcePath: json['sourcePath'] as String? ?? '',
+      useCustomPath: json['useCustomPath'] as bool? ?? hasLegacyCustomPath,
+      sourcePath: hasLegacyCustomPath ? storedPath : '',
     );
   }
 
   Map<String, Object?> toJson() => {
     'enabled': enabled,
+    'useCustomPath': useCustomPath,
     'sourcePath': sourcePath,
   };
 }
@@ -44,6 +63,7 @@ class ProviderSettings {
 class SteamSettings {
   const SteamSettings({
     required this.enabled,
+    required this.useCustomPath,
     required this.userdataPath,
     required this.onlineGallery,
     required this.userId,
@@ -55,7 +75,8 @@ class SteamSettings {
 
   const SteamSettings.disabled()
     : enabled = false,
-      userdataPath = 'auto',
+      useCustomPath = false,
+      userdataPath = '',
       onlineGallery = false,
       userId = '',
       apiKey = '',
@@ -64,6 +85,7 @@ class SteamSettings {
       customGames = const {};
 
   final bool enabled;
+  final bool useCustomPath;
   final String userdataPath;
   final bool onlineGallery;
   final String userId;
@@ -75,10 +97,14 @@ class SteamSettings {
   factory SteamSettings.fromJson(Map<String, Object?> json) {
     final ignored = json['ignoredGames'];
     final custom = json['customGames'];
+    final storedPath = json['userdataPath'] as String? ?? '';
+    final hasLegacyCustomPath =
+        storedPath.trim().isNotEmpty && storedPath.trim() != 'auto';
 
     return SteamSettings(
       enabled: json['enabled'] as bool? ?? false,
-      userdataPath: json['userdataPath'] as String? ?? 'auto',
+      useCustomPath: json['useCustomPath'] as bool? ?? hasLegacyCustomPath,
+      userdataPath: hasLegacyCustomPath ? storedPath : '',
       onlineGallery: json['onlineGallery'] as bool? ?? false,
       userId: json['userId'] as String? ?? '',
       apiKey: json['apiKey'] as String? ?? '',
@@ -96,6 +122,7 @@ class SteamSettings {
 
   Map<String, Object?> toJson() => {
     'enabled': enabled,
+    'useCustomPath': useCustomPath,
     'userdataPath': userdataPath,
     'onlineGallery': onlineGallery,
     'userId': userId,
@@ -165,7 +192,7 @@ class AppSettings {
   }
 
   Map<String, Object?> toJson() => {
-    'version': 4,
+    'version': 5,
     'outputPath': outputPath,
     'themeMode': themeMode.name,
     'diabloIV': diabloIV.toJson(),

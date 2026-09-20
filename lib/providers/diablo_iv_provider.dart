@@ -37,10 +37,35 @@ class DiabloIVProvider implements ScreenshotProvider {
       throw const FileSystemException('Select a library folder first.');
     }
 
-    final sourceDirectories = _sourceDirectories(settings.diabloIV.sourcePath);
+    final sourceDirectories = _sourceDirectories(settings.diabloIV);
     if (sourceDirectories.isEmpty) {
+      if (!settings.diabloIV.useCustomPath) {
+        return const ImportResult.warning(
+          gameName,
+          'Diablo IV was skipped because no installation was found.',
+        );
+      }
       throw const FileSystemException(
-        'Select a Diablo IV screenshot folder on this platform.',
+        'Choose a Diablo IV screenshot folder in Settings.',
+      );
+    }
+
+    final existingSourceDirectories = <Directory>[];
+    for (final sourceDirectory in sourceDirectories) {
+      if (await sourceDirectory.exists()) {
+        existingSourceDirectories.add(sourceDirectory);
+      }
+    }
+    if (existingSourceDirectories.isEmpty) {
+      if (!settings.diabloIV.useCustomPath) {
+        return const ImportResult.warning(
+          gameName,
+          'Diablo IV was skipped because no installation was found.',
+        );
+      }
+      throw FileSystemException(
+        'The selected Diablo IV screenshot folder does not exist.',
+        settings.diabloIV.sourcePath,
       );
     }
 
@@ -54,11 +79,7 @@ class DiabloIVProvider implements ScreenshotProvider {
     );
     final files = <File>[];
 
-    for (final sourceDirectory in sourceDirectories) {
-      if (!await sourceDirectory.exists()) {
-        continue;
-      }
-
+    for (final sourceDirectory in existingSourceDirectories) {
       final sourceFiles = await sourceDirectory
           .list(followLinks: false)
           .where((entity) => entity is File && _isScreenshot(entity.path))
@@ -99,9 +120,12 @@ class DiabloIVProvider implements ScreenshotProvider {
     return ImportResult(provider: name, imported: imported, skipped: skipped);
   }
 
-  List<Directory> _sourceDirectories(String configuredPath) {
-    final path = configuredPath.trim();
-    if (path.isNotEmpty && path != 'auto') {
+  List<Directory> _sourceDirectories(ProviderSettings settings) {
+    final path = settings.sourcePath.trim();
+    if (settings.useCustomPath) {
+      if (path.isEmpty) {
+        return const [];
+      }
       return [Directory(expandUserPath(path))];
     }
 

@@ -22,7 +22,11 @@ void main() {
 
   AppSettings settings() => AppSettings(
     outputPath: output.path,
-    diabloIV: ProviderSettings(enabled: true, sourcePath: source.path),
+    diabloIV: ProviderSettings(
+      enabled: true,
+      useCustomPath: true,
+      sourcePath: source.path,
+    ),
   );
 
   test('copies images to the PC and Diablo IV album', () async {

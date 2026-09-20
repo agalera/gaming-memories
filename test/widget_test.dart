@@ -8,6 +8,7 @@ import 'package:gaming_memories/app.dart';
 import 'package:gaming_memories/controllers/library_controller.dart';
 import 'package:gaming_memories/models/app_settings.dart';
 import 'package:gaming_memories/models/library.dart';
+import 'package:gaming_memories/providers/screenshot_provider.dart';
 import 'package:gaming_memories/services/config_store.dart';
 import 'package:gaming_memories/services/library_scanner.dart';
 import 'package:gaming_memories/services/screenshot_action_service.dart';
@@ -266,6 +267,65 @@ void main() {
     await tester.pump(const Duration(milliseconds: 200));
   });
 
+  testWidgets('shows each provider warning as an amber timed toast', (
+    tester,
+  ) async {
+    final controller = LibraryController(
+      configStore: const ConfigStore(filePath: 'unused'),
+      scanner: const LibraryScanner(),
+      providers: const [
+        _WarningProvider('First provider'),
+        _WarningProvider('Second provider'),
+      ],
+    )..isInitializing = false;
+
+    await tester.pumpWidget(GamingMemoriesApp(controller: controller));
+    await tester.pump();
+
+    await controller.collect();
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 100));
+
+    const firstWarning = 'First provider was skipped because it was not found.';
+    const secondWarning =
+        'Second provider was skipped because it was not found.';
+    final firstToast = find.byKey(const ValueKey('notification-toast-1'));
+    final secondToast = find.byKey(const ValueKey('notification-toast-2'));
+    expect(firstToast, findsOneWidget);
+    expect(secondToast, findsOneWidget);
+    expect(find.text(firstWarning), findsOneWidget);
+    expect(find.text(secondWarning), findsOneWidget);
+    expect(find.byIcon(FLucideIcons.alertTriangle), findsNWidgets(2));
+    expect(tester.widget<FToast>(firstToast).variant, FToastVariant.primary);
+    expect(tester.widget<FToast>(secondToast).variant, FToastVariant.primary);
+    final firstIcon = find.descendant(
+      of: firstToast,
+      matching: find.byIcon(FLucideIcons.alertTriangle),
+    );
+    expect(
+      IconTheme.of(tester.element(firstIcon)).color,
+      const Color(0xffb45309),
+    );
+    expect(
+      DefaultTextStyle.of(tester.element(find.text(firstWarning))).style.color,
+      const Color(0xffb45309),
+    );
+    expect(
+      find.byKey(const ValueKey('notification-toast-close-1')),
+      findsNothing,
+    );
+    expect(
+      find.byKey(const ValueKey('notification-toast-close-2')),
+      findsNothing,
+    );
+
+    await tester.pump(const Duration(seconds: 6));
+    expect(firstToast, findsNothing);
+    expect(secondToast, findsNothing);
+
+    await tester.pumpWidget(const SizedBox.shrink());
+  });
+
   testWidgets('opens media and restores the gallery scroll offset', (
     tester,
   ) async {
@@ -436,9 +496,10 @@ void main() {
   });
 
   testWidgets('edits Steam ignored and custom game lists', (tester) async {
+    final store = _MemoryConfigStore();
     final controller =
         LibraryController(
-            configStore: _MemoryConfigStore(),
+            configStore: store,
             scanner: const LibraryScanner(),
             providers: const [],
           )
@@ -449,7 +510,8 @@ void main() {
             diabloIV: ProviderSettings.disabled(),
             steam: SteamSettings(
               enabled: true,
-              userdataPath: 'auto',
+              useCustomPath: false,
+              userdataPath: '',
               onlineGallery: false,
               userId: '',
               apiKey: '',
@@ -529,15 +591,143 @@ void main() {
     expect(find.text('New Game'), findsOneWidget);
     expect(find.text('Another Game'), findsOneWidget);
 
-    await tester.ensureVisible(find.text('Save settings'));
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('Save settings'));
-    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 400));
 
     expect(controller.settings.steam.customGames, {
       '40': 'New Game',
       '50': 'Another Game',
     });
+    expect(store.saved?.steam.customGames, {
+      '40': 'New Game',
+      '50': 'Another Game',
+    });
+    expect(find.text('Save settings'), findsNothing);
+    expect(
+      find.byKey(const ValueKey('settings-autosave-note')),
+      findsOneWidget,
+    );
+
+    await tester.pumpWidget(const SizedBox.shrink());
+    await tester.pump(const Duration(milliseconds: 200));
+  });
+
+  testWidgets('shows custom folders and only autosaves valid paths', (
+    tester,
+  ) async {
+    final directory = Directory.systemTemp.createTempSync('gaming-memories-');
+    final validSource = Directory(p.join(directory.path, 'diablo'))
+      ..createSync();
+    addTearDown(() => directory.deleteSync(recursive: true));
+    final store = _MemoryConfigStore();
+    final controller =
+        LibraryController(
+            configStore: store,
+            scanner: const LibraryScanner(),
+            providers: const [],
+          )
+          ..isInitializing = false
+          ..view = LibraryView.settings
+          ..settings = const AppSettings(
+            outputPath: '',
+            diabloIV: ProviderSettings(
+              enabled: true,
+              useCustomPath: false,
+              sourcePath: '',
+            ),
+          );
+
+    await tester.pumpWidget(GamingMemoriesApp(controller: controller));
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const ValueKey('diablo-path-field')), findsNothing);
+
+    final customPath = find.byKey(const ValueKey('diablo-custom-path'));
+    await tester.ensureVisible(customPath);
+    await tester.pumpAndSettle();
+    await tester.tap(customPath);
+    await tester.pump();
+    await tester.runAsync(
+      () => Future<void>.delayed(const Duration(milliseconds: 20)),
+    );
+    await tester.pumpAndSettle();
+
+    final field = find.byKey(const ValueKey('diablo-path-field'));
+    expect(field, findsOneWidget);
+    expect(find.text('Choose a folder.'), findsOneWidget);
+    expect(controller.settings.diabloIV.useCustomPath, isFalse);
+
+    await tester.enterText(field, validSource.path);
+    await tester.pump(const Duration(milliseconds: 400));
+    await tester.runAsync(
+      () => Future<void>.delayed(const Duration(milliseconds: 20)),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('Choose a folder.'), findsNothing);
+    expect(controller.settings.diabloIV.useCustomPath, isTrue);
+    expect(controller.settings.diabloIV.sourcePath, validSource.path);
+    expect(store.saved?.diabloIV.sourcePath, validSource.path);
+
+    final invalidPath = p.join(directory.path, 'missing');
+    await tester.enterText(field, invalidPath);
+    await tester.pump(const Duration(milliseconds: 400));
+    await tester.runAsync(
+      () => Future<void>.delayed(const Duration(milliseconds: 20)),
+    );
+    await tester.pumpAndSettle();
+
+    expect(
+      find.text('Diablo IV screenshot folder does not exist.'),
+      findsOneWidget,
+    );
+    expect(controller.settings.diabloIV.sourcePath, validSource.path);
+    expect(store.saved?.diabloIV.sourcePath, validSource.path);
+
+    await tester.tap(customPath);
+    await tester.pump();
+    await tester.runAsync(
+      () => Future<void>.delayed(const Duration(milliseconds: 20)),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const ValueKey('diablo-path-field')), findsNothing);
+    expect(controller.settings.diabloIV.useCustomPath, isFalse);
+
+    await tester.pumpWidget(const SizedBox.shrink());
+    await tester.pump(const Duration(milliseconds: 200));
+  });
+
+  testWidgets('validates a saved custom folder when settings opens', (
+    tester,
+  ) async {
+    final controller =
+        LibraryController(
+            configStore: _MemoryConfigStore(),
+            scanner: const LibraryScanner(),
+            providers: const [],
+          )
+          ..isInitializing = false
+          ..view = LibraryView.settings
+          ..settings = const AppSettings(
+            outputPath: '',
+            diabloIV: ProviderSettings(
+              enabled: true,
+              useCustomPath: true,
+              sourcePath: '/definitely/missing/gaming-memories',
+            ),
+          );
+
+    await tester.pumpWidget(GamingMemoriesApp(controller: controller));
+    await tester.pump();
+    await tester.runAsync(
+      () => Future<void>.delayed(const Duration(milliseconds: 20)),
+    );
+    await tester.pumpAndSettle();
+
+    expect(
+      find.text('Diablo IV screenshot folder does not exist.'),
+      findsOneWidget,
+    );
 
     await tester.pumpWidget(const SizedBox.shrink());
     await tester.pump(const Duration(milliseconds: 200));
@@ -547,8 +737,10 @@ void main() {
 class _MemoryConfigStore extends ConfigStore {
   _MemoryConfigStore() : super(filePath: 'unused');
 
+  AppSettings? saved;
+
   @override
-  Future<void> save(AppSettings settings) async {}
+  Future<void> save(AppSettings settings) async => saved = settings;
 }
 
 class _MemoryScreenshotActions implements ScreenshotActionService {
@@ -572,5 +764,26 @@ class _MemoryScreenshotActions implements ScreenshotActionService {
       throw StateError('copy failed');
     }
     copiedPaths.add(path);
+  }
+}
+
+class _WarningProvider implements ScreenshotProvider {
+  const _WarningProvider(this.name);
+
+  @override
+  final String name;
+
+  @override
+  bool isEnabled(AppSettings settings) => true;
+
+  @override
+  Future<ImportResult> collect(
+    AppSettings settings, {
+    ProgressCallback? onProgress,
+  }) async {
+    return ImportResult.warning(
+      name,
+      '$name was skipped because it was not found.',
+    );
   }
 }

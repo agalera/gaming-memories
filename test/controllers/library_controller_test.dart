@@ -1,13 +1,17 @@
 import 'dart:async';
+import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:gaming_memories/controllers/library_controller.dart';
 import 'package:gaming_memories/models/app_settings.dart';
 import 'package:gaming_memories/models/library.dart';
+import 'package:gaming_memories/providers/diablo_iv_provider.dart';
+import 'package:gaming_memories/providers/guild_wars_2_provider.dart';
 import 'package:gaming_memories/providers/screenshot_provider.dart';
 import 'package:gaming_memories/services/config_store.dart';
 import 'package:gaming_memories/services/library_scanner.dart';
 import 'package:gaming_memories/services/screenshot_action_service.dart';
+import 'package:path/path.dart' as p;
 
 void main() {
   test('selects a platform and shows its media by date', () {
@@ -79,6 +83,58 @@ void main() {
     expect(controller.progressMessage, isNull);
     expect(controller.progressValue, isNull);
   });
+
+  test(
+    'warns and continues when automatic provider discovery finds nothing',
+    () async {
+      if (Platform.isWindows) {
+        return;
+      }
+
+      final directory = await Directory.systemTemp.createTemp(
+        'gaming-memories-',
+      );
+      addTearDown(() => directory.delete(recursive: true));
+      final controller =
+          LibraryController(
+              configStore: ConfigStore(
+                filePath: p.join(directory.path, 'settings.json'),
+              ),
+              scanner: const LibraryScanner(),
+              providers: const [DiabloIVProvider(), GuildWars2Provider()],
+            )
+            ..settings = AppSettings(
+              outputPath: directory.path,
+              diabloIV: const ProviderSettings(
+                enabled: true,
+                useCustomPath: false,
+                sourcePath: '',
+              ),
+              guildWars2: const ProviderSettings(
+                enabled: true,
+                useCustomPath: false,
+                sourcePath: '',
+              ),
+            );
+
+      await controller.collect();
+
+      expect(controller.error, isNull);
+      expect(controller.notifications, hasLength(2));
+      expect(
+        controller.notifications.map((notification) => notification.message),
+        [
+          'Diablo IV was skipped because no installation was found.',
+          'Guild Wars 2 was skipped because no installation was found.',
+        ],
+      );
+      expect(
+        controller.notifications.map((notification) => notification.kind),
+        everyElement(NotificationKind.warning),
+      );
+      expect(controller.notificationKind, NotificationKind.warning);
+    },
+  );
 
   test('returns from media details to the same library view', () {
     final controller = LibraryController(

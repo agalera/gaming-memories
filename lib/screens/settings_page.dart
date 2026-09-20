@@ -1,9 +1,13 @@
+import 'dart:async';
+import 'dart:io';
+
 import 'package:file_picker/file_picker.dart';
 import 'package:forui/forui.dart';
 import 'package:material_ui/material_ui.dart';
 
 import '../controllers/library_controller.dart';
 import '../models/app_settings.dart';
+import '../services/library_scanner.dart';
 
 class SettingsPage extends StatefulWidget {
   const SettingsPage({required this.controller, super.key});
@@ -28,10 +32,21 @@ class _SettingsPageState extends State<SettingsPage> {
   late final List<_CustomGame> _steamCustomGames;
   late AppThemeMode _themeMode;
   late bool _diabloEnabled;
+  late bool _diabloUseCustomPath;
   late bool _guildWars2Enabled;
+  late bool _guildWars2UseCustomPath;
   late bool _steamEnabled;
+  late bool _steamUseCustomPath;
   late bool _steamOnlineGallery;
   late bool _steamDownloadCovers;
+  String? _outputPathError;
+  String? _diabloPathError;
+  String? _guildWars2PathError;
+  String? _steamPathError;
+  Timer? _saveTimer;
+  var _draftRevision = 0;
+  var _hasPendingChanges = false;
+  Future<void> _saveQueue = Future.value();
 
   @override
   void initState() {
@@ -57,15 +72,42 @@ class _SettingsPageState extends State<SettingsPage> {
         .map((entry) => _CustomGame(entry.key, entry.value))
         .toList();
     _diabloEnabled = widget.controller.settings.diabloIV.enabled;
+    _diabloUseCustomPath = widget.controller.settings.diabloIV.useCustomPath;
     _guildWars2Enabled = widget.controller.settings.guildWars2.enabled;
+    _guildWars2UseCustomPath =
+        widget.controller.settings.guildWars2.useCustomPath;
     _steamEnabled = steam.enabled;
+    _steamUseCustomPath = steam.useCustomPath;
     _steamOnlineGallery = steam.onlineGallery;
     _steamDownloadCovers = steam.downloadCovers;
     _themeMode = widget.controller.settings.themeMode;
+
+    for (final controller in [
+      _outputController,
+      _diabloController,
+      _guildWars2Controller,
+      _steamPathController,
+      _steamUserController,
+      _steamKeyController,
+    ]) {
+      controller.addListener(_scheduleAutosave);
+    }
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) {
+        unawaited(_validateInitialPaths());
+      }
+    });
   }
 
   @override
   void dispose() {
+    _saveTimer?.cancel();
+    if (_hasPendingChanges) {
+      final draft = _draftSettings();
+      final revision = ++_draftRevision;
+      unawaited(_validateAndSave(draft, revision: revision, showErrors: false));
+    }
     _outputController.dispose();
     _diabloController.dispose();
     _guildWars2Controller.dispose();
@@ -123,6 +165,7 @@ class _SettingsPageState extends State<SettingsPage> {
                         onChange: (value) {
                           setState(() => _themeMode = value);
                           widget.controller.previewTheme(value);
+                          _scheduleAutosave();
                         },
                       ),
                     ],
@@ -153,9 +196,11 @@ class _SettingsPageState extends State<SettingsPage> {
                       ),
                       const SizedBox(height: 18),
                       _DirectoryField(
+                        fieldKey: const ValueKey('library-path-field'),
                         controller: _outputController,
                         label: 'Library folder',
                         hint: '/path/to/media',
+                        error: _outputPathError,
                         onBrowse: () => _chooseDirectory(
                           controller: _outputController,
                           title: 'Choose the media library',
@@ -214,28 +259,45 @@ class _SettingsPageState extends State<SettingsPage> {
                             semanticsLabel: 'Enable Diablo IV',
                             onChange: (value) {
                               setState(() => _diabloEnabled = value);
+                              _scheduleAutosave();
                             },
                           ),
                         ],
                       ),
-                      const SizedBox(height: 20),
-                      _DirectoryField(
-                        controller: _diabloController,
-                        label: 'Screenshot folder',
-                        hint: 'auto or /path/to/Diablo IV',
+                      const SizedBox(height: 18),
+                      FCheckbox(
+                        key: const ValueKey('diablo-custom-path'),
+                        label: const Text('Use custom folder'),
+                        description: const Text(
+                          'Otherwise, the screenshot folder is discovered automatically.',
+                        ),
+                        value: _diabloUseCustomPath,
                         enabled: _diabloEnabled,
-                        onBrowse: () => _chooseDirectory(
+                        onChange: (value) {
+                          setState(() {
+                            _diabloUseCustomPath = value;
+                            if (!value) {
+                              _diabloPathError = null;
+                            }
+                          });
+                          _scheduleAutosave(immediate: true);
+                        },
+                      ),
+                      if (_diabloUseCustomPath) ...[
+                        const SizedBox(height: 16),
+                        _DirectoryField(
+                          fieldKey: const ValueKey('diablo-path-field'),
                           controller: _diabloController,
-                          title: 'Choose the Diablo IV screenshot folder',
+                          label: 'Screenshot folder',
+                          hint: '/path/to/Diablo IV',
+                          error: _diabloPathError,
+                          enabled: _diabloEnabled,
+                          onBrowse: () => _chooseDirectory(
+                            controller: _diabloController,
+                            title: 'Choose the Diablo IV screenshot folder',
+                          ),
                         ),
-                      ),
-                      const SizedBox(height: 10),
-                      Text(
-                        'On Windows, leave this field empty to scan both default folders.',
-                        style: context.theme.typography.body.xs.copyWith(
-                          color: context.theme.colors.mutedForeground,
-                        ),
-                      ),
+                      ],
                     ],
                   ),
                 ),
@@ -288,24 +350,48 @@ class _SettingsPageState extends State<SettingsPage> {
                             semanticsLabel: 'Enable Guild Wars 2',
                             onChange: (value) {
                               setState(() => _guildWars2Enabled = value);
+                              _scheduleAutosave();
                             },
                           ),
                         ],
                       ),
-                      const SizedBox(height: 20),
-                      _DirectoryField(
-                        controller: _guildWars2Controller,
-                        label: 'Screenshot folder',
-                        hint: 'auto or /path/to/Guild Wars 2/Screens',
-                        enabled: _guildWars2Enabled,
-                        onBrowse: () => _chooseDirectory(
-                          controller: _guildWars2Controller,
-                          title: 'Choose the Guild Wars 2 screenshot folder',
+                      const SizedBox(height: 18),
+                      FCheckbox(
+                        key: const ValueKey('guild-wars-2-custom-path'),
+                        label: const Text('Use custom folder'),
+                        description: const Text(
+                          'Otherwise, the screenshot folder is discovered automatically.',
                         ),
+                        value: _guildWars2UseCustomPath,
+                        enabled: _guildWars2Enabled,
+                        onChange: (value) {
+                          setState(() {
+                            _guildWars2UseCustomPath = value;
+                            if (!value) {
+                              _guildWars2PathError = null;
+                            }
+                          });
+                          _scheduleAutosave(immediate: true);
+                        },
                       ),
+                      if (_guildWars2UseCustomPath) ...[
+                        const SizedBox(height: 16),
+                        _DirectoryField(
+                          fieldKey: const ValueKey('guild-wars-2-path-field'),
+                          controller: _guildWars2Controller,
+                          label: 'Screenshot folder',
+                          hint: '/path/to/Guild Wars 2/Screens',
+                          error: _guildWars2PathError,
+                          enabled: _guildWars2Enabled,
+                          onBrowse: () => _chooseDirectory(
+                            controller: _guildWars2Controller,
+                            title: 'Choose the Guild Wars 2 screenshot folder',
+                          ),
+                        ),
+                      ],
                       const SizedBox(height: 10),
                       Text(
-                        'Requires ExifTool. On Windows, leave this field empty to use the default folder.',
+                        'Requires ExifTool.',
                         style: context.theme.typography.body.xs.copyWith(
                           color: context.theme.colors.mutedForeground,
                         ),
@@ -361,21 +447,45 @@ class _SettingsPageState extends State<SettingsPage> {
                             semanticsLabel: 'Enable Steam',
                             onChange: (value) {
                               setState(() => _steamEnabled = value);
+                              _scheduleAutosave();
                             },
                           ),
                         ],
                       ),
-                      const SizedBox(height: 20),
-                      _DirectoryField(
-                        controller: _steamPathController,
-                        label: 'Steam folder',
-                        hint: 'auto or /path/to/Steam',
-                        enabled: _steamEnabled,
-                        onBrowse: () => _chooseDirectory(
-                          controller: _steamPathController,
-                          title: 'Choose the Steam folder',
+                      const SizedBox(height: 18),
+                      FCheckbox(
+                        key: const ValueKey('steam-custom-path'),
+                        label: const Text('Use custom folder'),
+                        description: const Text(
+                          'Otherwise, the Steam folder is discovered automatically.',
                         ),
+                        value: _steamUseCustomPath,
+                        enabled: _steamEnabled,
+                        onChange: (value) {
+                          setState(() {
+                            _steamUseCustomPath = value;
+                            if (!value) {
+                              _steamPathError = null;
+                            }
+                          });
+                          _scheduleAutosave(immediate: true);
+                        },
                       ),
+                      if (_steamUseCustomPath) ...[
+                        const SizedBox(height: 16),
+                        _DirectoryField(
+                          fieldKey: const ValueKey('steam-path-field'),
+                          controller: _steamPathController,
+                          label: 'Steam folder',
+                          hint: '/path/to/Steam',
+                          error: _steamPathError,
+                          enabled: _steamEnabled,
+                          onBrowse: () => _chooseDirectory(
+                            controller: _steamPathController,
+                            title: 'Choose the Steam folder',
+                          ),
+                        ),
+                      ],
                       const SizedBox(height: 16),
                       _SwitchSetting(
                         label: 'Download game covers',
@@ -384,6 +494,7 @@ class _SettingsPageState extends State<SettingsPage> {
                         enabled: _steamEnabled,
                         onChange: (value) {
                           setState(() => _steamDownloadCovers = value);
+                          _scheduleAutosave();
                         },
                       ),
                       const SizedBox(height: 12),
@@ -394,6 +505,7 @@ class _SettingsPageState extends State<SettingsPage> {
                         enabled: _steamEnabled,
                         onChange: (value) {
                           setState(() => _steamOnlineGallery = value);
+                          _scheduleAutosave();
                         },
                       ),
                       const SizedBox(height: 16),
@@ -540,16 +652,12 @@ class _SettingsPageState extends State<SettingsPage> {
                 ),
               ),
               const SizedBox(height: 24),
-              Row(
-                children: [
-                  const Spacer(),
-                  FButton(
-                    onPress: widget.controller.isBusy ? null : _save,
-                    mainAxisSize: MainAxisSize.min,
-                    prefix: const Icon(FLucideIcons.save),
-                    child: const Text('Save settings'),
-                  ),
-                ],
+              Text(
+                'Changes are validated and saved automatically.',
+                key: const ValueKey('settings-autosave-note'),
+                style: context.theme.typography.body.sm.copyWith(
+                  color: context.theme.colors.mutedForeground,
+                ),
               ),
             ],
           ),
@@ -647,20 +755,40 @@ class _SettingsPageState extends State<SettingsPage> {
     );
   }
 
-  Future<void> _save() async {
-    final next = AppSettings(
+  void _scheduleAutosave({bool immediate = false}) {
+    if (!mounted) {
+      return;
+    }
+
+    _hasPendingChanges = true;
+    final revision = ++_draftRevision;
+    _saveTimer?.cancel();
+    _saveTimer = Timer(
+      immediate ? Duration.zero : const Duration(milliseconds: 300),
+      () {
+        final draft = _draftSettings();
+        unawaited(_validateAndSave(draft, revision: revision));
+      },
+    );
+  }
+
+  AppSettings _draftSettings() {
+    return AppSettings(
       outputPath: _outputController.text.trim(),
       themeMode: _themeMode,
       diabloIV: ProviderSettings(
         enabled: _diabloEnabled,
+        useCustomPath: _diabloUseCustomPath,
         sourcePath: _diabloController.text.trim(),
       ),
       guildWars2: ProviderSettings(
         enabled: _guildWars2Enabled,
+        useCustomPath: _guildWars2UseCustomPath,
         sourcePath: _guildWars2Controller.text.trim(),
       ),
       steam: SteamSettings(
         enabled: _steamEnabled,
+        useCustomPath: _steamUseCustomPath,
         userdataPath: _steamPathController.text.trim(),
         onlineGallery: _steamOnlineGallery,
         userId: _steamUserController.text.trim(),
@@ -672,7 +800,126 @@ class _SettingsPageState extends State<SettingsPage> {
         }),
       ),
     );
-    await widget.controller.saveSettings(next);
+  }
+
+  Future<void> _validateInitialPaths() async {
+    final revision = _draftRevision;
+    final errors = await _validatePaths(_draftSettings());
+    if (!mounted || revision != _draftRevision) {
+      return;
+    }
+    _showPathErrors(errors);
+  }
+
+  Future<void> _validateAndSave(
+    AppSettings draft, {
+    required int revision,
+    bool showErrors = true,
+  }) async {
+    final errors = await _validatePaths(draft);
+    if (revision != _draftRevision) {
+      return;
+    }
+
+    _hasPendingChanges = false;
+    if (showErrors && mounted) {
+      _showPathErrors(errors);
+    }
+
+    final saved = widget.controller.settings;
+    final safeSettings = AppSettings(
+      outputPath: errors.outputPath == null
+          ? draft.outputPath
+          : saved.outputPath,
+      themeMode: draft.themeMode,
+      diabloIV: errors.diabloIV == null
+          ? draft.diabloIV
+          : saved.diabloIV.copyWith(enabled: draft.diabloIV.enabled),
+      guildWars2: errors.guildWars2 == null
+          ? draft.guildWars2
+          : saved.guildWars2.copyWith(enabled: draft.guildWars2.enabled),
+      steam: SteamSettings(
+        enabled: draft.steam.enabled,
+        useCustomPath: errors.steam == null
+            ? draft.steam.useCustomPath
+            : saved.steam.useCustomPath,
+        userdataPath: errors.steam == null
+            ? draft.steam.userdataPath
+            : saved.steam.userdataPath,
+        onlineGallery: draft.steam.onlineGallery,
+        userId: draft.steam.userId,
+        apiKey: draft.steam.apiKey,
+        downloadCovers: draft.steam.downloadCovers,
+        ignoredGames: draft.steam.ignoredGames,
+        customGames: draft.steam.customGames,
+      ),
+    );
+
+    _saveQueue = _saveQueue.then((_) async {
+      await widget.controller.updateSettings(safeSettings);
+    });
+    await _saveQueue;
+  }
+
+  Future<_PathErrors> _validatePaths(AppSettings draft) async {
+    final results = await Future.wait<String?>([
+      _directoryError(
+        draft.outputPath,
+        label: 'Library folder',
+        allowEmpty: true,
+      ),
+      draft.diabloIV.useCustomPath
+          ? _directoryError(
+              draft.diabloIV.sourcePath,
+              label: 'Diablo IV screenshot folder',
+            )
+          : Future.value(),
+      draft.guildWars2.useCustomPath
+          ? _directoryError(
+              draft.guildWars2.sourcePath,
+              label: 'Guild Wars 2 screenshot folder',
+            )
+          : Future.value(),
+      draft.steam.useCustomPath
+          ? _directoryError(draft.steam.userdataPath, label: 'Steam folder')
+          : Future.value(),
+    ]);
+
+    return _PathErrors(
+      outputPath: results[0],
+      diabloIV: results[1],
+      guildWars2: results[2],
+      steam: results[3],
+    );
+  }
+
+  Future<String?> _directoryError(
+    String path, {
+    required String label,
+    bool allowEmpty = false,
+  }) async {
+    final value = path.trim();
+    if (value.isEmpty) {
+      return allowEmpty ? null : 'Choose a folder.';
+    }
+
+    try {
+      if (await Directory(expandUserPath(value)).exists()) {
+        return null;
+      }
+    } on FileSystemException {
+      // The same field error covers inaccessible and missing directories.
+    }
+    return '$label does not exist.';
+  }
+
+  void _showPathErrors(_PathErrors errors) {
+    setState(() {
+      _outputPathError = errors.outputPath;
+      _diabloPathError = errors.diabloIV;
+      _guildWars2PathError = errors.guildWars2;
+      _steamPathError = errors.steam;
+    });
   }
 
   void _addIgnoredGame() {
@@ -685,10 +932,12 @@ class _SettingsPageState extends State<SettingsPage> {
       _steamIgnoredGames.add(appId);
       _steamIgnoredInputController.clear();
     });
+    _scheduleAutosave();
   }
 
   void _removeIgnoredGame(String appId) {
     setState(() => _steamIgnoredGames.remove(appId));
+    _scheduleAutosave();
   }
 
   void _addCustomGame() {
@@ -709,13 +958,29 @@ class _SettingsPageState extends State<SettingsPage> {
       _steamCustomIdController.clear();
       _steamCustomNameController.clear();
     });
+    _scheduleAutosave();
   }
 
   void _removeCustomGame(String appId) {
     setState(
       () => _steamCustomGames.removeWhere((game) => game.appId == appId),
     );
+    _scheduleAutosave();
   }
+}
+
+class _PathErrors {
+  const _PathErrors({
+    required this.outputPath,
+    required this.diabloIV,
+    required this.guildWars2,
+    required this.steam,
+  });
+
+  final String? outputPath;
+  final String? diabloIV;
+  final String? guildWars2;
+  final String? steam;
 }
 
 class _CustomGame {
@@ -982,38 +1247,50 @@ class _SwitchSetting extends StatelessWidget {
 
 class _DirectoryField extends StatelessWidget {
   const _DirectoryField({
+    required this.fieldKey,
     required this.controller,
     required this.label,
     required this.hint,
     required this.onBrowse,
+    this.error,
     this.enabled = true,
   });
 
+  final Key fieldKey;
   final TextEditingController controller;
   final String label;
   final String hint;
   final VoidCallback onBrowse;
+  final String? error;
   final bool enabled;
 
   @override
   Widget build(BuildContext context) {
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.end,
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Expanded(
-          child: FTextField(
-            control: FTextFieldControl.managed(controller: controller),
-            label: Text(label),
-            hint: hint,
-            enabled: enabled,
-          ),
-        ),
-        const SizedBox(width: 10),
-        FButton(
-          variant: FButtonVariant.outline,
-          mainAxisSize: MainAxisSize.min,
-          onPress: enabled ? onBrowse : null,
-          child: const Text('Browse'),
+        Text(label, style: context.theme.typography.body.sm),
+        const SizedBox(height: 6),
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Expanded(
+              child: FTextField(
+                key: fieldKey,
+                control: FTextFieldControl.managed(controller: controller),
+                hint: hint,
+                error: error == null ? null : Text(error!),
+                enabled: enabled,
+              ),
+            ),
+            const SizedBox(width: 10),
+            FButton(
+              variant: FButtonVariant.outline,
+              mainAxisSize: MainAxisSize.min,
+              onPress: enabled ? onBrowse : null,
+              child: const Text('Browse'),
+            ),
+          ],
         ),
       ],
     );

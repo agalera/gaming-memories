@@ -41,15 +41,27 @@ class GuildWars2Provider implements ScreenshotProvider {
       throw const FileSystemException('Select a library folder first.');
     }
 
-    final source = _sourceDirectory(settings.guildWars2.sourcePath);
+    final source = _sourceDirectory(settings.guildWars2);
     if (source == null) {
+      if (!settings.guildWars2.useCustomPath) {
+        return const ImportResult.warning(
+          gameName,
+          'Guild Wars 2 was skipped because no installation was found.',
+        );
+      }
       throw const FileSystemException(
-        'Select a Guild Wars 2 screenshot folder on this platform.',
+        'Choose a Guild Wars 2 screenshot folder in Settings.',
       );
     }
     if (!await source.exists()) {
+      if (!settings.guildWars2.useCustomPath) {
+        return const ImportResult.warning(
+          gameName,
+          'Guild Wars 2 was skipped because no installation was found.',
+        );
+      }
       throw FileSystemException(
-        'The Guild Wars 2 screenshot folder does not exist.',
+        'The selected Guild Wars 2 screenshot folder does not exist.',
         source.path,
       );
     }
@@ -101,9 +113,12 @@ class GuildWars2Provider implements ScreenshotProvider {
     return ImportResult(provider: name, imported: imported, skipped: skipped);
   }
 
-  Directory? _sourceDirectory(String configuredPath) {
-    final path = configuredPath.trim();
-    if (path.isNotEmpty && path != 'auto') {
+  Directory? _sourceDirectory(ProviderSettings settings) {
+    final path = settings.sourcePath.trim();
+    if (settings.useCustomPath) {
+      if (path.isEmpty) {
+        return null;
+      }
       return Directory(expandUserPath(path));
     }
 

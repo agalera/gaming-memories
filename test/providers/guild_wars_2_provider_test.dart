@@ -25,7 +25,11 @@ void main() {
   AppSettings settings({bool enabled = true}) => AppSettings(
     outputPath: output.path,
     diabloIV: const ProviderSettings.disabled(),
-    guildWars2: ProviderSettings(enabled: enabled, sourcePath: source.path),
+    guildWars2: ProviderSettings(
+      enabled: enabled,
+      useCustomPath: true,
+      sourcePath: source.path,
+    ),
   );
 
   test('imports JPG files with the ExifTool date', () async {

@@ -24,13 +24,22 @@ class ImportResult {
     required this.provider,
     required this.imported,
     required this.skipped,
+    this.warning,
   });
 
-  const ImportResult.empty(this.provider) : imported = 0, skipped = 0;
+  const ImportResult.empty(this.provider)
+    : imported = 0,
+      skipped = 0,
+      warning = null;
+
+  const ImportResult.warning(this.provider, this.warning)
+    : imported = 0,
+      skipped = 0;
 
   final String provider;
   final int imported;
   final int skipped;
+  final String? warning;
 }
 
 abstract interface class ScreenshotProvider {

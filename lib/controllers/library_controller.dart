@@ -9,6 +9,20 @@ import '../services/screenshot_action_service.dart';
 
 enum LibraryView { timeline, platform, album, subAlbum, settings }
 
+enum NotificationKind { success, warning, error }
+
+class AppNotification {
+  const AppNotification({
+    required this.revision,
+    required this.message,
+    required this.kind,
+  });
+
+  final int revision;
+  final String message;
+  final NotificationKind kind;
+}
+
 class LibraryController extends ChangeNotifier {
   LibraryController({
     required this.configStore,
@@ -33,9 +47,13 @@ class LibraryController extends ChangeNotifier {
   bool isBusy = false;
   String? message;
   String? error;
+  NotificationKind? notificationKind;
   String? progressMessage;
   double? progressValue;
   int notificationRevision = 0;
+  final List<AppNotification> _notifications = [];
+
+  List<AppNotification> get notifications => List.unmodifiable(_notifications);
 
   List<MediaItem> get visibleMedia {
     if (view == LibraryView.platform && selectedPlatform != null) {
@@ -188,15 +206,17 @@ class LibraryController extends ChangeNotifier {
     notifyListeners();
   }
 
-  Future<void> saveSettings(AppSettings next) async {
-    await _run(() async {
-      _setProgress('Saving settings…');
+  Future<bool> updateSettings(AppSettings next) async {
+    try {
       await configStore.save(next);
       settings = next;
-      _setProgress('Refreshing the library…');
-      library = await scanner.scan(settings.outputPath);
-      _setMessage('Settings saved.');
-    });
+      notifyListeners();
+      return true;
+    } catch (exception) {
+      _setError('Could not save settings: $exception');
+      notifyListeners();
+      return false;
+    }
   }
 
   Future<void> refresh() async {
@@ -228,12 +248,21 @@ class LibraryController extends ChangeNotifier {
       library = await scanner.scan(settings.outputPath);
       final imported = results.fold(0, (sum, result) => sum + result.imported);
       final skipped = results.fold(0, (sum, result) => sum + result.skipped);
+      final warnings = results
+          .map((result) => result.warning)
+          .whereType<String>()
+          .toList(growable: false);
       if (results.isEmpty) {
         _setMessage('Enable a provider in Settings first.');
-      } else if (imported == 0) {
+      } else if (imported == 0 && warnings.isEmpty) {
         _setMessage('No new media. $skipped already in the library.');
-      } else {
+      } else if (imported > 0) {
         _setMessage('Imported $imported media files. Skipped $skipped.');
+      } else if (skipped > 0) {
+        _setMessage('No new media. $skipped already in the library.');
+      }
+      for (final warning in warnings) {
+        _setWarning(warning);
       }
     });
   }
@@ -242,6 +271,7 @@ class LibraryController extends ChangeNotifier {
     isBusy = true;
     message = null;
     error = null;
+    notificationKind = null;
     notifyListeners();
 
     try {
@@ -269,6 +299,7 @@ class LibraryController extends ChangeNotifier {
   }) async {
     message = null;
     error = null;
+    notificationKind = null;
 
     try {
       await action();
@@ -282,12 +313,35 @@ class LibraryController extends ChangeNotifier {
   void _setMessage(String value) {
     message = value;
     error = null;
-    notificationRevision++;
+    notificationKind = NotificationKind.success;
+    _recordNotification(value, NotificationKind.success);
+  }
+
+  void _setWarning(String value) {
+    message = value;
+    error = null;
+    notificationKind = NotificationKind.warning;
+    _recordNotification(value, NotificationKind.warning);
   }
 
   void _setError(String value) {
     error = value;
     message = null;
+    notificationKind = NotificationKind.error;
+    _recordNotification(value, NotificationKind.error);
+  }
+
+  void _recordNotification(String value, NotificationKind kind) {
     notificationRevision++;
+    _notifications.add(
+      AppNotification(
+        revision: notificationRevision,
+        message: value,
+        kind: kind,
+      ),
+    );
+    if (_notifications.length > 50) {
+      _notifications.removeAt(0);
+    }
   }
 }

@@ -198,7 +198,7 @@ class SteamProvider implements ScreenshotProvider {
   Future<Map<String, List<File>>> _localScreenshots(
     SteamSettings settings,
   ) async {
-    final userdata = _userdataDirectory(settings.userdataPath);
+    final userdata = _userdataDirectory(settings);
     if (userdata == null || !await userdata.exists()) {
       return const {};
     }
@@ -391,9 +391,12 @@ class SteamProvider implements ScreenshotProvider {
         : normalizedLeft == normalizedRight;
   }
 
-  Directory? _userdataDirectory(String configuredPath) {
-    final configured = configuredPath.trim();
-    if (configured.isNotEmpty && configured != 'auto') {
+  Directory? _userdataDirectory(SteamSettings settings) {
+    final configured = settings.userdataPath.trim();
+    if (settings.useCustomPath) {
+      if (configured.isEmpty) {
+        return null;
+      }
       final directory = Directory(expandUserPath(configured));
       return p.basename(directory.path).toLowerCase() == 'userdata'
           ? directory
