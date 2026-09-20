@@ -6,6 +6,8 @@ import '../models/library.dart';
 import 'thumbnail_service.dart';
 import 'video_metadata_service.dart';
 
+typedef FolderListingCallback = void Function(FolderListing listing);
+
 class LibraryScanner {
   const LibraryScanner({
     this.thumbnailService = const ThumbnailService(),
@@ -101,6 +103,7 @@ class LibraryScanner {
     String platform,
     String game, {
     String subAlbumPath = '',
+    FolderListingCallback? onUpdate,
   }) async {
     if (outputPath.trim().isEmpty) {
       return const FolderListing.empty();
@@ -123,18 +126,119 @@ class LibraryScanner {
     }
 
     final folders = <LibraryFolder>[];
-    for (final child in await _directories(directory)) {
-      folders.add(
-        LibraryFolder(
-          name: p.basename(child.path),
-          path: child.path,
-          relativePath: p.relative(child.path, from: gameDirectory.path),
-        ),
-      );
+    final media = <MediaItem>[];
+    try {
+      await for (final entity in directory.list(followLinks: false)) {
+        if (entity is Directory) {
+          folders.add(
+            LibraryFolder(
+              name: p.basename(entity.path),
+              path: entity.path,
+              relativePath: p.relative(entity.path, from: gameDirectory.path),
+            ),
+          );
+        } else if (entity is File &&
+            _isMedia(entity.path) &&
+            !_isThumbnail(entity.path) &&
+            !_isCover(entity.path)) {
+          try {
+            media.add(
+              await _listedMediaItem(entity, platform, game, subAlbumPath),
+            );
+          } on FileSystemException {
+            continue;
+          }
+          if (media.length % 32 == 0) {
+            onUpdate?.call(_folderListing(folders, media));
+          }
+        }
+      }
+    } on FileSystemException {
+      return _folderListing(folders, media);
+    }
+
+    return _folderListing(folders, media);
+  }
+
+  Future<FolderListing> prepareFolderContents(
+    FolderListing listing, {
+    FolderListingCallback? onUpdate,
+    bool Function()? isCancelled,
+  }) async {
+    final media = List<MediaItem>.of(listing.media);
+    for (var index = 0; index < media.length; index++) {
+      if (isCancelled?.call() ?? false) {
+        break;
+      }
+      final item = media[index];
+      try {
+        final source = item.file;
+        final stat = await source.stat();
+        final thumbnailPath = item.isVideo
+            ? await thumbnailService.ensureVideoThumbnail(source, stat)
+            : await thumbnailService.ensureImageThumbnail(source, stat);
+        final duration = item.isVideo
+            ? await videoMetadataService.ensureDuration(source, stat)
+            : null;
+        media[index] = MediaItem(
+          path: item.path,
+          platform: item.platform,
+          game: item.game,
+          capturedAt: item.capturedAt,
+          kind: item.kind,
+          subAlbumPath: item.subAlbumPath,
+          thumbnailPath: thumbnailPath,
+          duration: duration,
+        );
+      } on FileSystemException {
+        // Keep the listed item if it changes before preparation completes.
+      }
+
+      if ((index + 1) % 16 == 0 || index == media.length - 1) {
+        onUpdate?.call(
+          FolderListing(
+            folders: listing.folders,
+            media: List.unmodifiable(media),
+          ),
+        );
+      }
     }
     return FolderListing(
-      folders: folders,
-      media: await _mediaFiles(directory, platform, game, subAlbumPath),
+      folders: listing.folders,
+      media: List.unmodifiable(media),
+    );
+  }
+
+  Future<MediaItem> _listedMediaItem(
+    File file,
+    String platform,
+    String game,
+    String subAlbumPath,
+  ) async {
+    final capturedAt = _dateFromName(file.path) ?? (await file.stat()).modified;
+    final isVideo = _isVideo(file.path);
+    return MediaItem(
+      path: file.path,
+      platform: platform,
+      game: game,
+      capturedAt: capturedAt,
+      kind: isVideo ? MediaKind.video : MediaKind.image,
+      subAlbumPath: subAlbumPath,
+      thumbnailPath: thumbnailService.pathFor(file.path),
+    );
+  }
+
+  FolderListing _folderListing(
+    List<LibraryFolder> folders,
+    List<MediaItem> media,
+  ) {
+    final sortedFolders = List<LibraryFolder>.of(folders)
+      ..sort((left, right) => left.name.compareTo(right.name));
+    final sortedMedia = List<MediaItem>.of(media)
+      ..sort((left, right) => right.capturedAt.compareTo(left.capturedAt));
+    return FolderListing(
+      folders: List.unmodifiable(sortedFolders),
+      media: List.unmodifiable(sortedMedia),
     );
   }
 

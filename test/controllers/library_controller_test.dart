@@ -19,6 +19,35 @@ import 'package:gaming_memories/services/timeline_cache.dart';
 import 'package:path/path.dart' as p;
 
 void main() {
+  test('shows game media before preview preparation completes', () async {
+    final scanner = _ProgressiveFolderScanner();
+    final controller =
+        LibraryController(
+            configStore: const ConfigStore(filePath: 'unused'),
+            scanner: scanner,
+            providers: const [],
+          )
+          ..isInitializing = false
+          ..settings = const AppSettings(outputPath: '/library');
+
+    controller.showAlbum('PC', 'Game');
+    await scanner.prepareStarted.future;
+
+    expect(controller.visibleMedia, [scanner.media]);
+    expect(controller.isViewLoading, isTrue);
+
+    scanner.prepareRelease.complete();
+    for (
+      var attempt = 0;
+      attempt < 100 && controller.isViewLoading;
+      attempt++
+    ) {
+      await Future<void>.delayed(const Duration(milliseconds: 10));
+    }
+
+    expect(controller.isViewLoading, isFalse);
+  });
+
   test(
     'loads the timeline cache before its background scan completes',
     () async {
@@ -818,6 +847,43 @@ class _BlockingScanner extends LibraryScanner {
 
   @override
   Future<MediaLibrary> scan(String outputPath) => scanResult.future;
+}
+
+class _ProgressiveFolderScanner extends LibraryScanner {
+  final prepareStarted = Completer<void>();
+  final prepareRelease = Completer<void>();
+  final media = MediaItem(
+    path: '/library/PC/Game/2026-01-01_00-00-00.jpg',
+    platform: 'PC',
+    game: 'Game',
+    capturedAt: DateTime(2026, 1, 1),
+    kind: MediaKind.image,
+  );
+
+  @override
+  Future<FolderListing> folderContents(
+    String outputPath,
+    String platform,
+    String game, {
+    String subAlbumPath = '',
+    FolderListingCallback? onUpdate,
+  }) async {
+    final listing = FolderListing(folders: const [], media: [media]);
+    onUpdate?.call(listing);
+    return listing;
+  }
+
+  @override
+  Future<FolderListing> prepareFolderContents(
+    FolderListing listing, {
+    FolderListingCallback? onUpdate,
+    bool Function()? isCancelled,
+  }) async {
+    prepareStarted.complete();
+    await prepareRelease.future;
+    onUpdate?.call(listing);
+    return listing;
+  }
 }
 
 class _FakeFolderAccess implements FolderAccessService {

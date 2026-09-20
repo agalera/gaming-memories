@@ -356,9 +356,17 @@ class LibraryController extends ChangeNotifier {
         platform,
         game,
         subAlbumPath: subAlbumPath,
+        onUpdate: (listing) {
+          if (request == _folderRequest && !_disposed) {
+            folderListing = listing;
+            notifyListeners();
+          }
+        },
       );
       if (request == _folderRequest && !_disposed) {
         folderListing = listing;
+        notifyListeners();
+        await _prepareSelectedFolder(request, listing);
       }
     } catch (exception) {
       if (request == _folderRequest && !_disposed) {
@@ -367,6 +375,29 @@ class LibraryController extends ChangeNotifier {
     } finally {
       if (request == _folderRequest && !_disposed) {
         isViewLoading = false;
+        notifyListeners();
+      }
+    }
+  }
+
+  Future<void> _prepareSelectedFolder(
+    int request,
+    FolderListing listing,
+  ) async {
+    try {
+      await scanner.prepareFolderContents(
+        listing,
+        isCancelled: () => request != _folderRequest || _disposed,
+        onUpdate: (prepared) {
+          if (request == _folderRequest && !_disposed) {
+            folderListing = prepared;
+            notifyListeners();
+          }
+        },
+      );
+    } catch (exception) {
+      if (request == _folderRequest && !_disposed) {
+        _setError('Could not prepare media previews: $exception');
         notifyListeners();
       }
     }

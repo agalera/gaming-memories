@@ -105,8 +105,48 @@ void main() {
 
     expect(listing.folders.single.name, 'Boss fights');
     expect(listing.media.single.path, direct.path);
+    expect(listing.media.single.thumbnailPath, '${direct.path}.thumb.jpg');
+    expect(await File('${direct.path}.thumb.jpg').exists(), isFalse);
+    expect(await File('${nested.path}.thumb.jpg').exists(), isFalse);
+
+    final prepared = await const LibraryScanner().prepareFolderContents(
+      listing,
+    );
+
+    expect(prepared.media.single.thumbnailPath, '${direct.path}.thumb.jpg');
     expect(await File('${direct.path}.thumb.jpg').exists(), isTrue);
     expect(await File('${nested.path}.thumb.jpg').exists(), isFalse);
+  });
+
+  test('publishes large folders in discovery batches', () async {
+    final output = await Directory.systemTemp.createTemp('gaming-memories-');
+    addTearDown(() => output.delete(recursive: true));
+    final game = Directory(p.join(output.path, 'PC', 'Game'));
+    await game.create(recursive: true);
+    for (var index = 0; index < 33; index++) {
+      await File(
+        p.join(
+          game.path,
+          '2026-01-01_00-00-${index.toString().padLeft(2, '0')}.jpg',
+        ),
+      ).writeAsBytes(const []);
+    }
+    final updates = <FolderListing>[];
+
+    final listing = await const LibraryScanner().folderContents(
+      output.path,
+      'PC',
+      'Game',
+      onUpdate: updates.add,
+    );
+
+    expect(updates, hasLength(1));
+    expect(updates.single.media, hasLength(32));
+    expect(listing.media, hasLength(33));
+    expect(
+      await File('${listing.media.first.path}.thumb.jpg').exists(),
+      isFalse,
+    );
   });
 
   test('keeps sub-albums and scans video files', () async {
