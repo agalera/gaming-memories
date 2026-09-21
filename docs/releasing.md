@@ -137,7 +137,7 @@ system scripts, and libmpv pulls in FFmpeg, libass, fontconfig, freetype,
 harfbuzz, ALSA, PulseAudio, Wayland, X11, and libplacebo — an AppImage's worth
 of tree, and a shared library inside a `.deb` is an anti-pattern besides.
 
-FFmpeg, ExifTool, and the libmtp tools are optional, so the deb and rpm
+FFmpeg and the libmtp tools are optional, so the deb and rpm
 packages declare them as recommends and suggests. The Arch package format has
 no equivalent, so the README asks the user to install them.
 
@@ -165,7 +165,7 @@ the result with `spctl --assess` before it uploads anything, so an image that
 failed notarization never reaches the release.
 
 The release build runs **outside the App Sandbox**. The sandbox blocks the
-child processes the app depends on, so `exiftool`, `ffmpeg`, `ffprobe`, and the
+child processes the app depends on, so `ffmpeg`, `ffprobe`, and the
 libmtp tools cannot start from a sandboxed build. Dropping it is normal for
 Developer ID distribution and rules out the Mac App Store, which is not a
 target. Because security-scoped bookmarks are a sandbox facility, macOS uses

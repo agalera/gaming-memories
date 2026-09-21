@@ -3,7 +3,6 @@ import 'dart:io';
 import 'package:path/path.dart' as p;
 
 import '../models/app_settings.dart';
-import '../services/exiftool_service.dart';
 import '../services/library_scanner.dart';
 import '../services/media_importer.dart';
 import '../services/folder_access_service.dart';
@@ -13,13 +12,9 @@ import 'screenshot_provider.dart';
 class GuildWars2Provider
     with SingleFolderRequirement
     implements FolderBackedScreenshotProvider {
-  const GuildWars2Provider({
-    this.importer = const MediaImporter(),
-    this.dateReader = const ExifToolDateReader(),
-  });
+  const GuildWars2Provider({this.importer = const MediaImporter()});
 
   final MediaImporter importer;
-  final ExifDateReader dateReader;
 
   static const id = 'guild_wars_2';
   static const gameName = 'Guild Wars 2';
@@ -106,7 +101,6 @@ class GuildWars2Provider
       );
     }
 
-    await dateReader.ensureAvailable();
     onProgress?.call(
       const ProviderProgress(message: 'Scanning Guild Wars 2 screenshots…'),
     );
@@ -130,11 +124,9 @@ class GuildWars2Provider
           total: files.length,
         ),
       );
-      final capturedAt = await dateReader.fileModifiedAt(files[index]);
-      final copied = await importer.copyAtDate(
+      final copied = await importer.copyByModifiedDate(
         files[index],
         destination,
-        capturedAt,
       );
       if (copied) {
         imported++;

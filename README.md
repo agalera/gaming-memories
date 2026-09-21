@@ -43,11 +43,11 @@ platform and game, or open a capture for a closer look without leaving the app.
 | Provider | Collection source | Extra setup |
 | --- | --- | --- |
 | **Battle.net** | Installed Diablo IV and World of Warcraft capture folders | None |
-| **Guild Wars 2** | Game screenshot folder | ExifTool |
+| **Guild Wars 2** | Game screenshot folder | None |
 | **Hytale** | `Pictures/Hytale Screenshots` | None |
 | **Minecraft** | Launcher screenshot folders, including supported Linux Flatpak layouts | None |
 | **Nintendo Switch 2** | Copied album folder on every platform, or direct USB on Linux | libmtp tools for USB |
-| **PlayStation 4** | Folder exported from the console | ExifTool |
+| **PlayStation 4** | Folder exported from the console | None |
 | **PlayStation 5** | Folder exported from the console | FFprobe recommended for clip dates |
 | **Steam** | Local screenshots and the optional online gallery | Steam Web API key; SteamID64 for online imports |
 
@@ -103,12 +103,12 @@ Debian 13, Fedora 40, and a current Arch all meet both. The app lands in
 `/usr/lib/gaming-memories` with a `gaming-memories` command in `/usr/bin` and
 an entry in the desktop menu.
 
-The deb and rpm packages recommend `ffmpeg` and ExifTool and suggest the libmtp
+The deb and rpm packages recommend `ffmpeg` and suggest the libmtp
 tools. See [Optional Tools](#optional-tools) for what each one adds. The Arch
 package format cannot carry optional dependencies, so install them yourself:
 
 ```sh
-sudo pacman -S ffmpeg perl-image-exiftool libmtp
+sudo pacman -S ffmpeg libmtp
 ```
 
 ## Build From Source
@@ -153,7 +153,6 @@ piece of metadata or collection behavior.
 | --- | --- | --- |
 | **FFmpeg** | Generating video thumbnails | Existing `.thumb.jpg` sidecars are used when available |
 | **FFprobe** | Reading video duration and the start time of PlayStation 5 clips | Videos still play; PlayStation 5 clips use the end time in their filename |
-| **ExifTool** | Reading Guild Wars 2 and PlayStation 4 screenshot dates | Those providers cannot collect screenshots correctly |
 | **libmtp** | Collecting directly from a Nintendo Switch 2 over USB on Linux | Import a copied album folder instead |
 
 For direct Nintendo Switch 2 collection, install the `mtp-folders`,

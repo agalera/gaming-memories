@@ -604,7 +604,6 @@ class _SettingsPageState extends State<SettingsPage> {
                   buttonLabel: _playStation4Enabled
                       ? _folderButtonLabel(FolderGrantIds.playStation4)
                       : 'Select Folder',
-                  requirement: 'Requires ExifTool to read screenshot dates.',
                   onTap: () => _toggleProvider(_SettingsProvider.playStation4),
                   onEnabled: (value) => unawaited(
                     _setProviderEnabled(_SettingsProvider.playStation4, value),
@@ -940,13 +939,6 @@ class _SettingsPageState extends State<SettingsPage> {
                               ),
                             ),
                           ],
-                          const SizedBox(height: 10),
-                          Text(
-                            'Requires ExifTool.',
-                            style: context.theme.typography.body.xs.copyWith(
-                              color: context.theme.colors.mutedForeground,
-                            ),
-                          ),
                         ],
                       ],
                     ),
@@ -2867,7 +2859,7 @@ class _PlayStationProviderCard extends StatelessWidget {
     required this.error,
     required this.readOnly,
     required this.buttonLabel,
-    required this.requirement,
+    this.requirement,
     required this.onTap,
     required this.onEnabled,
     required this.onBrowse,
@@ -2885,7 +2877,7 @@ class _PlayStationProviderCard extends StatelessWidget {
   final String? error;
   final bool readOnly;
   final String buttonLabel;
-  final String requirement;
+  final String? requirement;
   final VoidCallback onTap;
   final ValueChanged<bool> onEnabled;
   final VoidCallback onBrowse;
@@ -2923,7 +2915,9 @@ class _PlayStationProviderCard extends StatelessWidget {
               ),
               const SizedBox(height: 10),
               Text(
-                'Select the folder copied from your console. $requirement',
+                requirement == null
+                    ? 'Select the folder copied from your console.'
+                    : 'Select the folder copied from your console. $requirement',
                 style: context.theme.typography.body.xs.copyWith(
                   color: context.theme.colors.mutedForeground,
                 ),

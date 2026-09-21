@@ -1,14 +1,14 @@
 ---
 id: TQ-0028
 title: Remove the ExifTool binary dependency
-status: todo
+status: done
 priority: normal
 labels:
   - refactor
   - component/backend
   - component/frontend
 created: 2026-09-20T14:24:15+02:00
-updated: 2026-09-20T17:12:35+02:00
+updated: 2026-09-21T21:29:24+02:00
 ---
 
 # Removing the ExifTool dependency
@@ -106,3 +106,12 @@ If a provider ever needs a true JPEG capture date, `parseExifToolDate` already p
   Guild Wars 2: the conclusion is exactly right. Those JPEGs carry NO EXIF block at all - exiftool -G reports only [File] tags (modify, access, inode change). mtime is the only date that exists, so no EXIF library could ever help and the swap to FileStat.modified is strictly equivalent.
 
   PlayStation 4: needs a caveat. Those JPEGs DO carry a real console-written DateTimeOriginal and CreateDate, and on every sampled file it matches the capture time the filename records. The gallery shows why that matters: all six PS4 samples have mtime 2024:10:14 00:05:48 - one bulk copy - while DateTimeOriginal still holds the true 2021 capture time. FileModifyDate is a strictly worse source than what is already inside the file. The Go tool never writes metadata (no WriteMetadata calls), so that DateTimeOriginal is the console's own. Filed as a follow-up.
+- 2026-09-21T21:29:24+02:00 — Implemented. Deleted lib/services/exiftool_service.dart. Guild Wars 2 and PlayStation 4 now call importer.copyByModifiedDate, so no ensureAvailable() and no dateReader field remain. Dropped the PS4 .jpg try/catch + skipped++ branch and its app_log import, which existed only for a missing binary.
+
+  Scope was wider than the body listed. rg found four references the body did not: packaging/linux/nfpm.yaml (libimage-exiftool-perl in deb recommends, perl-Image-ExifTool in rpm recommends), docs/releasing.md (the optional-tools line and the macOS sandbox child-process list), site/docs.html (the optional-tools table row), and a comment in lib/services/folder_access_service.dart. All removed. rg -i exiftool now returns nothing outside .tasks.
+
+  Settings page: _ConsoleProviderCard.requirement became String? with a null branch in the helper text, because PlayStation 4 no longer has a requirement note and PlayStation 5 still shows its FFprobe one. The Guild Wars 2 'Requires ExifTool.' Text widget and its SizedBox are gone.
+
+  Tests: both fakes removed and the parseExifToolDate cases with them. Fixtures now set a real mtime with setLastModified. The PS4 'skips a screenshot whose ExifTool date cannot be read' test was replaced by a duplicate-import test, since an mtime read cannot fail that way.
+
+  make check passes: format-check, analyze, 185 tests.

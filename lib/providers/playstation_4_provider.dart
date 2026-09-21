@@ -3,9 +3,7 @@ import 'dart:io';
 import 'package:path/path.dart' as p;
 
 import '../models/app_settings.dart';
-import '../services/exiftool_service.dart';
 import '../services/folder_access_service.dart';
-import '../services/app_log.dart';
 import '../services/library_scanner.dart';
 import '../services/media_importer.dart';
 import 'playstation_media.dart';
@@ -14,13 +12,9 @@ import 'screenshot_provider.dart';
 class PlayStation4Provider
     with SingleFolderRequirement
     implements FolderBackedScreenshotProvider {
-  const PlayStation4Provider({
-    this.importer = const MediaImporter(),
-    this.dateReader = const ExifToolDateReader(),
-  });
+  const PlayStation4Provider({this.importer = const MediaImporter()});
 
   final MediaImporter importer;
-  final ExifDateReader dateReader;
 
   static const id = 'ps4';
   static const platform = 'PlayStation 4';
@@ -84,7 +78,6 @@ class PlayStation4Provider
       );
     }
 
-    await dateReader.ensureAvailable();
     onProgress?.call(
       const ProviderProgress(message: 'Scanning PlayStation 4 media…'),
     );
@@ -116,21 +109,7 @@ class PlayStation4Provider
       final extension = p.extension(file.path).toLowerCase();
       bool copied;
       if (extension == '.jpg') {
-        try {
-          copied = await importer.copyAtDate(
-            file,
-            destination,
-            await dateReader.fileModifiedAt(file),
-          );
-        } on Object catch (exception) {
-          diagnosticLog.warning(
-            'PlayStation 4 skipped "${file.path}": its EXIF date could not be read.',
-            category: 'provider',
-            error: exception,
-          );
-          skipped++;
-          continue;
-        }
+        copied = await importer.copyByModifiedDate(file, destination);
       } else {
         final timestamp = parsePlayStationTimestamp(
           p.basenameWithoutExtension(file.path),
