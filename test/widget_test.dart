@@ -407,6 +407,87 @@ void main() {
     await tester.pump(const Duration(milliseconds: 200));
   });
 
+  testWidgets('adds a game to the open games list as it arrives', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(1400, 800);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    final controller =
+        LibraryController(
+            configStore: const ConfigStore(filePath: 'unused'),
+            scanner: const LibraryScanner(),
+            providers: const [],
+          )
+          ..isInitializing = false
+          ..settings = const AppSettings(outputPath: '/library')
+          ..folderTree = const [
+            LibraryFolder(
+              name: 'PC',
+              path: '/library/PC',
+              children: [
+                LibraryFolder(
+                  name: 'Game',
+                  path: '/library/PC/Game',
+                  relativePath: 'Game',
+                ),
+              ],
+            ),
+          ];
+    controller.showPlatform('PC');
+
+    await tester.pumpWidget(GamingMemoriesApp(controller: controller));
+    await tester.pump();
+
+    const arriving = ValueKey('game-card-/library/PC/New Game');
+    expect(
+      find.byKey(const ValueKey('game-card-/library/PC/Game')),
+      findsOneWidget,
+    );
+    expect(find.byKey(arriving), findsNothing);
+
+    // What the watcher queue does when a game folder lands.
+    controller
+      ..folderTree = const [
+        LibraryFolder(
+          name: 'PC',
+          path: '/library/PC',
+          children: [
+            LibraryFolder(
+              name: 'Game',
+              path: '/library/PC/Game',
+              relativePath: 'Game',
+            ),
+            LibraryFolder(
+              name: 'New Game',
+              path: '/library/PC/New Game',
+              relativePath: 'New Game',
+            ),
+          ],
+        ),
+      ]
+      ..notifyListeners();
+    await tester.pump();
+
+    expect(find.byKey(arriving), findsOneWidget);
+    expect(find.text('New Game'), findsWidgets);
+
+    controller
+      ..folderTree = const [LibraryFolder(name: 'PC', path: '/library/PC')]
+      ..notifyListeners();
+    await tester.pump();
+
+    expect(find.byKey(arriving), findsNothing);
+    expect(
+      find.byKey(const ValueKey('game-card-/library/PC/Game')),
+      findsNothing,
+    );
+
+    await tester.pumpWidget(const SizedBox.shrink());
+  });
+
   testWidgets('selects a sub-album and marks its video', (tester) async {
     const path = '/library/PlayStation 5/Game/Other/clip.webm';
     final video = MediaItem(

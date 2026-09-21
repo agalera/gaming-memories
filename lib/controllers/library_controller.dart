@@ -268,6 +268,13 @@ class LibraryController extends ChangeNotifier {
   bool _timelineCacheDirty = false;
   LibraryChangeSummary? _lastLibraryChange;
   int _folderRequest = 0;
+
+  /// What the watcher queue has done to the visible listing since it was last
+  /// opened. A folder load and its preview pass publish the snapshot they
+  /// started from, so these are replayed over it to keep live arrivals.
+  final Map<String, MediaItem> _liveListingMedia = {};
+  final Map<String, LibraryFolder> _liveListingFolders = {};
+  final List<String> _liveListingRemovals = [];
   bool _disposed = false;
 
   List<AppNotification> get notifications => List.unmodifiable(_notifications);
@@ -583,6 +590,9 @@ class LibraryController extends ChangeNotifier {
     final platform = selectedPlatform!;
     final game = selectedGame!;
     final subAlbumPath = selectedSubAlbumPath ?? '';
+    // This load reads the folder as it is now, so only what lands from here on
+    // has to be replayed over it.
+    _clearLiveListingChanges();
     isViewLoading = true;
     notifyListeners();
     try {
@@ -591,16 +601,10 @@ class LibraryController extends ChangeNotifier {
         platform,
         game,
         subAlbumPath: subAlbumPath,
-        onUpdate: (listing) {
-          if (request == _folderRequest && !_disposed) {
-            folderListing = listing;
-            notifyListeners();
-          }
-        },
+        onUpdate: (listing) => _publishLoadedListing(request, listing),
       );
       if (request == _folderRequest && !_disposed) {
-        folderListing = listing;
-        notifyListeners();
+        _publishLoadedListing(request, listing);
         await _prepareSelectedFolder(request, listing);
       }
     } catch (exception, stackTrace) {
@@ -623,12 +627,7 @@ class LibraryController extends ChangeNotifier {
       await scanner.prepareFolderContents(
         listing,
         isCancelled: () => request != _folderRequest || _disposed,
-        onUpdate: (prepared) {
-          if (request == _folderRequest && !_disposed) {
-            folderListing = prepared;
-            notifyListeners();
-          }
-        },
+        onUpdate: (prepared) => _publishLoadedListing(request, prepared),
       );
     } catch (exception, stackTrace) {
       if (request == _folderRequest && !_disposed) {
@@ -884,6 +883,7 @@ class LibraryController extends ChangeNotifier {
     selectedPlatform = platform;
     selectedGame = game;
     selectedSubAlbumPath = null;
+    _clearLiveListingChanges();
     folderListing = _fallbackGameListing(platform, game);
     notifyListeners();
     unawaited(_loadSelectedFolder());
@@ -895,6 +895,7 @@ class LibraryController extends ChangeNotifier {
     selectedPlatform = platform;
     selectedGame = game;
     selectedSubAlbumPath = subAlbumPath;
+    _clearLiveListingChanges();
     folderListing = _fallbackSubAlbumListing(platform, game, subAlbumPath);
     notifyListeners();
     unawaited(_loadSelectedFolder());
@@ -908,6 +909,7 @@ class LibraryController extends ChangeNotifier {
     selectedPlatform = platform;
     selectedGame = null;
     selectedSubAlbumPath = null;
+    _clearLiveListingChanges();
     folderListing = const FolderListing.empty();
     notifyListeners();
   }
@@ -1634,6 +1636,7 @@ class LibraryController extends ChangeNotifier {
     folderTree = results[0] as List<LibraryFolder>;
     timelineMedia = results[1] as List<MediaItem>;
     library = const MediaLibrary.empty();
+    _clearLiveListingChanges();
     folderListing = const FolderListing.empty();
     showTimeline();
   }
@@ -2356,11 +2359,69 @@ class LibraryController extends ChangeNotifier {
     return p.join(root, platform, game, selectedSubAlbumPath ?? '');
   }
 
+  /// Publishes a listing a folder load produced, with the live edits that
+  /// landed while it was running replayed over it.
+  void _publishLoadedListing(int request, FolderListing listing) {
+    if (request != _folderRequest || _disposed) {
+      return;
+    }
+    folderListing = _withLiveListingChanges(listing);
+    notifyListeners();
+  }
+
+  FolderListing _withLiveListingChanges(FolderListing listing) {
+    if (_liveListingMedia.isEmpty &&
+        _liveListingFolders.isEmpty &&
+        _liveListingRemovals.isEmpty) {
+      return listing;
+    }
+
+    final media = List<MediaItem>.of(listing.media);
+    for (final item in _liveListingMedia.values) {
+      final index = media.indexWhere(
+        (candidate) => _samePath(candidate.path, item.path),
+      );
+      if (index < 0) {
+        media.add(item);
+      } else {
+        media[index] = item;
+      }
+    }
+    final folders = List<LibraryFolder>.of(listing.folders);
+    for (final folder in _liveListingFolders.values) {
+      if (!folders.any((candidate) => _samePath(candidate.path, folder.path))) {
+        folders.add(folder);
+      }
+    }
+    bool removed(String path) =>
+        _liveListingRemovals.any((gone) => _sameOrWithinPath(gone, path));
+    media
+      ..removeWhere((item) => removed(item.path))
+      ..sort((left, right) => right.capturedAt.compareTo(left.capturedAt));
+    folders
+      ..removeWhere((folder) => removed(folder.path))
+      ..sort((left, right) => left.name.compareTo(right.name));
+    return FolderListing(
+      folders: List.unmodifiable(folders),
+      media: List.unmodifiable(media),
+    );
+  }
+
+  /// Starts the visible listing from scratch, so another album's live edits are
+  /// never replayed over it.
+  void _clearLiveListingChanges() {
+    _liveListingMedia.clear();
+    _liveListingFolders.clear();
+    _liveListingRemovals.clear();
+  }
+
   bool _upsertVisibleMedia(String root, MediaItem item) {
     final directory = _visibleLibraryDirectory(root);
     if (directory == null || !_samePath(directory, p.dirname(item.path))) {
       return false;
     }
+    _liveListingMedia[_pathKey(item.path)] = item;
+    _liveListingRemovals.removeWhere((gone) => _samePath(gone, item.path));
     final media = List<MediaItem>.of(folderListing.media);
     final index = media.indexWhere(
       (candidate) => _samePath(candidate.path, item.path),
@@ -2381,21 +2442,24 @@ class LibraryController extends ChangeNotifier {
     if (directory == null || !_samePath(directory, p.dirname(path))) {
       return false;
     }
-    if (folderListing.folders.any((folder) => _samePath(folder.path, path))) {
-      return false;
-    }
     final location = _libraryLocationForDirectory(root, path);
     if (location == null) {
       return false;
     }
+    final folder = LibraryFolder(
+      name: p.basename(path),
+      path: path,
+      relativePath: location.subAlbumPath,
+    );
+    _liveListingFolders[_pathKey(path)] = folder;
+    _liveListingRemovals.removeWhere((gone) => _samePath(gone, path));
+    if (folderListing.folders.any(
+      (candidate) => _samePath(candidate.path, path),
+    )) {
+      return false;
+    }
     final folders = List<LibraryFolder>.of(folderListing.folders)
-      ..add(
-        LibraryFolder(
-          name: p.basename(path),
-          path: path,
-          relativePath: location.subAlbumPath,
-        ),
-      )
+      ..add(folder)
       ..sort((left, right) => left.name.compareTo(right.name));
     folderListing = FolderListing(folders: folders, media: folderListing.media);
     isViewLoading = false;
@@ -2403,6 +2467,13 @@ class LibraryController extends ChangeNotifier {
   }
 
   bool _removeVisiblePath(String path) {
+    _liveListingRemovals.add(path);
+    _liveListingMedia.removeWhere(
+      (_, item) => _sameOrWithinPath(path, item.path),
+    );
+    _liveListingFolders.removeWhere(
+      (_, folder) => _sameOrWithinPath(path, folder.path),
+    );
     final folders = folderListing.folders
         .where((folder) => !_sameOrWithinPath(path, folder.path))
         .toList(growable: false);

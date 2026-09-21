@@ -532,6 +532,254 @@ void main() {
     );
   });
 
+  test('takes in a game folder that arrives whole', () async {
+    final directory = await Directory.systemTemp.createTemp(
+      'gaming-memories-controller-',
+    );
+    final library = Directory(p.join(directory.path, 'library'));
+    await Directory(p.join(library.path, 'PC')).create(recursive: true);
+    final staging = Directory(p.join(directory.path, 'staging', 'New Game'));
+    await staging.create(recursive: true);
+    final bytes = image_lib.encodePng(image_lib.Image(width: 1, height: 1));
+    await File(p.join(staging.path, '2026-01-02_00-00-00.png'))
+        .writeAsBytes(bytes);
+    addTearDown(() => directory.delete(recursive: true));
+    final store = ConfigStore(
+      filePath: p.join(directory.path, 'settings.json'),
+    );
+    await store.save(AppSettings(outputPath: library.path));
+    final controller = LibraryController(
+      configStore: store,
+      scanner: const LibraryScanner(),
+      providers: const [],
+    );
+    addTearDown(controller.dispose);
+
+    await controller.initialize();
+    await _waitForController(() => !controller.isTimelineRefreshing);
+    controller.showPlatform('PC');
+    expect(controller.gameFolders, isEmpty);
+    await Future<void>.delayed(const Duration(milliseconds: 300));
+
+    // The folder is built elsewhere and moved in, so nothing inside it ever
+    // gets an event of its own.
+    final game = Directory(p.join(library.path, 'PC', 'New Game'));
+    await staging.rename(game.path);
+
+    await _waitForController(
+      () =>
+          controller.gameFolders.any((folder) => folder.name == 'New Game') &&
+          controller.timelineMedia.length == 1,
+    );
+
+    expect(
+      controller.timelineMedia.single.path,
+      p.join(game.path, '2026-01-02_00-00-00.png'),
+    );
+    expect(controller.timelineMedia.single.game, 'New Game');
+  });
+
+  test('shows a watched game and platform without a full scan', () async {
+    final directory = await Directory.systemTemp.createTemp(
+      'gaming-memories-controller-',
+    );
+    final library = Directory(p.join(directory.path, 'library'));
+    await Directory(p.join(library.path, 'PC', 'Game')).create(recursive: true);
+    addTearDown(() => directory.delete(recursive: true));
+    final store = ConfigStore(
+      filePath: p.join(directory.path, 'settings.json'),
+    );
+    await store.save(AppSettings(outputPath: library.path));
+    final scanner = _WatchScanner(library.path);
+    final watcher = _FakeLibraryWatcher();
+    final controller = LibraryController(
+      configStore: store,
+      scanner: scanner,
+      libraryWatcher: watcher,
+      providers: const [],
+    );
+    addTearDown(controller.dispose);
+
+    await controller.initialize();
+    await _waitForController(
+      () => !controller.isTimelineRefreshing && watcher.paths.isNotEmpty,
+    );
+    controller.showPlatform('PC');
+    expect(controller.gameFolders.map((folder) => folder.name), ['Game']);
+
+    final newGame = Directory(p.join(library.path, 'PC', 'New Game'));
+    await newGame.create();
+    watcher.add(
+      LibraryChange(
+        kind: LibraryChangeKind.create,
+        path: newGame.path,
+        isDirectory: true,
+      ),
+    );
+    await _waitForController(
+      () => controller.gameFolders.any((folder) => folder.name == 'New Game'),
+    );
+
+    expect(controller.view, LibraryView.platform);
+    expect(controller.gameFolders.map((folder) => folder.name), [
+      'Game',
+      'New Game',
+    ]);
+
+    final newPlatform = Directory(p.join(library.path, 'PS5', 'Other Game'));
+    await newPlatform.create(recursive: true);
+    watcher.add(
+      LibraryChange(
+        kind: LibraryChangeKind.create,
+        path: newPlatform.path,
+        isDirectory: true,
+      ),
+    );
+    await _waitForController(() => controller.platformFolders.length == 2);
+
+    expect(controller.platformFolders.map((folder) => folder.name), [
+      'PC',
+      'PS5',
+    ]);
+
+    await newGame.delete(recursive: true);
+    watcher.add(
+      LibraryChange(
+        kind: LibraryChangeKind.delete,
+        path: newGame.path,
+        isDirectory: true,
+      ),
+    );
+    await _waitForController(
+      () => !controller.gameFolders.any((folder) => folder.name == 'New Game'),
+    );
+
+    expect(controller.gameFolders.map((folder) => folder.name), ['Game']);
+    expect(scanner.scanCalls, 1);
+  });
+
+  test('keeps live album changes through the preview pass', () async {
+    final directory = await Directory.systemTemp.createTemp(
+      'gaming-memories-controller-',
+    );
+    final library = Directory(p.join(directory.path, 'library'));
+    final game = Directory(p.join(library.path, 'PC', 'Game'));
+    await game.create(recursive: true);
+    final bytes = image_lib.encodePng(image_lib.Image(width: 1, height: 1));
+    final opened = File(p.join(game.path, '2026-01-01_00-00-00.png'));
+    await opened.writeAsBytes(bytes);
+    addTearDown(() => directory.delete(recursive: true));
+    final store = ConfigStore(
+      filePath: p.join(directory.path, 'settings.json'),
+    );
+    await store.save(AppSettings(outputPath: library.path));
+    final scanner = _SlowPreviewScanner();
+    addTearDown(() {
+      if (!scanner.release.isCompleted) {
+        scanner.release.complete();
+      }
+    });
+    final watcher = _FakeLibraryWatcher();
+    final controller = LibraryController(
+      configStore: store,
+      scanner: scanner,
+      libraryWatcher: watcher,
+      providers: const [],
+    );
+    addTearDown(controller.dispose);
+
+    await controller.initialize();
+    await _waitForController(
+      () => !controller.isTimelineRefreshing && watcher.paths.isNotEmpty,
+    );
+
+    controller.showAlbum('PC', 'Game');
+    await scanner.preparing.future;
+
+    final arriving = File(p.join(game.path, '2026-01-01_00-00-05.png'));
+    await arriving.writeAsBytes(bytes);
+    watcher.add(
+      LibraryChange(
+        kind: LibraryChangeKind.create,
+        path: arriving.path,
+        isDirectory: false,
+      ),
+    );
+    await _waitForController(() => controller.visibleMedia.length == 2);
+
+    scanner.release.complete();
+    await _waitForController(
+      () =>
+          !controller.isViewLoading &&
+          controller.pendingLibraryChangeCount == 0,
+    );
+
+    expect(controller.visibleMedia.map((item) => item.path), [
+      arriving.path,
+      opened.path,
+    ]);
+    expect(controller.visibleMedia.first.thumbnailPath, isNotNull);
+  });
+
+  test('keeps a live album removal through the preview pass', () async {
+    final directory = await Directory.systemTemp.createTemp(
+      'gaming-memories-controller-',
+    );
+    final library = Directory(p.join(directory.path, 'library'));
+    final game = Directory(p.join(library.path, 'PC', 'Game'));
+    await game.create(recursive: true);
+    final bytes = image_lib.encodePng(image_lib.Image(width: 1, height: 1));
+    final removed = File(p.join(game.path, '2026-01-01_00-00-00.png'));
+    await removed.writeAsBytes(bytes);
+    addTearDown(() => directory.delete(recursive: true));
+    final store = ConfigStore(
+      filePath: p.join(directory.path, 'settings.json'),
+    );
+    await store.save(AppSettings(outputPath: library.path));
+    final scanner = _SlowPreviewScanner();
+    addTearDown(() {
+      if (!scanner.release.isCompleted) {
+        scanner.release.complete();
+      }
+    });
+    final watcher = _FakeLibraryWatcher();
+    final controller = LibraryController(
+      configStore: store,
+      scanner: scanner,
+      libraryWatcher: watcher,
+      providers: const [],
+    );
+    addTearDown(controller.dispose);
+
+    await controller.initialize();
+    await _waitForController(
+      () => !controller.isTimelineRefreshing && watcher.paths.isNotEmpty,
+    );
+
+    controller.showAlbum('PC', 'Game');
+    await scanner.preparing.future;
+
+    await removed.delete();
+    watcher.add(
+      LibraryChange(
+        kind: LibraryChangeKind.delete,
+        path: removed.path,
+        isDirectory: false,
+      ),
+    );
+    await _waitForController(() => controller.visibleMedia.isEmpty);
+
+    scanner.release.complete();
+    await _waitForController(
+      () =>
+          !controller.isViewLoading &&
+          controller.pendingLibraryChangeCount == 0,
+    );
+
+    expect(controller.visibleMedia, isEmpty);
+    expect(controller.timelineMedia, isEmpty);
+  });
+
   test('reports watched changes in the library activity', () async {
     final directory = await Directory.systemTemp.createTemp(
       'gaming-memories-controller-',
@@ -1487,6 +1735,31 @@ Future<void> _waitForCache(
     await Future<void>.delayed(const Duration(milliseconds: 10));
   }
   fail('The expected timeline cache state did not arrive.');
+}
+
+/// Holds an album's preview pass open so a watched change lands mid-load.
+class _SlowPreviewScanner extends LibraryScanner {
+  final preparing = Completer<void>();
+  final release = Completer<void>();
+
+  @override
+  Future<FolderListing> prepareFolderContents(
+    FolderListing listing, {
+    FolderListingCallback? onUpdate,
+    bool Function()? isCancelled,
+  }) async {
+    if (!preparing.isCompleted) {
+      preparing.complete();
+    }
+    await release.future;
+    final prepared = await super.prepareFolderContents(
+      listing,
+      onUpdate: onUpdate,
+      isCancelled: isCancelled,
+    );
+    onUpdate?.call(prepared);
+    return prepared;
+  }
 }
 
 class _FakeLibraryWatcher implements LibraryWatcher {

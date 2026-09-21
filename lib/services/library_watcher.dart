@@ -46,7 +46,14 @@ class NativeLibraryWatcher implements LibraryWatcher {
       }
     }
 
-    Future<void> addTree(String path) async {
+    /// Watches [path] and every folder under it.
+    ///
+    /// A folder that arrives with files already in it gets no event for them:
+    /// the watch starts after they were written. [announce] reports what the
+    /// walk finds, so a folder moved or copied in whole is not missed. The
+    /// library's own folders are already known at startup, so the first walk
+    /// stays quiet.
+    Future<void> addTree(String path, {bool announce = false}) async {
       final normalized = _normalize(path);
       if (closed || subscriptions.containsKey(normalized)) {
         return;
@@ -91,14 +98,14 @@ class NativeLibraryWatcher implements LibraryWatcher {
                 ),
               );
 
-              if (event is FileSystemCreateEvent && event.isDirectory) {
-                unawaited(addTree(source));
+              if (event is FileSystemCreateEvent && knownDirectory) {
+                unawaited(addTree(source, announce: true));
               } else if (event is FileSystemMoveEvent) {
                 if (knownDirectory) {
                   unawaited(removeTree(source));
                 }
-                if (event.isDirectory && destination != null) {
-                  unawaited(addTree(destination));
+                if (knownDirectory && destination != null) {
+                  unawaited(addTree(destination, announce: true));
                 }
               } else if (event is FileSystemDeleteEvent && knownDirectory) {
                 unawaited(removeTree(source));
@@ -118,8 +125,23 @@ class NativeLibraryWatcher implements LibraryWatcher {
 
       try {
         await for (final entity in directory.list(followLinks: false)) {
-          if (entity is Directory) {
-            await addTree(entity.path);
+          if (closed) {
+            return;
+          }
+
+          final entityPath = _normalize(entity.path);
+          final entityIsDirectory = entity is Directory;
+          if (announce) {
+            output.add(
+              LibraryChange(
+                kind: LibraryChangeKind.create,
+                path: entityPath,
+                isDirectory: entityIsDirectory,
+              ),
+            );
+          }
+          if (entityIsDirectory) {
+            await addTree(entityPath, announce: announce);
           }
         }
       } on FileSystemException catch (error, stackTrace) {
