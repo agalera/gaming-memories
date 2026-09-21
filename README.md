@@ -12,6 +12,10 @@ platform and game albums.
 [![Built with Flutter](https://img.shields.io/badge/built%20with-Flutter-02569B?logo=flutter&logoColor=white)](https://flutter.dev)
 ![Platforms](https://img.shields.io/badge/platforms-Linux%20%7C%20macOS%20%7C%20Windows-F97316)
 
+[Website](https://fmartingr.github.io/gaming-memories/) ·
+[Downloads](https://github.com/fmartingr/gaming-memories/releases) ·
+[Documentation](https://fmartingr.github.io/gaming-memories/docs.html)
+
 </div>
 
 ## About

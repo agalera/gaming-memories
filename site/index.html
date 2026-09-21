@@ -1,0 +1,170 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="theme-color" content="#f7f7f4">
+    <meta name="description" content="Gaming Memories collects game screenshots and clips into one local desktop library.">
+    <meta property="og:title" content="Gaming Memories">
+    <meta property="og:description" content="One calm place for every game capture.">
+    <meta property="og:type" content="website">
+    <meta property="og:image" content="assets/og-card.png">
+    <title>Gaming Memories — One place for every game capture</title>
+    <link rel="icon" href="assets/favicon.png" type="image/png">
+    <link rel="stylesheet" href="styles.css">
+    <script src="app.js" defer></script>
+  </head>
+  <body>
+    <a class="skip-link" href="#main">Skip to content</a>
+
+    <header class="site-header">
+      <nav class="nav shell" aria-label="Main navigation">
+        <a class="brand" href="index.html" aria-label="Gaming Memories home">
+          <img src="assets/logo.webp" alt="" width="38" height="38">
+          <span>Gaming Memories</span>
+        </a>
+        <button class="nav-toggle" type="button" aria-expanded="false" aria-controls="nav-links">
+          <span class="sr-only">Open navigation</span><span></span><span></span>
+        </button>
+        <div class="nav-links" id="nav-links">
+          <a href="#features">Features</a>
+          <a href="#sources">Sources</a>
+          <a href="docs.html">Documentation</a>
+          <a href="https://github.com/fmartingr/gaming-memories">GitHub</a>
+          <a class="nav-download" data-smart-download href="https://github.com/fmartingr/gaming-memories/releases/latest">Download</a>
+        </div>
+      </nav>
+    </header>
+
+    <main id="main">
+      <section class="hero shell">
+        <div class="hero-copy" data-reveal>
+          <p class="hero-badge"><span></span> Free and open source</p>
+          <h1>Your game captures.<br><em>One calm place.</em></h1>
+          <p>Collect screenshots and clips from your games and consoles. Browse every memory in one private desktop library.</p>
+          <div class="hero-actions">
+            <a class="button button-primary" data-smart-download href="https://github.com/fmartingr/gaming-memories/releases/latest"><span data-download-label>Download latest</span><span aria-hidden="true">↓</span></a>
+            <a class="button button-secondary" href="docs.html">Read the docs</a>
+          </div>
+          <small>For Windows, macOS, and Linux</small>
+        </div>
+
+        <figure class="product-figure" data-reveal>
+          <div class="app-window" role="img" aria-label="Gaming Memories timeline with sample media">
+            <div class="window-bar">
+              <div class="window-dots" aria-hidden="true"><span></span><span></span><span></span></div>
+              <span>Gaming Memories</span>
+              <span></span>
+            </div>
+            <div class="app-layout">
+              <aside class="app-sidebar" aria-hidden="true">
+                <div class="app-nav-item active">◷ <span>Timeline</span></div>
+                <p>PLATFORMS</p>
+                <div class="app-nav-item">⌄ <span>PC</span></div>
+                <div class="app-nav-child">Diablo IV</div>
+                <div class="app-nav-child">Hytale</div>
+                <div class="app-nav-child">Minecraft</div>
+                <div class="app-nav-item">⌄ <span>Steam</span></div>
+                <div class="app-nav-child">Guild Wars 2</div>
+                <div class="app-nav-child">No Man’s Sky</div>
+                <div class="app-nav-item">› <span>PlayStation 5</span></div>
+                <div class="app-sidebar-footer"><span class="status-dot"></span>Up to date</div>
+              </aside>
+              <div class="app-main">
+                <div class="app-toolbar"><div><span>Library</span> / <b>Timeline</b></div><div>▦ &nbsp; ⇅ &nbsp; •••</div></div>
+                <div class="capture-grid">
+                  <article class="capture-card"><img src="assets/capture-diablo.webp" alt="Red fantasy mountains under a bright moon"><div><b>Diablo IV</b><span>PC · 20 Sep</span></div></article>
+                  <article class="capture-card"><img src="assets/capture-hytale.webp" alt="Snow peaks under a warm sky"><div><b>Hytale</b><span>PC · 18 Sep</span></div></article>
+                  <article class="capture-card"><img src="assets/capture-minecraft.webp" alt="A green block world under a blue sky"><div><b>Minecraft</b><span>PC · 16 Sep</span></div></article>
+                  <article class="capture-card"><img src="assets/capture-gw2.webp" alt="Blue mountains and a pale moon"><div><b>Guild Wars 2</b><span>Steam · 14 Sep</span></div></article>
+                  <article class="capture-card video-card"><img src="assets/capture-space.webp" alt="A ringed red planet above an alien ridge"><i>▶</i><div><b>No Man’s Sky</b><span>Steam · 12 Sep</span></div></article>
+                  <article class="capture-card"><img src="assets/capture-horizon.webp" alt="A green valley with mountains at sunset"><div><b>Horizon Forbidden West</b><span>PS5 · 10 Sep</span></div></article>
+                </div>
+              </div>
+            </div>
+          </div>
+          <figcaption>Interface preview with sample media</figcaption>
+        </figure>
+      </section>
+
+      <section class="features shell" id="features">
+        <div class="section-heading" data-reveal>
+          <p>Simple on purpose</p>
+          <h2>Your captures are the focus.</h2>
+        </div>
+        <div class="feature-grid">
+          <article class="feature-card" data-reveal>
+            <div class="feature-icon">◷</div>
+            <h3>One timeline</h3>
+            <p>See every capture by date. Keep each game and platform label close.</p>
+            <div class="mini-timeline" aria-hidden="true">
+              <div><img src="assets/capture-hytale.webp" alt=""><span><b>Hytale</b><small>18 Sep</small></span></div>
+              <div><img src="assets/capture-space.webp" alt=""><span><b>No Man’s Sky</b><small>12 Sep</small></span></div>
+            </div>
+          </article>
+          <article class="feature-card" data-reveal>
+            <div class="feature-icon">⌕</div>
+            <h3>A clear view</h3>
+            <p>Open an image or clip. Zoom, pan, play, copy, or reveal the file.</p>
+            <div class="mini-viewer" aria-hidden="true"><img src="assets/capture-horizon.webp" alt=""><span>− &nbsp; 100% &nbsp; +</span></div>
+          </article>
+          <article class="feature-card" data-reveal>
+            <div class="feature-icon">✓</div>
+            <h3>Local and private</h3>
+            <p>Your library stays on your computer. No account or cloud service is required.</p>
+            <div class="privacy-note" aria-hidden="true"><span></span><div><b>Stored locally</b><small>You control the folder</small></div></div>
+          </article>
+        </div>
+      </section>
+
+      <section class="setup-section shell" data-reveal>
+        <div class="setup-copy">
+          <p>Quick setup</p>
+          <h2>Choose. Connect. Scan.</h2>
+          <span>Pick a library folder. Enable your sources. Start a scan when you want new captures.</span>
+          <a href="docs.html#first-run">Open the setup guide →</a>
+        </div>
+        <ol class="setup-steps">
+          <li><span>1</span><div><b>Choose a library folder</b><small>Use any folder on your computer.</small></div></li>
+          <li><span>2</span><div><b>Enable your sources</b><small>Use automatic or custom paths.</small></div></li>
+          <li><span>3</span><div><b>Scan for captures</b><small>The app adds only new media.</small></div></li>
+        </ol>
+      </section>
+
+      <section class="sources-section shell" id="sources">
+        <div class="section-heading centered" data-reveal>
+          <p>Capture sources</p>
+          <h2>Bring your platforms together.</h2>
+        </div>
+        <div class="source-list" data-reveal>
+          <span>Battle.net</span><span>Steam</span><span>PlayStation 4</span><span>PlayStation 5</span><span>Nintendo Switch 2</span><span>Hytale</span><span>Minecraft</span><span>Guild Wars 2</span>
+        </div>
+        <p class="source-note">Use local folders, console exports, an optional Steam gallery, or direct Nintendo Switch 2 USB access on Linux.</p>
+      </section>
+
+      <section class="download-section shell" id="download" data-reveal>
+        <div class="download-copy">
+          <img src="assets/logo.webp" alt="" width="72" height="72">
+          <div><p>Ready when you are</p><h2>Start your library.</h2><span data-release-status>Get the newest release for your desktop.</span></div>
+        </div>
+        <div class="download-actions">
+          <a class="button button-dark" data-smart-download href="https://github.com/fmartingr/gaming-memories/releases/latest"><span data-download-label>Download latest</span><span aria-hidden="true">↓</span></a>
+          <small data-release-version>Latest release</small>
+        </div>
+        <div class="platform-downloads" aria-label="Downloads by platform">
+          <a data-platform-download="windows" href="https://github.com/fmartingr/gaming-memories/releases/latest"><b>Windows</b><span>Portable EXE · x64</span></a>
+          <a data-platform-download="macos" href="https://github.com/fmartingr/gaming-memories/releases/latest"><b>macOS</b><span>Universal DMG</span></a>
+          <a data-platform-download="linux" href="https://github.com/fmartingr/gaming-memories/releases/latest"><b>Linux</b><span>DEB · RPM · Arch</span></a>
+        </div>
+      </section>
+    </main>
+
+    <footer class="site-footer">
+      <div class="shell footer-main">
+        <a class="brand" href="index.html"><img src="assets/logo.webp" alt="" width="38" height="38"><span>Gaming Memories</span></a>
+        <nav aria-label="Footer navigation"><a href="docs.html">Documentation</a><a href="https://github.com/fmartingr/gaming-memories">GitHub</a><a href="https://github.com/fmartingr/gaming-memories/issues">Issues</a><a href="https://www.gnu.org/licenses/gpl-3.0.html">GPL-3.0</a></nav>
+      </div>
+      <div class="shell footer-bottom"><span>© <span data-year></span> Gaming Memories.</span><span>Windows · macOS · Linux</span></div>
+    </footer>
+  </body>
+</html>

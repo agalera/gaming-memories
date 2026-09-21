@@ -1,0 +1,235 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="theme-color" content="#090b10">
+    <meta name="description" content="Install and use Gaming Memories on Windows, macOS, and Linux.">
+    <title>Documentation — Gaming Memories</title>
+    <link rel="icon" href="assets/favicon.png" type="image/png">
+    <link rel="stylesheet" href="styles.css">
+    <script src="app.js" defer></script>
+  </head>
+  <body class="docs-page">
+    <a class="skip-link" href="#docs-main">Skip to documentation</a>
+    <header class="site-header">
+      <nav class="nav shell" aria-label="Main navigation">
+        <a class="brand" href="index.html" aria-label="Gaming Memories home"><img src="assets/logo.webp" alt="" width="44" height="44"><span>Gaming Memories</span></a>
+        <button class="nav-toggle" type="button" aria-expanded="false" aria-controls="nav-links"><span class="sr-only">Open navigation</span><span></span><span></span></button>
+        <div class="nav-links" id="nav-links"><a href="index.html#features">Features</a><a href="index.html#sources">Sources</a><a class="current" href="docs.html">Documentation</a><a href="https://github.com/fmartingr/gaming-memories">GitHub</a><a class="button" data-smart-download href="https://github.com/fmartingr/gaming-memories/releases/latest">Download</a></div>
+      </nav>
+    </header>
+
+    <div class="docs-hero">
+      <div class="shell">
+        <p class="kicker">Documentation</p>
+        <h1>Set up your library.</h1>
+        <p>Install Gaming Memories, connect each source, and keep your capture library easy to browse.</p>
+      </div>
+    </div>
+
+    <div class="docs-layout shell">
+      <aside class="docs-sidebar">
+        <nav aria-label="Documentation sections">
+          <b>Start</b>
+          <a href="#install">Install the app</a>
+          <a href="#first-run">First run</a>
+          <a href="#collect">Collect captures</a>
+          <b>Sources</b>
+          <a href="#battle-net">Battle.net</a>
+          <a href="#steam">Steam</a>
+          <a href="#pc-games">PC games</a>
+          <a href="#consoles">Consoles</a>
+          <b>Reference</b>
+          <a href="#tools">Optional tools</a>
+          <a href="#library">Library format</a>
+          <a href="#troubleshoot">Troubleshoot issues</a>
+          <a href="#source-build">Build from source</a>
+        </nav>
+      </aside>
+
+      <main class="docs-content" id="docs-main">
+        <section id="install">
+          <div class="doc-heading"><span>01</span><div><p class="kicker">Start</p><h2>Install the app</h2></div></div>
+          <p>Use the package for your desktop platform. Each release includes a <code>SHA256SUMS</code> file for file checks.</p>
+          <div class="doc-callout info"><b>No release is visible?</b><p>The project can show the release page before the first public build exists.</p></div>
+
+          <div class="platform-tabs" role="tablist" aria-label="Installation platform">
+            <button class="active" type="button" role="tab" aria-selected="true" data-doc-tab="windows">Windows</button>
+            <button type="button" role="tab" aria-selected="false" data-doc-tab="macos">macOS</button>
+            <button type="button" role="tab" aria-selected="false" data-doc-tab="linux">Linux</button>
+          </div>
+          <div class="tab-panel active" data-doc-panel="windows">
+            <h3>Windows</h3>
+            <ol>
+              <li>Download <code>gaming-memories-&lt;version&gt;-windows-x64.exe</code>.</li>
+              <li>Open the downloaded file.</li>
+              <li>Select <strong>More info</strong> if Windows SmartScreen appears.</li>
+              <li>Select <strong>Run anyway</strong>.</li>
+            </ol>
+            <p>The EXE opens from a temporary folder. The app removes that folder after you close the app.</p>
+            <p>You can also download the ZIP file. Extract it before you open <code>gaming_memories.exe</code>.</p>
+          </div>
+          <div class="tab-panel" data-doc-panel="macos" hidden>
+            <h3>macOS</h3>
+            <ol>
+              <li>Download <code>gaming-memories-&lt;version&gt;-macos-universal.dmg</code>.</li>
+              <li>Open the disk image.</li>
+              <li>Drag <strong>Gaming Memories</strong> into <strong>Applications</strong>.</li>
+              <li>Open the app from <strong>Applications</strong>.</li>
+            </ol>
+            <p>The signed build supports Apple silicon and Intel. macOS can ask for folder access during the first scan.</p>
+          </div>
+          <div class="tab-panel" data-doc-panel="linux" hidden>
+            <h3>Linux</h3>
+            <p>Select the package for your distribution.</p>
+            <div class="command-list">
+              <div><span>Debian or Ubuntu</span><code>sudo apt install ./gaming-memories_&lt;version&gt;-1_amd64.deb</code><button class="copy-button" type="button" aria-label="Copy Debian install command">Copy</button></div>
+              <div><span>Fedora or RHEL</span><code>sudo dnf install ./gaming-memories-&lt;version&gt;-1.x86_64.rpm</code><button class="copy-button" type="button" aria-label="Copy Fedora install command">Copy</button></div>
+              <div><span>Arch Linux</span><code>sudo pacman -U gaming-memories-&lt;version&gt;-1-x86_64.pkg.tar.zst</code><button class="copy-button" type="button" aria-label="Copy Arch install command">Copy</button></div>
+            </div>
+            <p>The packages require GTK 3, libmpv, and <code>xdg-utils</code>. Your package manager installs these dependencies.</p>
+          </div>
+          <a class="button button-primary doc-download" data-smart-download href="https://github.com/fmartingr/gaming-memories/releases/latest"><span data-download-label>Download latest</span></a>
+        </section>
+
+        <section id="first-run">
+          <div class="doc-heading"><span>02</span><div><p class="kicker">Library</p><h2>Complete the first run</h2></div></div>
+          <ol class="doc-steps">
+            <li><span>1</span><div><h3>Open Settings</h3><p>Select <strong>Settings</strong> at the bottom of the sidebar.</p></div></li>
+            <li><span>2</span><div><h3>Choose a library folder</h3><p>Select an empty folder or a folder that contains an existing Gaming Memories library.</p></div></li>
+            <li><span>3</span><div><h3>Enable a source</h3><p>Open a source card. Confirm its folder and options.</p></div></li>
+            <li><span>4</span><div><h3>Start the first scan</h3><p>Select the disk arrow in the sidebar. Wait for the completion notice.</p></div></li>
+          </ol>
+          <div class="doc-callout tip"><b>Folder access on macOS</b><p>Allow access when macOS asks. The app keeps this access for later sessions.</p></div>
+        </section>
+
+        <section id="collect">
+          <div class="doc-heading"><span>03</span><div><p class="kicker">Daily use</p><h2>Collect and browse captures</h2></div></div>
+          <p>The scan action checks every enabled source. It copies new media into the library.</p>
+          <ul>
+            <li>The timeline puts the newest media first.</li>
+            <li>The sidebar groups albums by platform and game.</li>
+            <li>The filter can show all media, images, or videos.</li>
+            <li>The sort control can reverse the date order.</li>
+            <li>The detail view can zoom, pan, copy, reveal, or delete media.</li>
+          </ul>
+          <h3>Automatic updates</h3>
+          <p>The app watches the library after the first scan. New files appear without a full scan.</p>
+          <h3>Duplicate file names</h3>
+          <p>The app compares each file before a copy. A safe suffix protects different captures that use the same name.</p>
+        </section>
+
+        <section id="battle-net">
+          <div class="doc-heading"><span>04</span><div><p class="kicker">Sources</p><h2>Battle.net</h2></div></div>
+          <p>Battle.net finds installed Diablo IV and World of Warcraft versions. Each game gets its own album.</p>
+          <ol>
+            <li>Open <strong>Settings</strong>.</li>
+            <li>Enable <strong>Battle.net</strong>.</li>
+            <li>Review each detected game folder.</li>
+            <li>Use a custom folder when automatic detection finds no match.</li>
+          </ol>
+          <p>The provider converts TGA screenshots to PNG. JPG and PNG screenshots keep the date from their file name.</p>
+        </section>
+
+        <section id="steam">
+          <div class="doc-heading"><span>05</span><div><p class="kicker">Sources</p><h2>Steam</h2></div></div>
+          <h3>Local screenshots</h3>
+          <p>Steam can find the local <code>userdata</code> folder. You can also select that folder yourself.</p>
+          <h3>Online gallery</h3>
+          <p>The online gallery requires a Steam Web API key and a SteamID64 value.</p>
+          <ol>
+            <li>Open the Steam source in <strong>Settings</strong>.</li>
+            <li>Enable <strong>Online gallery</strong>.</li>
+            <li>Enter your SteamID64 value.</li>
+            <li>Enter your Steam Web API key.</li>
+            <li>Save the source settings.</li>
+          </ol>
+          <div class="doc-callout warning"><b>Protect your API key</b><p>Do not share the key. Gaming Memories stores it in the local settings file.</p></div>
+        </section>
+
+        <section id="pc-games">
+          <div class="doc-heading"><span>06</span><div><p class="kicker">Sources</p><h2>PC games</h2></div></div>
+          <div class="reference-grid">
+            <article><h3>Hytale</h3><p>The app checks <code>Pictures/Hytale Screenshots</code> on macOS and Linux. A custom folder works on all platforms.</p></article>
+            <article><h3>Minecraft</h3><p>The app checks common launcher folders. It also supports two common Flatpak folder layouts on Linux.</p></article>
+            <article><h3>Guild Wars 2</h3><p>Select the game screenshot folder. The provider uses each file date for the capture date.</p></article>
+          </div>
+        </section>
+
+        <section id="consoles">
+          <div class="doc-heading"><span>07</span><div><p class="kicker">Sources</p><h2>Consoles</h2></div></div>
+          <h3>Nintendo Switch 2</h3>
+          <p>Use a copied album folder on every platform. Linux can also read the console through USB.</p>
+          <ol>
+            <li>Open <strong>Album</strong> on the console.</li>
+            <li>Select <strong>Copy to a Computer</strong>.</li>
+            <li>Connect the console through USB.</li>
+            <li>Close any file manager that uses the console.</li>
+            <li>Start a scan in Gaming Memories.</li>
+          </ol>
+          <p>The provider imports original <code>_s.jpg</code> and <code>_s.mp4</code> files. It ignores duplicate <code>_c</code> files.</p>
+          <h3>PlayStation 4 and PlayStation 5</h3>
+          <p>Copy each console export to your computer. Select the export folder in the related source settings.</p>
+          <p>FFprobe gives more accurate start dates for PlayStation 5 clips.</p>
+        </section>
+
+        <section id="tools">
+          <div class="doc-heading"><span>08</span><div><p class="kicker">Reference</p><h2>Optional tools</h2></div></div>
+          <div class="table-wrap"><table><thead><tr><th>Tool</th><th>Purpose</th><th>Result without the tool</th></tr></thead><tbody>
+            <tr><td>FFmpeg</td><td>Create video thumbnails</td><td>The app uses existing thumbnail sidecar files.</td></tr>
+            <tr><td>FFprobe</td><td>Read video duration and clip start time</td><td>Videos still play, but some details can be absent.</td></tr>
+            <tr><td>ExifTool</td><td>Read dates for Guild Wars 2 and PlayStation 4</td><td>Those sources cannot collect screenshots correctly.</td></tr>
+            <tr><td>libmtp tools</td><td>Read Nintendo Switch 2 media through USB on Linux</td><td>Use a copied album folder.</td></tr>
+          </tbody></table></div>
+        </section>
+
+        <section id="library">
+          <div class="doc-heading"><span>09</span><div><p class="kicker">Reference</p><h2>Library format</h2></div></div>
+          <p>The library uses normal folders. You can browse it without the app.</p>
+          <pre><code>Gaming Memories/
+├── PC/
+│   └── Minecraft/
+│       ├── cover.png
+│       └── 2026-09-16_17-09-14.png
+├── Steam/
+│   └── Guild Wars 2/
+└── PlayStation 5/
+    └── Horizon Forbidden West/</code></pre>
+          <p>Do not change files during a scan. The library watcher will detect changes after the scan.</p>
+        </section>
+
+        <section id="troubleshoot">
+          <div class="doc-heading"><span>10</span><div><p class="kicker">Help</p><h2>Troubleshoot issues</h2></div></div>
+          <div class="trouble-list">
+            <details open><summary>The source finds no captures.<span>+</span></summary><div><p>Check these items:</p><ul><li>The source is enabled.</li><li>The selected folder exists.</li><li>The folder contains a supported file type.</li><li>macOS folder access is active.</li></ul></div></details>
+            <details><summary>A video has no thumbnail.<span>+</span></summary><div><p>Install FFmpeg. Start a new scan after the installation.</p></div></details>
+            <details><summary>Nintendo Switch 2 USB access fails on Linux.<span>+</span></summary><div><p>Install the libmtp tools. Close any file manager that uses the console.</p></div></details>
+            <details><summary>A SmartScreen warning appears on Windows.<span>+</span></summary><div><p>The Windows build has no code signature. Select <strong>More info</strong>. Select <strong>Run anyway</strong>.</p></div></details>
+          </div>
+          <h3>Diagnostic log</h3>
+          <p>The app writes a local diagnostic log. Add the relevant part when you report an issue.</p>
+          <a class="text-link" href="https://github.com/fmartingr/gaming-memories/issues">Open an issue on GitHub <span>→</span></a>
+        </section>
+
+        <section id="source-build">
+          <div class="doc-heading"><span>11</span><div><p class="kicker">Development</p><h2>Build from source</h2></div></div>
+          <p>Install Flutter 3.47.0 or newer. Install FVM and the Flutter desktop tools for your platform.</p>
+          <div class="code-block"><pre><code>git clone https://github.com/fmartingr/gaming-memories.git
+cd gaming-memories
+make setup
+make run</code></pre><button class="copy-button" type="button" aria-label="Copy source build commands">Copy</button></div>
+          <p>Use <code>make check</code> to run the format, analysis, and test checks.</p>
+          <p><a href="https://github.com/fmartingr/gaming-memories/blob/master/docs/releasing.md">Read the release guide</a> for package details.</p>
+        </section>
+      </main>
+
+      <aside class="docs-on-page">
+        <b>On this page</b>
+        <a href="#install">Install</a><a href="#first-run">First run</a><a href="#collect">Collect</a><a href="#battle-net">Battle.net</a><a href="#steam">Steam</a><a href="#pc-games">PC games</a><a href="#consoles">Consoles</a><a href="#tools">Tools</a><a href="#troubleshoot">Help</a>
+      </aside>
+    </div>
+
+    <footer class="site-footer compact-footer"><div class="shell footer-bottom"><span>© <span data-year></span> Gaming Memories.</span><span><a href="index.html">Home</a> · <a href="https://github.com/fmartingr/gaming-memories">GitHub</a> · GPL-3.0</span></div></footer>
+  </body>
+</html>
