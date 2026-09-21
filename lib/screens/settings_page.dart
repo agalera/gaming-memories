@@ -1768,6 +1768,9 @@ class _SettingsPageState extends State<SettingsPage> {
   }
 
   String _folderButtonLabel(String id) {
+    if (!widget.controller.usesPersistentFolderAccess) {
+      return 'Choose';
+    }
     final status = widget.controller.folderAuthorization(id).status;
     return status == FolderAuthorizationStatus.ready
         ? 'Change'

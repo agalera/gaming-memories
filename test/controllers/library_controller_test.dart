@@ -1478,6 +1478,58 @@ void main() {
     expect(result.saved, isFalse);
   });
 
+  test('saves a Battle.net custom folder for the selected game', () async {
+    final directory = await Directory.systemTemp.createTemp('gaming-memories-');
+    final captures = Directory(p.join(directory.path, 'StarCraft II'))
+      ..createSync();
+    addTearDown(() => directory.delete(recursive: true));
+    final access = _FakeFolderAccess(
+      chosen: FolderAccessLease(
+        grant: FolderGrant(
+          platform: 'macos',
+          path: captures.path,
+          access: FolderGrantAccess.readOnly,
+          bookmark: 'starcraft-bookmark',
+        ),
+        token: 'starcraft-lease',
+      ),
+    );
+    final store = ConfigStore(
+      filePath: p.join(directory.path, 'settings.json'),
+    );
+    final controller =
+        LibraryController(
+            configStore: store,
+            scanner: const LibraryScanner(),
+            providers: const [],
+            folderAccess: access,
+          )
+          ..settings = const AppSettings(
+            outputPath: '',
+            battleNet: BattleNetSettings(enabled: true),
+          );
+
+    final result = await controller.chooseFolder(
+      SettingsFolderTarget.battleNetGameCustom,
+      gameId: 'starcraft_ii',
+    );
+
+    expect(result.saved, isTrue);
+    expect(result.path, captures.path);
+    final saved = controller.settings.battleNet.game('starcraft_ii');
+    expect(saved.enabled, isTrue);
+    expect(saved.useCustomPath, isTrue);
+    expect(saved.sourcePath, captures.path);
+    expect(
+      controller.settings.battleNet.game('diablo_iii').sourcePath,
+      isEmpty,
+    );
+    expect(
+      (await store.load()).battleNet.game('starcraft_ii').sourcePath,
+      captures.path,
+    );
+  });
+
   test('saves PlayStation folder access as a custom provider path', () async {
     final directory = await Directory.systemTemp.createTemp('gaming-memories-');
     final captures = Directory(p.join(directory.path, 'PS5 captures'))

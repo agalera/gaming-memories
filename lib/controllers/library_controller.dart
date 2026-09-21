@@ -1199,7 +1199,7 @@ class LibraryController extends ChangeNotifier {
         await _ensureReadableDirectory(lease.grant.path);
       }
 
-      var next = _settingsWithFolder(target, lease.grant.path);
+      var next = _settingsWithFolder(target, lease.grant.path, gameId: gameId);
       if (usesPersistentFolderAccess) {
         next = _withGrant(next, specification.request.id, lease.grant);
       }
@@ -1483,10 +1483,28 @@ class LibraryController extends ChangeNotifier {
     }
   }
 
-  AppSettings _settingsWithFolder(SettingsFolderTarget target, String path) {
+  AppSettings _settingsWithFolder(
+    SettingsFolderTarget target,
+    String path, {
+    String? gameId,
+  }) {
     return switch (target) {
       SettingsFolderTarget.library => settings.copyWith(outputPath: path),
-      SettingsFolderTarget.battleNetGameCustom ||
+      SettingsFolderTarget.battleNetGameCustom =>
+        gameId == null
+            ? settings
+            : settings.copyWith(
+                battleNet: settings.battleNet.withGame(
+                  gameId,
+                  settings.battleNet
+                      .game(gameId)
+                      .copyWith(
+                        enabled: true,
+                        useCustomPath: true,
+                        sourcePath: path,
+                      ),
+                ),
+              ),
       SettingsFolderTarget.battleNetGameAutomatic => settings,
       SettingsFolderTarget.guildWars2Custom => settings.copyWith(
         guildWars2: settings.guildWars2.copyWith(

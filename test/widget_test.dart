@@ -1579,6 +1579,8 @@ void main() {
       const ValueKey('battle-net-game-starcraft_ii-path'),
     );
     expect(field, findsOneWidget);
+    expect(find.text('Choose'), findsOneWidget);
+    expect(find.text('Allow Access'), findsNothing);
 
     await tester.enterText(field, validSource.path);
     await tester.pump(const Duration(milliseconds: 400));
