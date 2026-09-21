@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:collection';
 import 'dart:io';
 
 import 'package:flutter/foundation.dart';
@@ -115,6 +116,94 @@ class AppNotification {
   final NotificationKind kind;
 }
 
+/// What the library is doing, for the sidebar status panel.
+enum LibraryActivityKind {
+  /// Nothing is running and the library is usable.
+  idle,
+
+  /// The library folder is missing or unreadable, so nothing can run.
+  attention,
+
+  /// The watcher saw changes that are waiting for a running operation.
+  detected,
+
+  /// Watched changes are being folded into the timeline.
+  updating,
+
+  /// The whole library is being rescanned.
+  refreshing,
+}
+
+/// A snapshot of the library's current state, rendered as a status panel.
+class LibraryActivity {
+  const LibraryActivity({
+    required this.kind,
+    required this.title,
+    this.detail,
+    this.progress,
+  });
+
+  final LibraryActivityKind kind;
+  final String title;
+  final String? detail;
+
+  /// The completion of a running operation, when it reports one. A running
+  /// activity without a value is indeterminate.
+  final double? progress;
+
+  bool get isRunning =>
+      kind == LibraryActivityKind.updating ||
+      kind == LibraryActivityKind.refreshing;
+}
+
+/// The provider scan action's current presentation in the sidebar.
+class LibraryScanActivity {
+  const LibraryScanActivity({
+    required this.isRunning,
+    required this.title,
+    required this.detail,
+    this.progress,
+  });
+
+  const LibraryScanActivity.idle()
+    : isRunning = false,
+      title = 'Scan for captures',
+      detail = 'Collect from enabled providers',
+      progress = null;
+
+  final bool isRunning;
+  final String title;
+  final String detail;
+
+  /// The completion of the active provider's work. Null means indeterminate.
+  final double? progress;
+}
+
+/// What a batch of watched library changes did to the timeline.
+class LibraryChangeSummary {
+  const LibraryChangeSummary({
+    required this.added,
+    required this.removed,
+    required this.updated,
+  });
+
+  final int added;
+  final int removed;
+  final int updated;
+
+  bool get isEmpty => added == 0 && removed == 0 && updated == 0;
+
+  /// A compact line such as `3 added · 1 removed`.
+  String describe() {
+    final parts = <String>[
+      if (added > 0) '$added added',
+      if (removed > 0) '$removed removed',
+      if (updated > 0) '$updated updated',
+    ];
+    return parts.join(' · ');
+  }
+}
+
 class LibraryController extends ChangeNotifier {
   LibraryController({
     required this.configStore,
@@ -171,14 +260,101 @@ class LibraryController extends ChangeNotifier {
   StreamSubscription<LibraryChange>? _libraryWatchSubscription;
   String? _watchedLibraryPath;
   int _libraryWatchGeneration = 0;
-  final Map<String, LibraryChange> _pendingLibraryChanges = {};
-  Timer? _libraryChangeTimer;
+  final ListQueue<_QueuedLibraryChange> _pendingLibraryChanges = ListQueue();
   Timer? _libraryWatchRecoveryTimer;
+  Timer? _libraryChangeSummaryTimer;
   Future<void>? _libraryChangeRefresh;
+  int _applyingLibraryChanges = 0;
+  bool _timelineCacheDirty = false;
+  LibraryChangeSummary? _lastLibraryChange;
   int _folderRequest = 0;
   bool _disposed = false;
 
   List<AppNotification> get notifications => List.unmodifiable(_notifications);
+
+  /// Watched changes that are waiting for a running operation to finish.
+  int get pendingLibraryChangeCount =>
+      _pendingLibraryChanges.length + _applyingLibraryChanges;
+
+  /// What the last batch of watched changes did, until it expires.
+  LibraryChangeSummary? get lastLibraryChange => _lastLibraryChange;
+
+  /// What the provider scan action is doing right now.
+  LibraryScanActivity get scanActivity {
+    if (!isBusy) {
+      return const LibraryScanActivity.idle();
+    }
+    final percent = progressValue == null
+        ? null
+        : (progressValue! * 100).round();
+    return LibraryScanActivity(
+      isRunning: true,
+      title: percent == null ? 'Scanning…' : 'Scanning · $percent%',
+      detail: progressMessage ?? 'Checking enabled providers…',
+      progress: progressValue,
+    );
+  }
+
+  /// What the library is doing right now, most urgent state first.
+  LibraryActivity get libraryActivity {
+    if (isInitializing) {
+      return const LibraryActivity(
+        kind: LibraryActivityKind.idle,
+        title: 'Starting…',
+      );
+    }
+    if (isTimelineRefreshing) {
+      // The refresh message only repeats the title, so the bar carries it.
+      return LibraryActivity(
+        kind: LibraryActivityKind.refreshing,
+        title: 'Refreshing…',
+        progress: progressValue,
+      );
+    }
+    if (_applyingLibraryChanges > 0) {
+      return LibraryActivity(
+        kind: LibraryActivityKind.updating,
+        title: 'Updating library…',
+        detail: _changeCount(_applyingLibraryChanges),
+      );
+    }
+    if (_pendingLibraryChanges.isNotEmpty) {
+      return LibraryActivity(
+        kind: LibraryActivityKind.detected,
+        title: 'Changes detected',
+        detail: _changeCount(_pendingLibraryChanges.length),
+      );
+    }
+    if (settings.outputPath.trim().isEmpty) {
+      return const LibraryActivity(
+        kind: LibraryActivityKind.attention,
+        title: 'No library folder',
+        detail: 'Choose one in Settings',
+      );
+    }
+    if (libraryNeedsAuthorization) {
+      return const LibraryActivity(
+        kind: LibraryActivityKind.attention,
+        title: 'Access needed',
+        detail: 'Allow access in Settings',
+      );
+    }
+    if (_lastLibraryChange case final summary?) {
+      return LibraryActivity(
+        kind: LibraryActivityKind.idle,
+        title: 'Library updated',
+        detail: summary.describe(),
+      );
+    }
+    final count = timelineMedia.length;
+    return LibraryActivity(
+      kind: LibraryActivityKind.idle,
+      title: 'Up to date',
+      detail: count == 1 ? '1 capture' : '$count captures',
+    );
+  }
+
+  String _changeCount(int count) => count == 1 ? '1 change' : '$count changes';
 
   /// The Battle.net provider, when it is configured. The settings page asks it
   /// which games it found; nothing else needs to know a provider's type.
@@ -1522,6 +1698,7 @@ class LibraryController extends ChangeNotifier {
       timelineMedia = nextLibrary.timeline;
       library = const MediaLibrary.empty();
       await timelineCache.save(outputPath, timelineMedia);
+      _timelineCacheDirty = false;
       folderTree = await scanner.folderTree(outputPath);
       if (showResult) {
         _setMessage('Timeline refreshed.');
@@ -1541,7 +1718,7 @@ class LibraryController extends ChangeNotifier {
         progressMessage = null;
         progressValue = null;
         notifyListeners();
-        _scheduleLibraryChangeFlush();
+        _startLibraryChangeQueue();
       }
     }
   }
@@ -1605,8 +1782,6 @@ class LibraryController extends ChangeNotifier {
 
   Future<void> _stopLibraryWatch() async {
     _libraryWatchGeneration++;
-    _libraryChangeTimer?.cancel();
-    _libraryChangeTimer = null;
     _libraryWatchRecoveryTimer?.cancel();
     _libraryWatchRecoveryTimer = null;
     _pendingLibraryChanges.clear();
@@ -1679,368 +1854,585 @@ class LibraryController extends ChangeNotifier {
       destinationPath: destination,
       isDirectory: change.isDirectory,
     );
-    final key =
-        '${change.kind.index}|${_pathKey(source)}|'
-        '${destination == null ? '' : _pathKey(destination)}';
-    _pendingLibraryChanges[key] = normalized;
-    _scheduleLibraryChangeFlush();
-  }
-
-  void _scheduleLibraryChangeFlush() {
-    if (_disposed || _pendingLibraryChanges.isEmpty) {
-      return;
-    }
-    _libraryChangeTimer?.cancel();
-    _libraryChangeTimer = Timer(
-      const Duration(milliseconds: 250),
-      () => unawaited(_flushLibraryChanges()),
-    );
-  }
-
-  Future<void> _flushLibraryChanges() async {
-    _libraryChangeTimer = null;
-    if (_disposed || _pendingLibraryChanges.isEmpty) {
-      return;
-    }
-    if (isBusy || isTimelineRefreshing || _libraryChangeRefresh != null) {
-      _scheduleLibraryChangeFlush();
-      return;
-    }
-
-    final changes = _pendingLibraryChanges.values.toList(growable: false);
-    _pendingLibraryChanges.clear();
-    final operation = _applyLibraryChanges(changes);
-    _libraryChangeRefresh = operation;
-    try {
-      await operation;
-    } catch (error, stackTrace) {
-      log.warning(
-        'Could not apply library changes.',
-        category: 'watcher',
-        error: error,
-        stackTrace: stackTrace,
-      );
-    } finally {
-      if (identical(_libraryChangeRefresh, operation)) {
-        _libraryChangeRefresh = null;
-      }
-      _scheduleLibraryChangeFlush();
-    }
-  }
-
-  Future<void> _applyLibraryChanges(List<LibraryChange> changes) async {
-    final outputPath = settings.outputPath;
-    final root = _normalizeLibraryPath(outputPath);
-    if (_disposed || outputPath.trim().isEmpty) {
-      return;
-    }
-
-    final directDirectories = <String>{};
-    final subtreeDirectories = <String>{};
-    final removalPaths = <String>{};
-    final changedFiles = <String>{};
-    var treeChanged = false;
-
-    void addPresentPath(
-      String path, {
-      required bool isDirectory,
-      required bool scanSubtree,
-    }) {
-      if (isDirectory) {
-        treeChanged = true;
-        if (scanSubtree) {
-          subtreeDirectories.add(path);
-        } else {
-          directDirectories.add(path);
-        }
-        directDirectories.add(p.dirname(path));
-      } else if (scanner.isCoverPath(path)) {
-        treeChanged = true;
-      } else if (scanner.supportsMediaPath(path)) {
-        changedFiles.add(_pathKey(path));
-        directDirectories.add(p.dirname(path));
-      }
-    }
-
-    for (final change in changes) {
-      final source = _normalizeLibraryPath(change.path);
-      final sourceIsDirectory =
-          change.isDirectory || _isKnownLibraryDirectory(source);
-      if (change.kind == LibraryChangeKind.delete ||
-          change.kind == LibraryChangeKind.move) {
-        removalPaths.add(source);
-        if (sourceIsDirectory) {
-          treeChanged = true;
-        } else if (scanner.isCoverPath(source)) {
-          treeChanged = true;
-        }
-        directDirectories.add(p.dirname(source));
-      }
-      if (change.kind == LibraryChangeKind.create ||
-          change.kind == LibraryChangeKind.modify) {
-        addPresentPath(
-          source,
-          isDirectory: sourceIsDirectory,
-          scanSubtree: change.kind == LibraryChangeKind.create,
-        );
-      }
-      if (change.kind == LibraryChangeKind.move &&
-          change.destinationPath != null) {
-        addPresentPath(
-          _normalizeLibraryPath(change.destinationPath!),
-          isDirectory: sourceIsDirectory,
-          scanSubtree: sourceIsDirectory,
-        );
-      }
-    }
-
-    if (treeChanged) {
-      await _refreshFolderTreePreservingLoaded();
-    }
-
-    final mediaByPath = <String, MediaItem>{
-      for (final media in timelineMedia) _pathKey(media.path): media,
-    };
-    var timelineChanged = false;
-    for (final removed in removalPaths) {
-      final keys = mediaByPath.entries
-          .where((entry) => _sameOrWithinPath(removed, entry.value.path))
-          .map((entry) => entry.key)
-          .toList(growable: false);
-      for (final key in keys) {
-        mediaByPath.remove(key);
-      }
-      timelineChanged = keys.isNotEmpty || timelineChanged;
-    }
-
-    final subtreeRoots = subtreeDirectories
-        .where((candidate) {
-          return !subtreeDirectories.any(
-            (other) =>
-                other != candidate && _sameOrWithinPath(other, candidate),
-          );
-        })
-        .toList(growable: false);
-    final expandedSubtrees = <String>[];
-    for (final subtree in subtreeRoots) {
-      final location = _libraryLocationForDirectory(root, subtree);
-      if (location != null) {
-        expandedSubtrees.add(subtree);
-        await _replaceMediaSubtree(outputPath, subtree, location, mediaByPath);
-        timelineChanged = true;
-        continue;
-      }
-
-      final relative = p.relative(subtree, from: root);
-      final parts = p.split(relative);
-      if (parts.length == 1 && parts.single != '.') {
-        final platform = folderTree
-            .where((folder) => folder.name == parts.single)
-            .firstOrNull;
-        for (final game in platform?.children ?? const <LibraryFolder>[]) {
-          expandedSubtrees.add(game.path);
-          final gameLocation = _libraryLocationForDirectory(root, game.path);
-          if (gameLocation != null) {
-            await _replaceMediaSubtree(
-              outputPath,
-              game.path,
-              gameLocation,
-              mediaByPath,
-            );
-            timelineChanged = true;
-          }
-        }
-      }
-    }
-
-    final resolvedListings = <String, FolderListing>{};
-    for (final directory in directDirectories) {
-      if (!_sameOrWithinPath(root, directory) ||
-          expandedSubtrees.any(
-            (subtree) => _sameOrWithinPath(subtree, directory),
-          )) {
-        continue;
-      }
-      final location = _libraryLocationForDirectory(root, directory);
-      if (location == null) {
-        continue;
-      }
-      final listing = await scanner.folderContents(
-        outputPath,
-        location.platform,
-        location.game,
-        subAlbumPath: location.subAlbumPath,
-      );
-      final directoryKey = _pathKey(directory);
-      final previous = <String, MediaItem>{
-        for (final entry in mediaByPath.entries)
-          if (_pathKey(p.dirname(entry.value.path)) == directoryKey)
-            entry.key: entry.value,
-      };
-      mediaByPath.removeWhere(
-        (_, media) => _pathKey(p.dirname(media.path)) == directoryKey,
-      );
-      final prepared = <MediaItem>[];
-      for (final listed in listing.media) {
-        final key = _pathKey(listed.path);
-        final existing = previous[key];
-        final item =
-            existing != null &&
-                !changedFiles.contains(key) &&
-                _sameSource(existing, listed)
-            ? existing
-            : await scanner.prepareMediaItem(listed);
-        if (item != null) {
-          mediaByPath[key] = item;
-          prepared.add(item);
-        }
-      }
-      prepared.sort(
-        (left, right) => right.capturedAt.compareTo(left.capturedAt),
-      );
-      resolvedListings[directoryKey] = FolderListing(
-        folders: listing.folders,
-        media: List.unmodifiable(prepared),
-      );
-      timelineChanged = true;
-    }
-
-    if (_disposed || !_samePath(outputPath, settings.outputPath)) {
-      return;
-    }
-    if (timelineChanged) {
-      timelineMedia = mediaByPath.values.toList(growable: false)
-        ..sort((left, right) => right.capturedAt.compareTo(left.capturedAt));
-      library = const MediaLibrary.empty();
-      final selected = selectedMedia;
-      if (selected != null) {
-        selectedMedia = mediaByPath[_pathKey(selected.path)];
-      }
-    }
-    await _updateVisibleFolderListing(
-      root,
-      changes,
-      resolvedListings,
-      mediaByPath,
+    _pendingLibraryChanges.add(
+      _QueuedLibraryChange(_libraryWatchGeneration, normalized),
     );
     notifyListeners();
-    if (timelineChanged) {
-      await timelineCache.save(outputPath, timelineMedia);
-    }
+    _startLibraryChangeQueue();
   }
 
-  Future<void> _replaceMediaSubtree(
-    String outputPath,
-    String directory,
-    _LibraryDirectoryLocation location,
-    Map<String, MediaItem> mediaByPath,
-  ) async {
-    mediaByPath.removeWhere(
-      (_, media) => _sameOrWithinPath(directory, media.path),
-    );
-    final media = await scanner.mediaTree(
-      outputPath,
-      location.platform,
-      location.game,
-      subAlbumPath: location.subAlbumPath,
-    );
-    for (final item in media) {
-      mediaByPath[_pathKey(item.path)] = item;
+  void _startLibraryChangeQueue() {
+    if (_disposed ||
+        isTimelineRefreshing ||
+        _pendingLibraryChanges.isEmpty ||
+        _libraryChangeRefresh != null) {
+      return;
     }
+    final operation = _drainLibraryChangeQueue();
+    _libraryChangeRefresh = operation;
+    unawaited(
+      operation.whenComplete(() {
+        if (identical(_libraryChangeRefresh, operation)) {
+          _libraryChangeRefresh = null;
+        }
+        _startLibraryChangeQueue();
+      }),
+    );
   }
 
-  Future<void> _refreshFolderTreePreservingLoaded() async {
-    final loadedGames = <String>{
-      for (final platform in folderTree)
-        for (final game in platform.children)
-          if (game.childrenLoaded) '${platform.name}\u0000${game.name}',
-    };
-    final next = await scanner.folderTree(settings.outputPath);
-    final platforms = <LibraryFolder>[];
-    for (final platform in next) {
-      final games = <LibraryFolder>[];
-      for (final game in platform.children) {
-        final key = '${platform.name}\u0000${game.name}';
-        if (!loadedGames.contains(key)) {
-          games.add(game);
+  Future<void> _drainLibraryChangeQueue() async {
+    _applyingLibraryChanges = 1;
+    if (!_disposed) {
+      notifyListeners();
+    }
+    try {
+      while (!_disposed &&
+          !isTimelineRefreshing &&
+          _pendingLibraryChanges.isNotEmpty) {
+        final queued = _pendingLibraryChanges.removeFirst();
+        if (queued.generation != _libraryWatchGeneration) {
           continue;
         }
-        final children = await scanner.subAlbumTree(
-          settings.outputPath,
-          platform.name,
-          game.name,
-        );
-        games.add(
-          LibraryFolder(
-            name: game.name,
-            path: game.path,
-            relativePath: game.relativePath,
-            coverPath: game.coverPath,
-            children: children,
-          ),
-        );
+        try {
+          await _applyLibraryChange(queued);
+        } catch (error, stackTrace) {
+          log.warning(
+            'Could not apply a library change.',
+            category: 'watcher',
+            error: error,
+            stackTrace: stackTrace,
+          );
+        }
       }
-      platforms.add(
-        LibraryFolder(
-          name: platform.name,
-          path: platform.path,
-          relativePath: platform.relativePath,
-          coverPath: platform.coverPath,
-          childrenLoaded: platform.childrenLoaded,
-          children: games,
-        ),
-      );
+      if (!_disposed && !isTimelineRefreshing && _timelineCacheDirty) {
+        _timelineCacheDirty = false;
+        try {
+          await timelineCache.save(
+            settings.outputPath,
+            List<MediaItem>.of(timelineMedia),
+          );
+        } catch (error, stackTrace) {
+          _timelineCacheDirty = true;
+          log.warning(
+            'Could not save live library changes.',
+            category: 'watcher',
+            error: error,
+            stackTrace: stackTrace,
+          );
+        }
+      }
+    } finally {
+      _applyingLibraryChanges = 0;
+      if (!_disposed) {
+        notifyListeners();
+      }
     }
-    folderTree = platforms;
   }
 
-  Future<void> _updateVisibleFolderListing(
-    String root,
-    List<LibraryChange> changes,
-    Map<String, FolderListing> resolvedListings,
-    Map<String, MediaItem> mediaByPath,
-  ) async {
-    if (view != LibraryView.album && view != LibraryView.subAlbum) {
+  Future<void> _applyLibraryChange(_QueuedLibraryChange queued) async {
+    final outputPath = settings.outputPath;
+    if (!_queuedChangeIsCurrent(queued, outputPath)) {
       return;
+    }
+    final root = _normalizeLibraryPath(outputPath);
+    final change = queued.change;
+    final source = change.path;
+    final sourceIsDirectory =
+        change.isDirectory || _isKnownLibraryDirectory(source);
+    var added = 0;
+    var removed = 0;
+    var updated = 0;
+    var timelineChanged = false;
+
+    void publish() {
+      if (_queuedChangeIsCurrent(queued, outputPath)) {
+        notifyListeners();
+      }
+    }
+
+    void removePath(String path, {required bool isDirectory}) {
+      final removedCount = _removeTimelinePath(path, recursive: isDirectory);
+      removed += removedCount;
+      timelineChanged = timelineChanged || removedCount > 0;
+      var presentationChanged = _removeVisiblePath(path);
+      if (isDirectory) {
+        presentationChanged =
+            _removeLibraryFolder(root, path) || presentationChanged;
+      } else if (scanner.isCoverPath(path)) {
+        presentationChanged =
+            _setGameCover(root, path, present: false) || presentationChanged;
+      }
+      if (removedCount > 0 || presentationChanged) {
+        publish();
+      }
+    }
+
+    Future<void> addPath(
+      String path, {
+      required bool isDirectory,
+      required bool scanDirectory,
+    }) async {
+      if (isDirectory) {
+        final treeChanged = _upsertLibraryFolder(root, path);
+        final listingChanged = _upsertVisibleFolder(root, path);
+        if (treeChanged || listingChanged) {
+          // Folder navigation is independent of media preparation. Publish it
+          // before a potentially slow subtree scan starts.
+          publish();
+        }
+        if (!scanDirectory) {
+          return;
+        }
+        final location = _libraryLocationForDirectory(root, path);
+        if (location == null) {
+          return;
+        }
+        final media = await scanner.mediaTree(
+          outputPath,
+          location.platform,
+          location.game,
+          subAlbumPath: location.subAlbumPath,
+        );
+        if (!_queuedChangeIsCurrent(queued, outputPath)) {
+          return;
+        }
+        for (final item in media) {
+          switch (_upsertTimelineItem(item)) {
+            case _MediaMutation.added:
+              added++;
+              timelineChanged = true;
+              break;
+            case _MediaMutation.updated:
+              updated++;
+              timelineChanged = true;
+              break;
+            case _MediaMutation.none:
+              break;
+          }
+          _upsertVisibleMedia(root, item);
+        }
+        if (media.isNotEmpty) {
+          publish();
+        }
+        return;
+      }
+
+      if (_upsertLibraryFolder(root, p.dirname(path))) {
+        // A file event can race ahead of its parent directory event.
+        publish();
+      }
+      if (scanner.isCoverPath(path)) {
+        if (_setGameCover(root, path, present: true)) {
+          publish();
+        }
+        return;
+      }
+      if (!scanner.supportsMediaPath(path)) {
+        return;
+      }
+      final item = await scanner.mediaItemAt(outputPath, path);
+      if (item == null || !_queuedChangeIsCurrent(queued, outputPath)) {
+        return;
+      }
+      switch (_upsertTimelineItem(item)) {
+        case _MediaMutation.added:
+          added++;
+          timelineChanged = true;
+          break;
+        case _MediaMutation.updated:
+          updated++;
+          timelineChanged = true;
+          break;
+        case _MediaMutation.none:
+          break;
+      }
+      final listingChanged = _upsertVisibleMedia(root, item);
+      if (timelineChanged || listingChanged) {
+        publish();
+      }
+    }
+
+    if (change.kind == LibraryChangeKind.delete ||
+        change.kind == LibraryChangeKind.move) {
+      removePath(source, isDirectory: sourceIsDirectory);
+    }
+    if (change.kind == LibraryChangeKind.create ||
+        change.kind == LibraryChangeKind.modify) {
+      await addPath(
+        source,
+        isDirectory: sourceIsDirectory,
+        scanDirectory: change.kind == LibraryChangeKind.create,
+      );
+    }
+    final destination = change.destinationPath;
+    if (change.kind == LibraryChangeKind.move && destination != null) {
+      await addPath(
+        destination,
+        isDirectory: sourceIsDirectory,
+        scanDirectory: sourceIsDirectory,
+      );
+    }
+
+    if (!_queuedChangeIsCurrent(queued, outputPath)) {
+      return;
+    }
+    if (added > 0 || removed > 0 || updated > 0) {
+      _recordLibraryChangeSummary(
+        LibraryChangeSummary(added: added, removed: removed, updated: updated),
+      );
+      publish();
+    }
+    _timelineCacheDirty = _timelineCacheDirty || timelineChanged;
+  }
+
+  bool _queuedChangeIsCurrent(_QueuedLibraryChange queued, String outputPath) {
+    return !_disposed &&
+        queued.generation == _libraryWatchGeneration &&
+        _samePath(outputPath, settings.outputPath);
+  }
+
+  _MediaMutation _upsertTimelineItem(MediaItem item) {
+    final key = _pathKey(item.path);
+    final index = timelineMedia.indexWhere(
+      (candidate) => _pathKey(candidate.path) == key,
+    );
+    if (index >= 0 && _sameSource(timelineMedia[index], item)) {
+      return _MediaMutation.none;
+    }
+    final next = List<MediaItem>.of(timelineMedia);
+    final mutation = index < 0 ? _MediaMutation.added : _MediaMutation.updated;
+    if (index < 0) {
+      next.add(item);
+    } else {
+      next[index] = item;
+    }
+    next.sort((left, right) => right.capturedAt.compareTo(left.capturedAt));
+    timelineMedia = next;
+    library = const MediaLibrary.empty();
+    if (selectedMedia case final selected?
+        when _pathKey(selected.path) == key) {
+      selectedMedia = item;
+    }
+    return mutation;
+  }
+
+  int _removeTimelinePath(String path, {required bool recursive}) {
+    final next = List<MediaItem>.of(timelineMedia);
+    final before = next.length;
+    next.removeWhere(
+      (media) => recursive
+          ? _sameOrWithinPath(path, media.path)
+          : _samePath(path, media.path),
+    );
+    final removed = before - next.length;
+    if (removed == 0) {
+      return 0;
+    }
+    timelineMedia = next;
+    library = const MediaLibrary.empty();
+    final selected = selectedMedia;
+    if (selected != null &&
+        (recursive
+            ? _sameOrWithinPath(path, selected.path)
+            : _samePath(path, selected.path))) {
+      selectedMedia = null;
+    }
+    return removed;
+  }
+
+  bool _upsertLibraryFolder(String root, String path) {
+    if (!_sameOrWithinPath(root, path) || _samePath(root, path)) {
+      return false;
+    }
+    final parts = p.split(p.relative(path, from: root));
+    if (parts.isEmpty || parts.first == '..') {
+      return false;
+    }
+    final platforms = List<LibraryFolder>.of(folderTree);
+    var platformIndex = platforms.indexWhere(
+      (folder) => folder.name == parts[0],
+    );
+    var changed = false;
+    if (platformIndex < 0) {
+      platforms.add(
+        LibraryFolder(name: parts[0], path: p.join(root, parts[0])),
+      );
+      platforms.sort((left, right) => left.name.compareTo(right.name));
+      platformIndex = platforms.indexWhere((folder) => folder.name == parts[0]);
+      changed = true;
+    }
+    if (parts.length == 1) {
+      folderTree = platforms;
+      return changed;
+    }
+
+    var platform = platforms[platformIndex];
+    final games = List<LibraryFolder>.of(platform.children);
+    var gameIndex = games.indexWhere((folder) => folder.name == parts[1]);
+    if (gameIndex < 0) {
+      games.add(
+        LibraryFolder(
+          name: parts[1],
+          path: p.join(root, parts[0], parts[1]),
+          relativePath: parts[1],
+          childrenLoaded: false,
+        ),
+      );
+      games.sort((left, right) => left.name.compareTo(right.name));
+      gameIndex = games.indexWhere((folder) => folder.name == parts[1]);
+      changed = true;
+    }
+    var game = games[gameIndex];
+    if (parts.length > 2 && game.childrenLoaded) {
+      final result = _upsertLoadedFolder(game, parts.sublist(2));
+      game = result.folder;
+      games[gameIndex] = game;
+      changed = changed || result.changed;
+    }
+    platform = _copyLibraryFolder(platform, children: games);
+    platforms[platformIndex] = platform;
+    folderTree = platforms;
+    return changed;
+  }
+
+  ({LibraryFolder folder, bool changed}) _upsertLoadedFolder(
+    LibraryFolder game,
+    List<String> segments,
+  ) {
+    LibraryFolder visit(LibraryFolder parent, int index) {
+      final relative = p.joinAll(segments.take(index + 1));
+      final children = List<LibraryFolder>.of(parent.children);
+      var childIndex = children.indexWhere(
+        (child) => child.name == segments[index],
+      );
+      if (childIndex < 0) {
+        children.add(
+          LibraryFolder(
+            name: segments[index],
+            path: p.join(game.path, relative),
+            relativePath: relative,
+          ),
+        );
+        children.sort((left, right) => left.name.compareTo(right.name));
+        childIndex = children.indexWhere(
+          (child) => child.name == segments[index],
+        );
+      }
+      if (index + 1 < segments.length) {
+        children[childIndex] = visit(children[childIndex], index + 1);
+      }
+      return _copyLibraryFolder(parent, children: children);
+    }
+
+    final existed = game.find(p.joinAll(segments)) != null;
+    return (folder: visit(game, 0), changed: !existed);
+  }
+
+  bool _removeLibraryFolder(String root, String path) {
+    if (!_sameOrWithinPath(root, path) || _samePath(root, path)) {
+      return false;
+    }
+    final parts = p.split(p.relative(path, from: root));
+    if (parts.isEmpty || parts.first == '..') {
+      return false;
+    }
+    final platforms = List<LibraryFolder>.of(folderTree);
+    final platformIndex = platforms.indexWhere(
+      (folder) => folder.name == parts[0],
+    );
+    if (platformIndex < 0) {
+      return false;
+    }
+    if (parts.length == 1) {
+      platforms.removeAt(platformIndex);
+      folderTree = platforms;
+      return true;
+    }
+    final platform = platforms[platformIndex];
+    final games = List<LibraryFolder>.of(platform.children);
+    final gameIndex = games.indexWhere((folder) => folder.name == parts[1]);
+    if (gameIndex < 0) {
+      return false;
+    }
+    if (parts.length == 2) {
+      games.removeAt(gameIndex);
+      platforms[platformIndex] = _copyLibraryFolder(platform, children: games);
+      folderTree = platforms;
+      return true;
+    }
+    final result = _removeLoadedFolder(games[gameIndex], parts.sublist(2));
+    if (!result.changed) {
+      return false;
+    }
+    games[gameIndex] = result.folder;
+    platforms[platformIndex] = _copyLibraryFolder(platform, children: games);
+    folderTree = platforms;
+    return true;
+  }
+
+  ({LibraryFolder folder, bool changed}) _removeLoadedFolder(
+    LibraryFolder game,
+    List<String> segments,
+  ) {
+    LibraryFolder visit(LibraryFolder parent, int index) {
+      final children = List<LibraryFolder>.of(parent.children);
+      final childIndex = children.indexWhere(
+        (child) => child.name == segments[index],
+      );
+      if (childIndex < 0) {
+        return parent;
+      }
+      if (index + 1 == segments.length) {
+        children.removeAt(childIndex);
+      } else {
+        children[childIndex] = visit(children[childIndex], index + 1);
+      }
+      return _copyLibraryFolder(parent, children: children);
+    }
+
+    final existed = game.find(p.joinAll(segments)) != null;
+    return (folder: existed ? visit(game, 0) : game, changed: existed);
+  }
+
+  bool _setGameCover(String root, String path, {required bool present}) {
+    final relative = p.relative(path, from: root);
+    final parts = p.split(relative);
+    if (parts.length != 3 || parts.first == '..') {
+      return false;
+    }
+    final platforms = List<LibraryFolder>.of(folderTree);
+    final platformIndex = platforms.indexWhere(
+      (folder) => folder.name == parts[0],
+    );
+    if (platformIndex < 0) {
+      return false;
+    }
+    final platform = platforms[platformIndex];
+    final games = List<LibraryFolder>.of(platform.children);
+    final gameIndex = games.indexWhere((folder) => folder.name == parts[1]);
+    if (gameIndex < 0) {
+      return false;
+    }
+    final game = games[gameIndex];
+    final nextCover = present ? path : null;
+    if (game.coverPath == nextCover) {
+      return false;
+    }
+    games[gameIndex] = _copyLibraryFolder(
+      game,
+      coverPath: nextCover,
+      clearCover: !present,
+    );
+    platforms[platformIndex] = _copyLibraryFolder(platform, children: games);
+    folderTree = platforms;
+    return true;
+  }
+
+  LibraryFolder _copyLibraryFolder(
+    LibraryFolder folder, {
+    List<LibraryFolder>? children,
+    String? coverPath,
+    bool clearCover = false,
+  }) {
+    return LibraryFolder(
+      name: folder.name,
+      path: folder.path,
+      relativePath: folder.relativePath,
+      coverPath: clearCover ? null : coverPath ?? folder.coverPath,
+      children: children ?? folder.children,
+      childrenLoaded: folder.childrenLoaded,
+    );
+  }
+
+  String? _visibleLibraryDirectory(String root) {
+    if (view != LibraryView.album && view != LibraryView.subAlbum) {
+      return null;
     }
     final platform = selectedPlatform;
     final game = selectedGame;
     if (platform == null || game == null) {
-      return;
+      return null;
     }
-    final directory = p.join(root, platform, game, selectedSubAlbumPath ?? '');
-    final affected = changes.any(
-      (change) =>
-          _sameOrWithinPath(directory, change.path) ||
-          _sameOrWithinPath(change.path, directory) ||
-          (change.destinationPath != null &&
-              (_sameOrWithinPath(directory, change.destinationPath!) ||
-                  _sameOrWithinPath(change.destinationPath!, directory))),
-    );
-    if (!affected) {
-      return;
-    }
+    return p.join(root, platform, game, selectedSubAlbumPath ?? '');
+  }
 
-    _folderRequest++;
+  bool _upsertVisibleMedia(String root, MediaItem item) {
+    final directory = _visibleLibraryDirectory(root);
+    if (directory == null || !_samePath(directory, p.dirname(item.path))) {
+      return false;
+    }
+    final media = List<MediaItem>.of(folderListing.media);
+    final index = media.indexWhere(
+      (candidate) => _samePath(candidate.path, item.path),
+    );
+    if (index < 0) {
+      media.add(item);
+    } else {
+      media[index] = item;
+    }
+    media.sort((left, right) => right.capturedAt.compareTo(left.capturedAt));
+    folderListing = FolderListing(folders: folderListing.folders, media: media);
     isViewLoading = false;
-    final directoryKey = _pathKey(directory);
-    final resolved = resolvedListings[directoryKey];
-    if (resolved != null) {
-      folderListing = resolved;
+    return true;
+  }
+
+  bool _upsertVisibleFolder(String root, String path) {
+    final directory = _visibleLibraryDirectory(root);
+    if (directory == null || !_samePath(directory, p.dirname(path))) {
+      return false;
+    }
+    if (folderListing.folders.any((folder) => _samePath(folder.path, path))) {
+      return false;
+    }
+    final location = _libraryLocationForDirectory(root, path);
+    if (location == null) {
+      return false;
+    }
+    final folders = List<LibraryFolder>.of(folderListing.folders)
+      ..add(
+        LibraryFolder(
+          name: p.basename(path),
+          path: path,
+          relativePath: location.subAlbumPath,
+        ),
+      )
+      ..sort((left, right) => left.name.compareTo(right.name));
+    folderListing = FolderListing(folders: folders, media: folderListing.media);
+    isViewLoading = false;
+    return true;
+  }
+
+  bool _removeVisiblePath(String path) {
+    final folders = folderListing.folders
+        .where((folder) => !_sameOrWithinPath(path, folder.path))
+        .toList(growable: false);
+    final media = folderListing.media
+        .where((item) => !_sameOrWithinPath(path, item.path))
+        .toList(growable: false);
+    if (folders.length == folderListing.folders.length &&
+        media.length == folderListing.media.length) {
+      return false;
+    }
+    folderListing = FolderListing(folders: folders, media: media);
+    isViewLoading = false;
+    return true;
+  }
+
+  /// Keeps what a batch of watched changes did on screen for a short while.
+  void _recordLibraryChangeSummary(LibraryChangeSummary summary) {
+    if (_disposed || summary.isEmpty) {
       return;
     }
-    final listing = await scanner.folderContents(
-      settings.outputPath,
-      platform,
-      game,
-      subAlbumPath: selectedSubAlbumPath ?? '',
-    );
-    folderListing = FolderListing(
-      folders: listing.folders,
-      media: [
-        for (final item in listing.media) ?mediaByPath[_pathKey(item.path)],
-      ],
-    );
+    _lastLibraryChange = summary;
+    _libraryChangeSummaryTimer?.cancel();
+    _libraryChangeSummaryTimer = Timer(const Duration(seconds: 8), () {
+      _libraryChangeSummaryTimer = null;
+      if (_disposed) {
+        return;
+      }
+      _lastLibraryChange = null;
+      notifyListeners();
+    });
   }
 
   bool _changeTargetsCurrentLibrary(LibraryChange change) {
@@ -2384,7 +2776,7 @@ class LibraryController extends ChangeNotifier {
       progressMessage = null;
       progressValue = null;
       notifyListeners();
-      _scheduleLibraryChangeFlush();
+      _startLibraryChangeQueue();
     }
   }
 
@@ -2466,13 +2858,22 @@ class LibraryController extends ChangeNotifier {
   @override
   void dispose() {
     _disposed = true;
-    _libraryChangeTimer?.cancel();
+    _libraryChangeSummaryTimer?.cancel();
     _libraryWatchRecoveryTimer?.cancel();
     unawaited(_libraryWatchSubscription?.cancel());
     unawaited(folderAccess.dispose());
     super.dispose();
   }
 }
+
+class _QueuedLibraryChange {
+  const _QueuedLibraryChange(this.generation, this.change);
+
+  final int generation;
+  final LibraryChange change;
+}
+
+enum _MediaMutation { none, added, updated }
 
 class _ProviderValidation {
   const _ProviderValidation(this.settings, this.errors);

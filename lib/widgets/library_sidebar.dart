@@ -3,6 +3,8 @@ import 'package:material_ui/material_ui.dart';
 
 import '../controllers/library_controller.dart';
 import '../models/library.dart';
+import 'library_scan_toast.dart';
+import 'library_status_toast.dart';
 
 class LibrarySidebar extends StatelessWidget {
   const LibrarySidebar({required this.controller, this.width = 256, super.key});
@@ -12,11 +14,8 @@ class LibrarySidebar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final refreshInProgress = controller.isTimelineRefreshing;
-    final scanInProgress = controller.isBusy;
-    final scanPercent = controller.progressValue == null
-        ? null
-        : (controller.progressValue! * 100).round();
+    final activity = controller.libraryActivity;
+    final scanActivity = controller.scanActivity;
     final albumGroups = controller.platformFolders.map((platform) {
       return _PlatformSidebarItem(
         key: ValueKey('platform-${platform.name}'),
@@ -73,55 +72,50 @@ class LibrarySidebar extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              FButton(
-                key: const ValueKey('refresh-sidebar-button'),
-                variant: FButtonVariant.outline,
-                mainAxisSize: MainAxisSize.max,
-                mainAxisAlignment: MainAxisAlignment.start,
-                prefix: refreshInProgress
-                    ? FCircularProgress(
-                        key: const ValueKey('refresh-button-progress'),
-                        size: FCircularProgressSizeVariant.xs,
-                        semanticsLabel:
-                            controller.progressMessage ?? 'Library refresh',
-                      )
-                    : const Icon(FLucideIcons.refreshCw),
-                onPress: controller.isBusy || controller.isTimelineRefreshing
-                    ? null
-                    : controller.refresh,
-                child: Expanded(
-                  child: Text(
-                    refreshInProgress ? 'Refreshing…' : 'Refresh',
-                    overflow: TextOverflow.ellipsis,
-                  ),
+              IntrinsicHeight(
+                child: Row(
+                  key: const ValueKey('sidebar-status-row'),
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Expanded(child: LibraryStatusToast(activity: activity)),
+                    const SizedBox(width: 8),
+                    FTooltip(
+                      tipBuilder: (context, _) => const Text('Force refresh'),
+                      child: FButton.icon(
+                        key: const ValueKey('refresh-sidebar-button'),
+                        variant: FButtonVariant.outline,
+                        semanticsLabel: 'Force refresh the library',
+                        onPress: activity.isRunning || scanActivity.isRunning
+                            ? null
+                            : controller.refresh,
+                        child: const Icon(FLucideIcons.refreshCw),
+                      ),
+                    ),
+                  ],
                 ),
               ),
               const SizedBox(height: 8),
-              FButton(
-                key: const ValueKey('scan-sidebar-button'),
-                variant: FButtonVariant.outline,
-                mainAxisSize: MainAxisSize.max,
-                mainAxisAlignment: MainAxisAlignment.start,
-                prefix: scanInProgress
-                    ? FCircularProgress(
-                        key: const ValueKey('scan-button-progress'),
-                        size: FCircularProgressSizeVariant.xs,
-                        semanticsLabel:
-                            controller.progressMessage ?? 'Library scan',
-                      )
-                    : const Icon(FLucideIcons.hardDriveDownload),
-                onPress: controller.isBusy || controller.isTimelineRefreshing
-                    ? null
-                    : controller.collect,
-                child: Expanded(
-                  child: Text(
-                    scanInProgress
-                        ? scanPercent == null
-                              ? 'Scanning…'
-                              : 'Scan · $scanPercent%'
-                        : 'Scan',
-                    overflow: TextOverflow.ellipsis,
-                  ),
+              IntrinsicHeight(
+                child: Row(
+                  key: const ValueKey('sidebar-scan-row'),
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Expanded(child: LibraryScanToast(activity: scanActivity)),
+                    const SizedBox(width: 8),
+                    FTooltip(
+                      tipBuilder: (context, _) =>
+                          const Text('Scan for new captures'),
+                      child: FButton.icon(
+                        key: const ValueKey('scan-sidebar-button'),
+                        variant: FButtonVariant.outline,
+                        semanticsLabel: 'Scan for new captures',
+                        onPress: activity.isRunning || scanActivity.isRunning
+                            ? null
+                            : controller.collect,
+                        child: const Icon(FLucideIcons.hardDriveDownload),
+                      ),
+                    ),
+                  ],
                 ),
               ),
               const SizedBox(height: 8),

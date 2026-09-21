@@ -486,7 +486,7 @@ void main() {
     await tester.pump(const Duration(milliseconds: 200));
   });
 
-  testWidgets('shows scan and refresh progress in sidebar buttons', (
+  testWidgets('shows provider progress in the sidebar scan toast', (
     tester,
   ) async {
     final controller =
@@ -497,23 +497,29 @@ void main() {
           )
           ..isInitializing = false
           ..isBusy = true
-          ..progressMessage = 'Importing Steam screenshots…'
+          ..progressMessage = 'Importing World of Warcraft screenshots…'
           ..progressValue = 0.25;
 
     await tester.pumpWidget(GamingMemoriesApp(controller: controller));
     await tester.pump();
 
-    expect(find.byKey(const ValueKey('scan-button-progress')), findsOneWidget);
-    expect(find.text('Scan · 25%'), findsOneWidget);
-    expect(find.byKey(const ValueKey('refresh-button-progress')), findsNothing);
-    expect(find.byKey(const ValueKey('progress-toast')), findsNothing);
+    final scanToast = find.byKey(const ValueKey('scan-status-toast'));
+    final scanProgress = find.byKey(const ValueKey('scan-status-progress'));
+    final scanButton = find.byKey(const ValueKey('scan-sidebar-button'));
+    expect(scanToast, findsOneWidget);
+    expect(find.text('Scanning · 25%'), findsOneWidget);
+    expect(
+      find.text('Importing World of Warcraft screenshots…'),
+      findsOneWidget,
+    );
+    expect(tester.widget<FDeterminateProgress>(scanProgress).value, 0.25);
+    expect(tester.widget<FButton>(scanButton).onPress, isNull);
+    expect(tester.getSize(scanButton).height, tester.getSize(scanToast).height);
     expect(
       tester
-          .widget<FCircularProgress>(
-            find.byKey(const ValueKey('scan-button-progress')),
-          )
-          .semanticsLabel,
-      'Importing Steam screenshots…',
+          .widget<FButton>(find.byKey(const ValueKey('refresh-sidebar-button')))
+          .onPress,
+      isNull,
     );
 
     controller
@@ -524,16 +530,77 @@ void main() {
       ..notifyListeners();
     await tester.pump();
 
-    expect(find.byKey(const ValueKey('scan-button-progress')), findsNothing);
-    expect(
-      find.byKey(const ValueKey('refresh-button-progress')),
-      findsOneWidget,
-    );
+    expect(scanProgress, findsNothing);
+    expect(find.text('Scan for captures'), findsOneWidget);
+    expect(find.text('Collect from enabled providers'), findsOneWidget);
     expect(find.text('Refreshing…'), findsOneWidget);
-    expect(find.byKey(const ValueKey('progress-toast')), findsNothing);
+    expect(find.text('Refreshing the timeline cache…'), findsNothing);
+    expect(
+      tester.widget<FProgress>(
+        find.byKey(const ValueKey('library-status-progress')),
+      ),
+      isNotNull,
+    );
+    expect(tester.widget<FButton>(scanButton).onPress, isNull);
+
+    controller
+      ..isTimelineRefreshing = false
+      ..progressMessage = null
+      ..timelineMedia = [
+        MediaItem(
+          path: '/library/PC/Game/screenshot.jpg',
+          platform: 'PC',
+          game: 'Game',
+          capturedAt: DateTime(2026, 1, 1),
+          kind: MediaKind.image,
+        ),
+      ]
+      ..settings = const AppSettings(outputPath: '/library')
+      ..notifyListeners();
+    await tester.pump();
+
+    expect(find.text('Up to date'), findsOneWidget);
+    expect(find.text('1 capture'), findsOneWidget);
+    expect(find.byKey(const ValueKey('library-status-progress')), findsNothing);
+    expect(scanProgress, findsNothing);
+    expect(
+      tester
+          .widget<FButton>(find.byKey(const ValueKey('refresh-sidebar-button')))
+          .onPress,
+      isNotNull,
+    );
+    expect(tester.widget<FButton>(scanButton).onPress, isNotNull);
 
     await tester.pumpWidget(const SizedBox.shrink());
   });
+
+  testWidgets(
+    'blocks force refresh during watched updates and matches height',
+    (tester) async {
+      final controller = _LibraryActivityController(
+        const LibraryActivity(
+          kind: LibraryActivityKind.updating,
+          title: 'Updating library…',
+          detail: '1 change',
+        ),
+      );
+
+      await tester.pumpWidget(GamingMemoriesApp(controller: controller));
+      await tester.pump();
+
+      final statusToast = find.byKey(const ValueKey('library-status-toast'));
+      final refreshButton = find.byKey(
+        const ValueKey('refresh-sidebar-button'),
+      );
+      expect(tester.widget<FButton>(refreshButton).onPress, isNull);
+      expect(
+        tester.getSize(refreshButton).height,
+        tester.getSize(statusToast).height,
+      );
+
+      await tester.pumpWidget(const SizedBox.shrink());
+    },
+  );
 
   testWidgets('shows action results as bottom-right toasts', (tester) async {
     final actions = _MemoryScreenshotActions();
@@ -616,7 +683,20 @@ void main() {
     expect(secondToast, findsOneWidget);
     expect(find.text(firstWarning), findsOneWidget);
     expect(find.text(secondWarning), findsOneWidget);
-    expect(find.byIcon(FLucideIcons.alertTriangle), findsNWidgets(2));
+    expect(
+      find.descendant(
+        of: firstToast,
+        matching: find.byIcon(FLucideIcons.alertTriangle),
+      ),
+      findsOneWidget,
+    );
+    expect(
+      find.descendant(
+        of: secondToast,
+        matching: find.byIcon(FLucideIcons.alertTriangle),
+      ),
+      findsOneWidget,
+    );
     expect(tester.widget<FToast>(firstToast).variant, FToastVariant.primary);
     expect(tester.widget<FToast>(secondToast).variant, FToastVariant.primary);
     expect(tester.getRect(firstToast).center.dx, greaterThan(400));
@@ -1941,6 +2021,20 @@ class _MemoryConfigStore extends ConfigStore {
 
   @override
   Future<void> save(AppSettings settings) async => saved = settings;
+}
+
+class _LibraryActivityController extends LibraryController {
+  _LibraryActivityController(this.activity)
+    : super(
+        configStore: const ConfigStore(filePath: 'unused'),
+        scanner: const LibraryScanner(),
+        providers: const [],
+      );
+
+  final LibraryActivity activity;
+
+  @override
+  LibraryActivity get libraryActivity => activity;
 }
 
 class _WidgetSteamProvider

@@ -20,6 +20,7 @@ import 'package:gaming_memories/services/provider_paths.dart';
 import 'package:gaming_memories/services/screenshot_action_service.dart';
 import 'package:gaming_memories/services/steam_client.dart';
 import 'package:gaming_memories/services/timeline_cache.dart';
+import 'package:image/image.dart' as image_lib;
 import 'package:path/path.dart' as p;
 
 void main() {
@@ -388,6 +389,271 @@ void main() {
     expect(scanner.scanCalls, 2);
   });
 
+  test(
+    'applies watched file operations one at a time in event order',
+    () async {
+      final directory = await Directory.systemTemp.createTemp(
+        'gaming-memories-controller-',
+      );
+      final library = Directory(p.join(directory.path, 'library'));
+      final game = Directory(p.join(library.path, 'PC', 'Game'));
+      await game.create(recursive: true);
+      addTearDown(() => directory.delete(recursive: true));
+      final store = ConfigStore(
+        filePath: p.join(directory.path, 'settings.json'),
+      );
+      await store.save(AppSettings(outputPath: library.path));
+      final watcher = _FakeLibraryWatcher();
+      final controller = LibraryController(
+        configStore: store,
+        scanner: const LibraryScanner(),
+        libraryWatcher: watcher,
+        providers: const [],
+      );
+      addTearDown(controller.dispose);
+
+      await controller.initialize();
+      await _waitForController(
+        () => !controller.isTimelineRefreshing && watcher.paths.isNotEmpty,
+      );
+
+      final snapshots = <List<String>>[];
+      controller.addListener(() {
+        final names = controller.timelineMedia
+            .map((media) => p.basename(media.path))
+            .toList(growable: false);
+        if (names.isNotEmpty) {
+          snapshots.add(names);
+        }
+      });
+      final bytes = image_lib.encodePng(image_lib.Image(width: 1, height: 1));
+      final first = File(p.join(game.path, '2026-01-01_00-00-01.png'));
+      await first.writeAsBytes(bytes);
+      watcher.add(
+        LibraryChange(
+          kind: LibraryChangeKind.create,
+          path: first.path,
+          isDirectory: false,
+        ),
+      );
+      final second = File(p.join(game.path, '2026-01-01_00-00-02.png'));
+      await second.writeAsBytes(bytes);
+      watcher.add(
+        LibraryChange(
+          kind: LibraryChangeKind.create,
+          path: second.path,
+          isDirectory: false,
+        ),
+      );
+
+      await _waitForController(() => controller.timelineMedia.length == 2);
+
+      expect(
+        snapshots.any(
+          (snapshot) =>
+              snapshot.length == 1 && snapshot.single == p.basename(first.path),
+        ),
+        isTrue,
+      );
+      expect(snapshots.last.toSet(), {
+        p.basename(first.path),
+        p.basename(second.path),
+      });
+    },
+  );
+
+  test('publishes a watched folder before scanning its media', () async {
+    final directory = await Directory.systemTemp.createTemp(
+      'gaming-memories-controller-',
+    );
+    final library = Directory(p.join(directory.path, 'library'));
+    await Directory(p.join(library.path, 'PC', 'Game')).create(recursive: true);
+    addTearDown(() => directory.delete(recursive: true));
+    final store = ConfigStore(
+      filePath: p.join(directory.path, 'settings.json'),
+    );
+    await store.save(AppSettings(outputPath: library.path));
+    final scanner = _BlockingFolderCreateScanner(library.path);
+    addTearDown(() {
+      if (!scanner.mediaTreeRelease.isCompleted) {
+        scanner.mediaTreeRelease.complete();
+      }
+    });
+    final watcher = _FakeLibraryWatcher();
+    final controller = LibraryController(
+      configStore: store,
+      scanner: scanner,
+      libraryWatcher: watcher,
+      providers: const [],
+    );
+    addTearDown(controller.dispose);
+
+    await controller.initialize();
+    await _waitForController(
+      () => !controller.isTimelineRefreshing && watcher.paths.isNotEmpty,
+    );
+
+    var newGameWasPublished = false;
+    controller.addListener(() {
+      newGameWasPublished =
+          newGameWasPublished ||
+          controller.folderTree
+              .expand((platform) => platform.children)
+              .any((game) => game.name == 'New Game');
+    });
+    scanner.includeNewGame = true;
+    final newGame = Directory(p.join(library.path, 'PC', 'New Game'));
+    await newGame.create();
+    watcher.add(
+      LibraryChange(
+        kind: LibraryChangeKind.create,
+        path: newGame.path,
+        isDirectory: true,
+      ),
+    );
+
+    await scanner.mediaTreeStarted.future;
+
+    expect(newGameWasPublished, isTrue);
+    scanner.mediaTreeRelease.complete();
+    await _waitForController(() => controller.pendingLibraryChangeCount == 0);
+
+    watcher.add(
+      LibraryChange(
+        kind: LibraryChangeKind.delete,
+        path: newGame.path,
+        isDirectory: true,
+      ),
+    );
+    await _waitForController(
+      () => !controller.folderTree
+          .expand((platform) => platform.children)
+          .any((game) => game.name == 'New Game'),
+    );
+  });
+
+  test('reports watched changes in the library activity', () async {
+    final directory = await Directory.systemTemp.createTemp(
+      'gaming-memories-controller-',
+    );
+    final library = Directory(p.join(directory.path, 'library'));
+    await Directory(p.join(library.path, 'PC', 'Game')).create(recursive: true);
+    addTearDown(() => directory.delete(recursive: true));
+    final store = ConfigStore(
+      filePath: p.join(directory.path, 'settings.json'),
+    );
+    await store.save(AppSettings(outputPath: library.path));
+    final scanner = _WatchScanner(library.path);
+    final watcher = _FakeLibraryWatcher();
+    final controller = LibraryController(
+      configStore: store,
+      scanner: scanner,
+      libraryWatcher: watcher,
+      providers: const [],
+    );
+    addTearDown(controller.dispose);
+
+    await controller.initialize();
+    await _waitForController(
+      () => !controller.isTimelineRefreshing && watcher.paths.isNotEmpty,
+    );
+    expect(controller.libraryActivity.kind, LibraryActivityKind.idle);
+    expect(controller.libraryActivity.title, 'Up to date');
+    expect(controller.libraryActivity.detail, '0 captures');
+
+    final media = MediaItem(
+      path: p.join(library.path, 'PC', 'Game', 'new.jpg'),
+      platform: 'PC',
+      game: 'Game',
+      capturedAt: DateTime(2026, 1, 2),
+      kind: MediaKind.image,
+      sourceModifiedAt: DateTime(2026, 1, 2),
+      sourceSize: 123,
+    );
+    scanner.listing = FolderListing(folders: const [], media: [media]);
+    watcher.add(
+      LibraryChange(
+        kind: LibraryChangeKind.create,
+        path: media.path,
+        isDirectory: false,
+      ),
+    );
+    await _waitForController(() => controller.lastLibraryChange != null);
+
+    expect(controller.lastLibraryChange!.added, 1);
+    expect(controller.lastLibraryChange!.removed, 0);
+    expect(controller.libraryActivity.title, 'Library updated');
+    expect(controller.libraryActivity.detail, '1 added');
+
+    scanner.listing = const FolderListing.empty();
+    watcher.add(
+      LibraryChange(
+        kind: LibraryChangeKind.delete,
+        path: media.path,
+        isDirectory: false,
+      ),
+    );
+    await _waitForController(
+      () =>
+          controller.lastLibraryChange?.removed == 1 &&
+          controller.pendingLibraryChangeCount == 0,
+    );
+
+    expect(controller.libraryActivity.detail, '1 removed');
+    expect(controller.timelineMedia, isEmpty);
+  });
+
+  test('applies watched changes while provider collection is busy', () async {
+    final directory = await Directory.systemTemp.createTemp(
+      'gaming-memories-controller-',
+    );
+    final library = Directory(p.join(directory.path, 'library'));
+    final game = Directory(p.join(library.path, 'PC', 'Game'));
+    await game.create(recursive: true);
+    addTearDown(() => directory.delete(recursive: true));
+    final store = ConfigStore(
+      filePath: p.join(directory.path, 'settings.json'),
+    );
+    await store.save(AppSettings(outputPath: library.path));
+    final provider = _ProgressProvider();
+    final watcher = _FakeLibraryWatcher();
+    final controller = LibraryController(
+      configStore: store,
+      scanner: const LibraryScanner(),
+      libraryWatcher: watcher,
+      providers: [provider],
+    );
+    addTearDown(controller.dispose);
+
+    await controller.initialize();
+    await _waitForController(
+      () => !controller.isTimelineRefreshing && watcher.paths.isNotEmpty,
+    );
+
+    final collection = controller.collect();
+    await _waitForController(() => controller.isBusy);
+    final media = File(p.join(game.path, '2026-01-01_00-00-01.png'));
+    await media.writeAsBytes(
+      image_lib.encodePng(image_lib.Image(width: 1, height: 1)),
+    );
+    watcher.add(
+      LibraryChange(
+        kind: LibraryChangeKind.create,
+        path: media.path,
+        isDirectory: false,
+      ),
+    );
+    await _waitForController(() => controller.timelineMedia.isNotEmpty);
+
+    expect(controller.scanActivity.isRunning, isTrue);
+    expect(controller.timelineMedia.single.path, media.path);
+    expect(provider.release.isCompleted, isFalse);
+
+    provider.release.complete();
+    await collection;
+    expect(controller.scanActivity.isRunning, isFalse);
+  });
+
   test('refreshes the timeline when the folder watcher cannot start', () async {
     final directory = await Directory.systemTemp.createTemp(
       'gaming-memories-controller-',
@@ -522,6 +788,9 @@ void main() {
     expect(controller.isBusy, isTrue);
     expect(controller.progressMessage, 'Importing test screenshots…');
     expect(controller.progressValue, 0.5);
+    expect(controller.scanActivity.title, 'Scanning · 50%');
+    expect(controller.scanActivity.detail, 'Importing test screenshots…');
+    expect(controller.scanActivity.progress, 0.5);
 
     provider.release.complete();
     await collection;
@@ -529,6 +798,8 @@ void main() {
     expect(controller.isBusy, isFalse);
     expect(controller.progressMessage, isNull);
     expect(controller.progressValue, isNull);
+    expect(controller.scanActivity.title, 'Scan for captures');
+    expect(controller.scanActivity.progress, isNull);
   });
 
   test(
@@ -1286,6 +1557,16 @@ class _WatchScanner extends LibraryScanner {
   Future<MediaItem?> prepareMediaItem(MediaItem item) async => item;
 
   @override
+  Future<MediaItem?> mediaItemAt(String outputPath, String path) async {
+    for (final item in listing.media) {
+      if (p.equals(item.path, path)) {
+        return item;
+      }
+    }
+    return null;
+  }
+
+  @override
   Future<List<MediaItem>> mediaTree(
     String outputPath,
     String platform,
@@ -1294,6 +1575,57 @@ class _WatchScanner extends LibraryScanner {
   }) async {
     mediaTreeCalls++;
     return treeMedia;
+  }
+}
+
+class _BlockingFolderCreateScanner extends LibraryScanner {
+  _BlockingFolderCreateScanner(this.root);
+
+  final String root;
+  final mediaTreeStarted = Completer<void>();
+  final mediaTreeRelease = Completer<void>();
+  bool includeNewGame = false;
+
+  @override
+  Future<MediaLibrary> scan(String outputPath) async {
+    return const MediaLibrary.empty();
+  }
+
+  @override
+  Future<List<LibraryFolder>> folderTree(String outputPath) async {
+    return [
+      LibraryFolder(
+        name: 'PC',
+        path: p.join(root, 'PC'),
+        children: [
+          LibraryFolder(
+            name: 'Game',
+            path: p.join(root, 'PC', 'Game'),
+            relativePath: 'Game',
+            childrenLoaded: false,
+          ),
+          if (includeNewGame)
+            LibraryFolder(
+              name: 'New Game',
+              path: p.join(root, 'PC', 'New Game'),
+              relativePath: 'New Game',
+              childrenLoaded: false,
+            ),
+        ],
+      ),
+    ];
+  }
+
+  @override
+  Future<List<MediaItem>> mediaTree(
+    String outputPath,
+    String platform,
+    String game, {
+    String subAlbumPath = '',
+  }) async {
+    mediaTreeStarted.complete();
+    await mediaTreeRelease.future;
+    return const [];
   }
 }
 

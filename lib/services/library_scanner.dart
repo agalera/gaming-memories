@@ -257,6 +257,45 @@ class LibraryScanner {
     }
   }
 
+  /// Reads and prepares one known media path without rescanning its parent.
+  Future<MediaItem?> mediaItemAt(String outputPath, String path) async {
+    if (outputPath.trim().isEmpty) {
+      return null;
+    }
+
+    final root = p.normalize(p.absolute(expandUserPath(outputPath.trim())));
+    final normalized = p.normalize(p.absolute(path));
+    if (!p.isWithin(root, normalized) ||
+        !_isMedia(normalized) ||
+        _isThumbnail(normalized) ||
+        _isCover(normalized)) {
+      return null;
+    }
+    final relative = p.relative(normalized, from: root);
+    final parts = p.split(relative);
+    if (parts.length < 3 || parts.first == '..') {
+      return null;
+    }
+
+    final file = File(normalized);
+    if (!await file.exists()) {
+      return null;
+    }
+    try {
+      final item = await _listedMediaItem(
+        file,
+        parts[0],
+        parts[1],
+        parts.length == 3
+            ? ''
+            : p.joinAll(parts.skip(2).take(parts.length - 3)),
+      );
+      return await prepareMediaItem(item);
+    } on FileSystemException {
+      return null;
+    }
+  }
+
   Future<List<MediaItem>> mediaTree(
     String outputPath,
     String platform,
