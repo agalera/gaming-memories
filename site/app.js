@@ -90,6 +90,46 @@ function setUpNavigation() {
   });
 }
 
+function activeTheme() {
+  const selected = document.documentElement.dataset.theme;
+  if (selected === 'light' || selected === 'dark') return selected;
+  return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+}
+
+function updateThemeControls() {
+  const theme = activeTheme();
+  const nextTheme = theme === 'dark' ? 'light' : 'dark';
+  document.querySelector('meta[name="theme-color"]')?.setAttribute(
+    'content',
+    theme === 'dark' ? '#000000' : '#ffffff',
+  );
+  document.querySelectorAll('[data-theme-toggle]').forEach((button) => {
+    const label = `Use ${nextTheme} theme`;
+    button.setAttribute('aria-label', label);
+    button.setAttribute('title', label);
+  });
+}
+
+function setUpTheme() {
+  const systemTheme = window.matchMedia('(prefers-color-scheme: dark)');
+  document.querySelectorAll('[data-theme-toggle]').forEach((button) => {
+    button.addEventListener('click', () => {
+      const theme = activeTheme() === 'dark' ? 'light' : 'dark';
+      document.documentElement.dataset.theme = theme;
+      try {
+        localStorage.setItem('gaming-memories-theme', theme);
+      } catch (_) {
+        // The selected theme remains active for this page.
+      }
+      updateThemeControls();
+    });
+  });
+  systemTheme.addEventListener?.('change', () => {
+    if (!document.documentElement.dataset.theme) updateThemeControls();
+  });
+  updateThemeControls();
+}
+
 function setUpReveal() {
   const items = document.querySelectorAll('[data-reveal]');
   if (!items.length) return;
@@ -166,6 +206,7 @@ document.querySelectorAll('[data-year]').forEach((item) => {
 });
 
 setUpNavigation();
+setUpTheme();
 setUpReveal();
 setUpTabs();
 setUpCopyButtons();
