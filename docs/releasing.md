@@ -109,9 +109,17 @@ FFmpeg, ExifTool, and the libmtp tools are optional, so the deb and rpm
 packages declare them as recommends and suggests. The Arch package format has
 no equivalent, so the README asks the user to install them.
 
-The runner is `ubuntu-24.04`, which sets a floor of glibc 2.39. Building in a
-`debian:12` container would lower it to 2.36. Move to one only if a user
-reports the problem.
+The runner is `ubuntu-24.04`, but its own glibc is not the floor. The built
+binaries reference no glibc symbol newer than 2.34 and no versioned libstdc++
+symbol at all, so the binding constraint is `libmpv.so.2`, which means mpv 0.36
+or newer. Measure both again after a Flutter upgrade rather than assuming the
+runner sets the floor:
+
+```sh
+strings -a build/linux/x64/release/bundle/lib/*.so \
+        build/linux/x64/release/bundle/gaming_memories |
+  grep -oE 'GLIBC_2\.[0-9]+' | sort -uV | tail -1
+```
 
 ### macOS
 
@@ -163,3 +171,31 @@ user to select **More info**, then **Run anyway**.
 
 `packaging/windows/sfx-config.txt` needs CRLF line endings. `.gitattributes`
 marks it so git leaves them alone.
+
+## What the builds ship
+
+The project is GPL-3.0-or-later. The prebuilt libmpv in the Windows and macOS
+builds was checked against that, because a GPL-only libmpv would have forced
+the license rather than left it open.
+
+`media_kit_libs_windows_video` downloads
+`mpv-dev-x86_64-20230924-git-652a1dd.7z`, whose filename carries no `lgpl`
+marker. That marker is not what decides it. The build configuration inside the
+shipped `libmpv-2.dll` reads `-Dgpl=false` for mpv and
+`--disable-gpl --disable-nonfree --enable-version3` for FFmpeg, and every
+FFmpeg library in it reports its license as `LGPL version 3 or later`. FFmpeg
+derives that string from `CONFIG_GPL` at build time, so it is conclusive.
+Neither x264 nor x265 is linked; the `x264` strings in the library belong to
+mpv's h264 decoder options and its SEI parsing.
+
+`media_kit_libs_macos_video` downloads the `default` flavour from
+`media-kit/libmpv-darwin-build`, documented as LGPL-2.1 and built without
+`--enable-gpl`.
+
+Both libraries are dynamically linked, so an MIT or other permissive license
+for this source would also have been possible. Re-check this after either
+`media_kit_libs_*` package changes the archive it downloads:
+
+```sh
+strings -a libmpv-2.dll | grep -oE 'LGPL version [0-9]+ or later|GPL version [0-9]+ or later'
+```

@@ -90,8 +90,9 @@ Three formats are published. Each one declares GTK 3, libmpv, and
 | Fedora, RHEL | `sudo dnf install ./gaming-memories-<version>-1.x86_64.rpm` |
 | Arch | `sudo pacman -U gaming-memories-<version>-1-x86_64.pkg.tar.zst` |
 
-The packages are built on Ubuntu 24.04 and need glibc 2.39 or newer, which
-means Ubuntu 24.04, Debian 13, Fedora 40, or a current Arch. The app lands in
+The packages are built on Ubuntu 24.04. They need glibc 2.34 or newer and a
+libmpv that provides `libmpv.so.2`, which mpv 0.36 and newer do. Ubuntu 24.04,
+Debian 13, Fedora 40, and a current Arch all meet both. The app lands in
 `/usr/lib/gaming-memories` with a `gaming-memories` command in `/usr/bin` and
 an entry in the desktop menu.
 
@@ -207,7 +208,8 @@ describes how a release is cut and which secrets the workflow needs.
 Gaming Memories is released under the
 [GNU General Public License v3.0 or later](LICENSE).
 
-The Windows build ships a prebuilt libmpv that links GPL-licensed components,
-so the distributed binaries are GPL in any case. The macOS build ships an
-LGPL-2.1 libmpv. Every Dart and Flutter package the app depends on is
-BSD-3-Clause or MIT.
+The Windows and macOS builds ship a prebuilt libmpv, and both are LGPL builds
+with no GPL-only component linked in. Every Dart and Flutter package the app
+depends on is BSD-3-Clause or MIT. See
+[docs/releasing.md](docs/releasing.md#what-the-builds-ship) for how that was
+checked.

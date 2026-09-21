@@ -8,7 +8,7 @@ labels:
   - component/build
   - chore
 created: 2026-09-20T21:31:11+02:00
-updated: 2026-09-21T14:32:46+02:00
+updated: 2026-09-21T14:58:33+02:00
 ---
 
 # Release distribution for Windows, macOS, and Linux
@@ -335,3 +335,17 @@ Details:
   4. Verification stops at a workflow_dispatch dry run. No tag is pushed.
 
   Conflict found during implementation and resolved with the owner: dropping the App Sandbox breaks the security-scoped bookmark bridge TQ-0026 built, because bookmarkData(options: .withSecurityScope) and startAccessingSecurityScopedResource() are sandbox facilities. Outside the sandbox a plain path carries the same access, so createFolderAccessService() now returns PathFolderAccessService on every platform. MacOSFolderAccessService and the Swift bridge stay in the repository but are no longer wired up.
+- 2026-09-21T14:58:33+02:00 — Dry run verified: https://github.com/fmartingr/gaming-memories/actions/runs/35601109661 — Version, Linux, macOS and Windows all green, Release correctly skipped.
+
+  Two bugs the first dry run found and the second confirmed fixed:
+
+  1. Linux: media_kit_video's CMake links PkgConfig::mpv, so libmpv-dev is a build dependency, not just a runtime one. libmedia_kit_video_plugin.so carries a DT_NEEDED on libmpv.so.2, so the deb lost its 'libmpv1' alternative.
+  2. Windows: 7zSD.sfx is not in the 7-Zip Extra package and has not been since 7-Zip 19. It ships in the LZMA SDK as bin/7zSD.sfx. RunProgram now uses the %%T form.
+
+  FINDING — the license research in this task's body is wrong. It says the Windows build ships a GPL libmpv, with 'high' confidence, and that was the main argument for GPL-3.0-or-later. The shipped libmpv-2.dll says otherwise. Its embedded build configuration reads -Dgpl=false for mpv and --disable-gpl --disable-nonfree --enable-version3 for FFmpeg, and every FFmpeg library in it reports 'LGPL version 3 or later'. FFmpeg derives that from CONFIG_GPL at build time, so it is conclusive. Neither x264 nor x265 is linked; the x264 strings in the library are mpv's h264 decoder options and its SEI parsing. Both the Windows and macOS libmpv builds are LGPL and dynamically linked, so a permissive license for this source was available too. GPL-3.0-or-later is still valid and is shipped; the owner may want to revisit it now the premise is corrected. docs/releasing.md records the check under 'What the builds ship'.
+
+  Measured, not assumed: the Linux bundle references no glibc symbol newer than 2.34 and no versioned libstdc++ symbol. The floor is libmpv.so.2, not the runner's glibc 2.39. The README and docs were corrected.
+
+  Artifact checks on the dry run's downloads: deb declares Depends libgtk-3-0, libmpv2, xdg-utils with the recommends and suggests intact and a 46-file bundle; rpm installs its license under /usr/share/licenses; Arch package has depend gtk3/mpv/xdg-utils and no optdepend, which nfpm cannot express. The macOS dmg holds a universal x86_64+arm64 app with the Applications symlink, ad-hoc signed as expected with no certificate secrets, and entitlements carrying no app-sandbox. The Windows exe is a PE32 stub of 128000 bytes followed by the config and a 24 MB LZMA2 payload at offset 128105; the zip carries msvcp140.dll, vcruntime140.dll, vcruntime140_1.dll and LICENSE.txt.
+
+  Acceptance criteria 3 to 10 need real machines and are not verified: the Windows start delay from a cold temp folder, Gatekeeper on a clean Mac, video playback, the external commands from installed builds, and the three Linux installs. Criterion 4 also needs the six macOS secrets, which are not configured yet.
