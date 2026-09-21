@@ -11,6 +11,15 @@ version="${GM_VERSION:-$(sed -n 's/^version: \([0-9][0-9.]*\)+.*/\1/p' pubspec.y
 dmg_path="$dist_dir/gaming-memories-$version-macos-universal.dmg"
 identity="${MACOS_SIGN_IDENTITY:-}"
 
+# A developer signing by hand has the certificate in their login keychain, so
+# the identity is discovered rather than passed. CI sets MACOS_SIGN_IDENTITY
+# from the temporary keychain it imports into, and finds nothing when the
+# certificate secret is absent.
+if [[ -z "$identity" ]]; then
+  identity="$(security find-identity -v -p codesigning \
+    | sed -n 's/.*"\(Developer ID Application:.*\)"/\1/p' | head -1)"
+fi
+
 if [[ -z "$version" ]]; then
   echo "Could not read a version. Set GM_VERSION." >&2
   exit 1
@@ -42,7 +51,7 @@ if [[ -n "$identity" ]]; then
     --sign "$identity" "$app_path"
   codesign --verify --strict --verbose=2 "$app_path"
 else
-  echo "MACOS_SIGN_IDENTITY is not set. Building an unsigned .dmg." >&2
+  echo "No Developer ID Application identity. Building an unsigned .dmg." >&2
   echo "Gatekeeper will block this build on another machine." >&2
 fi
 
@@ -80,17 +89,21 @@ fi
 
 codesign --force --timestamp --sign "$identity" "$dmg_path"
 
-if [[ -z "${APPLE_ID:-}" || -z "${APPLE_APP_PASSWORD:-}" || -z "${APPLE_TEAM_ID:-}" ]]; then
-  echo "APPLE_ID, APPLE_APP_PASSWORD or APPLE_TEAM_ID is missing." >&2
+# Credentials come either from the environment, which is how CI passes them,
+# or from a keychain profile stored once with `xcrun notarytool
+# store-credentials`, which is how a developer avoids retyping them.
+if [[ -n "${APPLE_ID:-}" && -n "${APPLE_APP_PASSWORD:-}" && -n "${APPLE_TEAM_ID:-}" ]]; then
+  notary_args=(--apple-id "$APPLE_ID" --password "$APPLE_APP_PASSWORD" --team-id "$APPLE_TEAM_ID")
+elif [[ -n "${NOTARY_PROFILE:-}" ]]; then
+  notary_args=(--keychain-profile "$NOTARY_PROFILE")
+else
+  echo "No notarization credentials. Set APPLE_ID, APPLE_APP_PASSWORD and" >&2
+  echo "APPLE_TEAM_ID, or NOTARY_PROFILE for a stored keychain profile." >&2
   echo "Signed .dmg written to $dmg_path, but it is not notarized." >&2
   exit 0
 fi
 
-xcrun notarytool submit "$dmg_path" \
-  --apple-id "$APPLE_ID" \
-  --password "$APPLE_APP_PASSWORD" \
-  --team-id "$APPLE_TEAM_ID" \
-  --wait
+xcrun notarytool submit "$dmg_path" "${notary_args[@]}" --wait
 
 xcrun stapler staple "$dmg_path"
 spctl --assess --type open --context context:primary-signature --verbose=2 "$dmg_path"

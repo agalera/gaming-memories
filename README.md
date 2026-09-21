@@ -75,6 +75,9 @@ Download `gaming-memories-<version>-macos-universal.dmg`, open it, and drag
 ID certificate and notarized by Apple, so Gatekeeper opens it without a
 warning. The build is universal and runs natively on Apple silicon and Intel.
 
+The macOS download is signed on a machine that holds the certificate rather
+than in CI, so it is attached a few minutes after the Linux and Windows ones.
+
 macOS asks for permission the first time the app reads a folder inside
 Desktop, Documents, Downloads, or a removable volume. Allow it once and the
 grant persists.

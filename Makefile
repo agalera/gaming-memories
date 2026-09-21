@@ -12,9 +12,10 @@ ARGS ?=
 VERSION ?= $(shell sed -n 's/^version: \([0-9][0-9.]*\)+.*/\1/p' pubspec.yaml)
 BUILD_NUMBER ?= 1
 DIST_DIR ?= dist
+TAG ?= $(shell git describe --tags --exact-match 2>/dev/null)
 PACKAGE_ENV := GM_VERSION=$(VERSION) DIST_DIR=$(DIST_DIR)
 
-.PHONY: help setup deps outdated upgrade devices doctor run run-linux run-macos run-windows analyze format format-check test check icons icons-reset build build-linux build-macos build-windows package-linux package-macos package-windows clean
+.PHONY: help setup deps outdated upgrade devices doctor run run-linux run-macos run-windows analyze format format-check test check icons icons-reset build build-linux build-macos build-windows package-linux package-macos package-windows release-macos clean
 
 help: ## Show the available commands.
 	@awk 'BEGIN {FS = ":.*## "; printf "Usage: make <target> [VARIABLE=value]\n\nTargets:\n"} /^[a-zA-Z0-9_-]+:.*## / {printf "  %-16s %s\n", $$1, $$2}' $(MAKEFILE_LIST)
@@ -94,6 +95,11 @@ package-windows: ## Build the Windows self-executing .exe and .zip into DIST_DIR
 	$(FLUTTER) build windows --release --build-name=$(VERSION) --build-number=$(BUILD_NUMBER)
 	$(PACKAGE_ENV) pwsh -NoProfile -File ./tool/fetch_sfx_module.ps1
 	$(PACKAGE_ENV) pwsh -NoProfile -File ./tool/package_windows.ps1
+
+release-macos: ## Attach a signed macOS .dmg to the GitHub release for TAG.
+	@test -n "$(TAG)" || { echo "Set TAG=vX.Y.Z, or check out the tag." >&2; exit 1; }
+	$(MAKE) package-macos VERSION=$(TAG:v%=%) BUILD_NUMBER=$(BUILD_NUMBER) DIST_DIR=$(DIST_DIR)
+	TAG=$(TAG) GM_VERSION=$(TAG:v%=%) DIST_DIR=$(DIST_DIR) ./tool/release_macos.sh
 
 clean: ## Remove generated build files.
 	$(FLUTTER) clean

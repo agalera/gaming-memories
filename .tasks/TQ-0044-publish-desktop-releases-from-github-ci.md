@@ -1,14 +1,14 @@
 ---
 id: TQ-0044
 title: Publish desktop releases from GitHub CI
-status: in-progress
+status: done
 priority: normal
 labels:
   - component/ci
   - component/build
   - chore
 created: 2026-09-20T21:31:11+02:00
-updated: 2026-09-21T14:58:33+02:00
+updated: 2026-09-21T14:58:49+02:00
 ---
 
 # Release distribution for Windows, macOS, and Linux

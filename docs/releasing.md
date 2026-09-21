@@ -1,8 +1,9 @@
 # Releasing
 
-`.github/workflows/release.yml` builds and publishes every release. It runs on
-a `v*` tag and can also be started by hand for a dry run that builds the same
-artifacts and publishes nothing.
+A release is cut in two steps. `.github/workflows/release.yml` runs on a `v*`
+tag and publishes the Linux and Windows downloads. The macOS `.dmg` is then
+built, notarized and attached from a Mac that holds the Developer ID
+certificate, so the certificate never has to live in a repository secret.
 
 ## Cut a release
 
@@ -16,18 +17,32 @@ The tag name without its leading `v` becomes the version passed to every
 `--build-number`. `pubspec.yaml` is not read during a release, so its version
 line does not have to be bumped for the tag to take effect.
 
-The run produces six files and attaches them to a GitHub release:
+Once that run has finished, attach the macOS build from a Mac:
 
-| File | Platform |
-| --- | --- |
-| `gaming-memories-<version>-windows-x64.exe` | Windows, self-executing |
-| `gaming-memories-<version>-windows-x64.zip` | Windows, plain folder |
-| `gaming-memories-<version>-macos-universal.dmg` | macOS, signed and notarized |
-| `gaming-memories_<version>-1_amd64.deb` | Debian, Ubuntu |
-| `gaming-memories-<version>-1.x86_64.rpm` | Fedora, RHEL |
-| `gaming-memories-<version>-1-x86_64.pkg.tar.zst` | Arch |
+```sh
+git fetch --tags
+make release-macos TAG=v1.2.0
+```
+
+That target builds and signs the app, notarizes and staples the image, uploads
+it, and rewrites the release's `SHA256SUMS` with the `.dmg` line folded in. It
+refuses to upload an image Gatekeeper would block, so a failed notarization
+leaves the release as the workflow left it rather than publishing something
+broken.
+
+| File | Platform | Published by |
+| --- | --- | --- |
+| `gaming-memories-<version>-windows-x64.exe` | Windows, self-executing | the workflow |
+| `gaming-memories-<version>-windows-x64.zip` | Windows, plain folder | the workflow |
+| `gaming-memories_<version>-1_amd64.deb` | Debian, Ubuntu | the workflow |
+| `gaming-memories-<version>-1.x86_64.rpm` | Fedora, RHEL | the workflow |
+| `gaming-memories-<version>-1-x86_64.pkg.tar.zst` | Arch | the workflow |
+| `gaming-memories-<version>-macos-universal.dmg` | macOS, signed and notarized | `make release-macos` |
 
 `SHA256SUMS` carries the checksum of each one.
+
+The workflow still builds a macOS `.dmg` as a build check and uploads it to the
+run as `macos-unsigned`. That one is never published.
 
 ## Dry run
 
@@ -46,46 +61,63 @@ make package-windows    # needs 7-Zip and PowerShell
 Each target builds the release app first and writes to `dist/`. Set `VERSION`
 to override the version taken from `pubspec.yaml`.
 
-`make package-macos` produces an unsigned `.dmg` when `MACOS_SIGN_IDENTITY` is
-not set, which is enough for a local check but is blocked by Gatekeeper on
-another machine.
+`make package-macos` produces an unsigned `.dmg` when no Developer ID
+Application identity is in the keychain, which is enough for a local check but
+is blocked by Gatekeeper on another machine.
 
-## Secrets
+## Set up the signing Mac
 
-The macOS job signs and notarizes only when `MACOS_CERTIFICATE_P12` is present.
-Without it the job still builds a `.dmg`, unsigned, and says so in its log. The
-other five secrets are read only on the signing path.
+`make release-macos` needs three things on the machine that runs it. The
+repository needs no secrets for any of this.
 
-| Secret | What it holds |
-| --- | --- |
-| `MACOS_CERTIFICATE_P12` | The Developer ID Application certificate and its private key, as a base64 `.p12` |
-| `MACOS_CERTIFICATE_PASSWORD` | The password set when exporting that `.p12` |
-| `MACOS_KEYCHAIN_PASSWORD` | Any string. It locks the temporary keychain the job creates and deletes |
-| `APPLE_ID` | The Apple ID of the developer account |
-| `APPLE_APP_PASSWORD` | An app-specific password for that Apple ID |
-| `APPLE_TEAM_ID` | The ten-character team identifier |
+**A Developer ID Application certificate in the login keychain.** Create one at
+[developer.apple.com](https://developer.apple.com/account/resources/certificates/list)
+under **Developer ID Application** and install it. An **Apple Development**
+certificate is not enough: it cannot sign for distribution and Apple will not
+notarize what it signs. Check what is installed with:
 
-### Export the certificate
+```sh
+security find-identity -v -p codesigning
+```
 
-1. In Keychain Access, find **Developer ID Application: …** under **My
-   Certificates**. Create one at
-   [developer.apple.com](https://developer.apple.com/account/resources/certificates/list)
-   if it is missing.
-2. Right-click it, choose **Export**, and save a `.p12` with a password. The
-   export has to include the private key, so select the certificate row rather
-   than the key row.
-3. Encode it and copy the result into the secret:
+`tool/package_macos.sh` picks the first `Developer ID Application` identity it
+finds. Set `MACOS_SIGN_IDENTITY` to choose a different one.
 
-   ```sh
-   base64 -i DeveloperID.p12 | pbcopy
-   ```
+**Notarization credentials.** Store them once so no password is typed again:
 
-### Create the app-specific password
+```sh
+xcrun notarytool store-credentials gaming-memories \
+  --apple-id you@example.com \
+  --team-id ABCDE12345 \
+  --password <app-specific-password>
+```
 
-Sign in at [appleid.apple.com](https://appleid.apple.com), open **Sign-In and
-Security**, then **App-Specific Passwords**, and generate one. The team
-identifier is on the [membership
+Then pass the profile through the environment:
+
+```sh
+NOTARY_PROFILE=gaming-memories make release-macos TAG=v1.2.0
+```
+
+Generate the app-specific password at
+[appleid.apple.com](https://appleid.apple.com) under **Sign-In and Security**.
+The team identifier is on the [membership
 page](https://developer.apple.com/account#MembershipDetailsCard).
+`APPLE_ID`, `APPLE_APP_PASSWORD` and `APPLE_TEAM_ID` work instead of a profile.
+
+**`create-dmg` and the GitHub CLI.**
+
+```sh
+brew install create-dmg gh
+```
+
+### Signing in CI instead
+
+The macOS job still imports a certificate and signs when
+`MACOS_CERTIFICATE_P12` is set, alongside `MACOS_CERTIFICATE_PASSWORD`,
+`MACOS_KEYCHAIN_PASSWORD`, `APPLE_ID`, `APPLE_APP_PASSWORD` and
+`APPLE_TEAM_ID`. Export the `.p12` from Keychain Access with its private key
+and encode it with `base64 -i DeveloperID.p12 | pbcopy`. Publishing that
+artifact would also mean adding it back to the release job's downloads.
 
 ## How each platform is built
 
@@ -128,7 +160,9 @@ strings -a build/linux/x64/release/bundle/lib/*.so \
 dylibs first, then the bundle with its entitlements — because the outer seal
 otherwise invalidates the nested signatures under the hardened runtime.
 `create-dmg` builds the image, `notarytool submit --wait` sends it to Apple,
-and `stapler staple` attaches the ticket.
+and `stapler staple` attaches the ticket. `tool/release_macos.sh` then checks
+the result with `spctl --assess` before it uploads anything, so an image that
+failed notarization never reaches the release.
 
 The release build runs **outside the App Sandbox**. The sandbox blocks the
 child processes the app depends on, so `exiftool`, `ffmpeg`, `ffprobe`, and the
