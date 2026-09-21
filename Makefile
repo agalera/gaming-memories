@@ -10,7 +10,7 @@ PLATFORM ?= linux
 BUILD_MODE ?= debug
 ARGS ?=
 
-.PHONY: help setup deps outdated upgrade devices doctor run run-linux run-macos run-windows analyze format format-check test check icons build build-linux build-macos build-windows clean
+.PHONY: help setup deps outdated upgrade devices doctor run run-linux run-macos run-windows analyze format format-check test check icons icons-reset build build-linux build-macos build-windows clean
 
 help: ## Show the available commands.
 	@awk 'BEGIN {FS = ":.*## "; printf "Usage: make <target> [VARIABLE=value]\n\nTargets:\n"} /^[a-zA-Z0-9_-]+:.*## / {printf "  %-16s %s\n", $$1, $$2}' $(MAKEFILE_LIST)
@@ -62,6 +62,9 @@ check: format-check analyze test ## Run all source checks.
 
 icons: ## Generate desktop icons from assets/logo.png.
 	./tool/generate_desktop_icons.sh
+
+icons-reset: ## Reset the OS icon cache so a rebuilt app shows the current icon.
+	./tool/reset_icon_cache.sh $(ARGS)
 
 build: ## Build a desktop app. Set PLATFORM and BUILD_MODE as needed.
 	$(FLUTTER) build $(PLATFORM) --$(BUILD_MODE) $(ARGS)
