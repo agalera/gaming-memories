@@ -1,4 +1,4 @@
 ;!@Install@!UTF-8!
 Title="Gaming Memories"
-RunProgram="gaming_memories.exe"
+RunProgram="\"%%T\\gaming_memories.exe\""
 ;!@InstallEnd@!

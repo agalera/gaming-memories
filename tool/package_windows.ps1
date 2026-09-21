@@ -65,7 +65,7 @@ New-Item -ItemType Directory -Force -Path $work | Out-Null
 
 try {
     $archive = Join-Path $work 'payload.7z'
-    & $sevenZip a -t7z -mx=9 -mmt=on $archive (Join-Path $releaseDir '*') | Out-Null
+    & $sevenZip a -t7z -m0=lzma2 -mx=9 -mmt=on $archive (Join-Path $releaseDir '*') | Out-Null
     if ($LASTEXITCODE -ne 0) { throw "7z failed to build $archive." }
 
     $zipPath = Join-Path $distDir "gaming-memories-$version-windows-x64.zip"

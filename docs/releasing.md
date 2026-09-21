@@ -95,6 +95,10 @@ One `flutter build linux --release` produces `build/linux/x64/release/bundle`.
 `nfpm` turns that one bundle into all three package formats from
 `packaging/linux/nfpm.yaml`, with per-format dependency names.
 
+`libmpv-dev` is a build dependency as well as a runtime one: the Linux build of
+`media_kit_video` links `PkgConfig::mpv`, so the binary carries a `DT_NEEDED`
+on `libmpv.so.2` rather than loading it only through `dlopen`.
+
 GTK 3, libmpv, and `xdg-utils` are hard dependencies. None of the three can be
 bundled: GTK 3 is linked by the Flutter embedder, `xdg-utils` is a set of
 system scripts, and libmpv pulls in FFmpeg, libass, fontconfig, freetype,
@@ -144,9 +148,14 @@ folder into a `.7z`, and joins three parts end to end into the published
 At start the module unpacks to a temporary folder, runs
 `gaming_memories.exe` from it, and clears the folder when the app exits.
 
-`tool/fetch_sfx_module.ps1` downloads 7-Zip Extra and checks it against a
-pinned SHA-256 before taking `7zSD.sfx` out of it. The module is not committed
-to this repository.
+`tool/fetch_sfx_module.ps1` downloads the LZMA SDK and checks it against a
+pinned SHA-256 before taking `bin/7zSD.sfx` out of it. The SDK is where that
+module ships; the 7-Zip Extra package has not carried an SFX module since
+7-Zip 19. The module is not committed to this repository.
+
+The payload is packed with LZMA2 alone. `7zSD.sfx` is the small C build of
+SFXSetup, and keeping a branch coder out of the archive keeps it to one
+decoder.
 
 There is no Windows code signing certificate and none is planned, so the
 download is unsigned and SmartScreen warns on first run. The README tells the

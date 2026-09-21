@@ -40,7 +40,7 @@ overrides:
   deb:
     depends:
       - libgtk-3-0
-      - libmpv2 | libmpv1
+      - libmpv2
       - xdg-utils
     recommends:
       - ffmpeg

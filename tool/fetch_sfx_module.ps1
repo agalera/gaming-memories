@@ -1,15 +1,16 @@
 #Requires -Version 5.1
 
 # Downloads 7zSD.sfx, the 7-Zip self-extracting module that makes the Windows
-# release a single self-executing .exe. The module is not redistributed in this
-# repository, so the packaging step fetches it and checks it against a pinned
-# digest of the whole 7-Zip Extra archive.
+# release a single self-executing .exe. The module ships in the LZMA SDK; the
+# 7-Zip Extra package has not carried an SFX module since 7-Zip 19. It is not
+# redistributed in this repository, so the packaging step fetches it and checks
+# the SDK archive against a pinned digest first.
 
 $ErrorActionPreference = 'Stop'
 
 $projectRoot = Split-Path -Parent $PSScriptRoot
-$url = 'https://www.7-zip.org/a/7z2501-extra.7z'
-$expectedSha256 = 'CD3CF38085C2CC6839CF72716DAFB3175AE425F4FD34FAAFC6C0B64D618D307F'
+$url = 'https://www.7-zip.org/a/lzma2501.7z'
+$expectedSha256 = 'CBC3BABD589D971E45971D787FF100BE8AAA5EAB15B2694497EC3E447009E1F2'
 $destination = Join-Path $projectRoot 'build\7zSD.sfx'
 
 if (Test-Path $destination) {
@@ -29,7 +30,7 @@ $work = Join-Path ([System.IO.Path]::GetTempPath()) ([System.IO.Path]::GetRandom
 New-Item -ItemType Directory -Force -Path $work | Out-Null
 
 try {
-    $archive = Join-Path $work '7z-extra.7z'
+    $archive = Join-Path $work 'lzma-sdk.7z'
     Invoke-WebRequest -Uri $url -OutFile $archive -UseBasicParsing
 
     $actual = (Get-FileHash $archive -Algorithm SHA256).Hash
@@ -37,8 +38,8 @@ try {
         throw "Checksum mismatch for $url. Expected $expectedSha256, got $actual."
     }
 
-    & $sevenZip e $archive "-o$work" '7zSD.sfx' -r -y | Out-Null
-    if ($LASTEXITCODE -ne 0) { throw "7z failed to extract 7zSD.sfx from $archive." }
+    & $sevenZip e $archive "-o$work" 'bin/7zSD.sfx' -y | Out-Null
+    if ($LASTEXITCODE -ne 0) { throw "7z failed to extract bin/7zSD.sfx from $archive." }
 
     $extracted = Join-Path $work '7zSD.sfx'
     if (-not (Test-Path $extracted)) {
