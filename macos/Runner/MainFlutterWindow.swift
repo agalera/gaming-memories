@@ -89,6 +89,8 @@ private final class FolderAccessChannel {
       result(String(cString: account.pointee.pw_dir))
     case "choose":
       choose(arguments: call.arguments, result: result)
+    case "choosePath":
+      choosePath(arguments: call.arguments, result: result)
     case "activate":
       activate(arguments: call.arguments, result: result)
     case "release":
@@ -102,6 +104,48 @@ private final class FolderAccessChannel {
     }
   }
 
+  /// Presents the folder chooser and answers the selected path. The app runs
+  /// outside the App Sandbox, where a path is the whole authorization, so no
+  /// bookmark is taken.
+  private func choosePath(arguments: Any?, result: @escaping FlutterResult) {
+    guard !isChoosing else {
+      result(error("chooserBusy", "Another folder chooser is already open."))
+      return
+    }
+    guard let window else {
+      result(error("unavailable", "The folder chooser is unavailable."))
+      return
+    }
+    let values = arguments as? [String: Any]
+    let panel = openPanel(values: values)
+    panel.prompt = "Choose"
+    if let initialPath = values?["initialPath"] as? String,
+       !initialPath.isEmpty {
+      panel.directoryURL = URL(fileURLWithPath: initialPath, isDirectory: true)
+    }
+
+    isChoosing = true
+    panel.beginSheetModal(for: window) { [weak self] response in
+      self?.isChoosing = false
+      guard response == .OK, let panelURL = panel.url else {
+        result(nil)
+        return
+      }
+      result(panelURL.standardizedFileURL.path)
+    }
+  }
+
+  private func openPanel(values: [String: Any]?) -> NSOpenPanel {
+    let panel = NSOpenPanel()
+    panel.canChooseFiles = false
+    panel.canChooseDirectories = true
+    panel.allowsMultipleSelection = false
+    panel.canCreateDirectories = !(values?["readOnly"] as? Bool ?? true)
+    panel.resolvesAliases = true
+    panel.title = values?["title"] as? String ?? "Choose a folder"
+    return panel
+  }
+
   private func choose(arguments: Any?, result: @escaping FlutterResult) {
     guard !isChoosing else {
       result(error("chooserBusy", "Another folder chooser is already open."))
@@ -113,14 +157,8 @@ private final class FolderAccessChannel {
     }
     let values = arguments as? [String: Any]
     let readOnly = values?["readOnly"] as? Bool ?? true
-    let panel = NSOpenPanel()
-    panel.canChooseFiles = false
-    panel.canChooseDirectories = true
-    panel.allowsMultipleSelection = false
-    panel.canCreateDirectories = !readOnly
-    panel.resolvesAliases = true
+    let panel = openPanel(values: values)
     panel.prompt = "Allow Access"
-    panel.title = values?["title"] as? String ?? "Choose a folder"
     panel.message = values?["message"] as? String
       ?? "Gaming Memories will only access the folder you select."
     if let suggestedPath = values?["suggestedPath"] as? String,

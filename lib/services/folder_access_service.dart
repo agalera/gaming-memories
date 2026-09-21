@@ -65,27 +65,68 @@ abstract interface class FolderAccessService {
   Future<void> dispose();
 }
 
+/// Opens a folder chooser for [request] and returns the selected path, or null
+/// when the chooser was dismissed.
+typedef DirectoryChooser = Future<String?> Function(
+  FolderAccessRequest request,
+);
+
+const _folderAccessChannel = MethodChannel('gaming-memories/folder-access');
+
+Future<String?> chooseDirectoryWithFilePicker(FolderAccessRequest request) {
+  return FilePicker.getDirectoryPath(
+    dialogTitle: request.title,
+    initialDirectory: request.initialPath,
+  );
+}
+
+// file_picker refuses to open its macOS panel unless the app declares the App
+// Sandbox `com.apple.security.files.user-selected` entitlements, and it drops
+// the dialog title and the initial directory there. The Runner owns an
+// NSOpenPanel that honours both and needs no entitlement.
+Future<String?> chooseDirectoryWithOpenPanel(
+  FolderAccessRequest request,
+) async {
+  try {
+    return await _folderAccessChannel.invokeMethod<String>('choosePath', {
+      'title': request.title,
+      'initialPath': request.initialPath,
+      'readOnly': request.access == FolderGrantAccess.readOnly,
+    });
+  } on PlatformException catch (error) {
+    throw FolderAccessException(
+      error.code,
+      error.message ?? 'macOS could not open the folder chooser.',
+    );
+  }
+}
+
 // The macOS release build is distributed with Developer ID and runs outside
 // the App Sandbox, so it can start ffmpeg and ffprobe. Security
 // scoped bookmarks are a sandbox facility and cannot be created there, and
 // outside the sandbox a plain path carries the same access, so every platform
 // uses the path service.
 FolderAccessService createFolderAccessService() {
-  return const PathFolderAccessService();
+  return PathFolderAccessService(
+    chooseDirectory: Platform.isMacOS
+        ? chooseDirectoryWithOpenPanel
+        : chooseDirectoryWithFilePicker,
+  );
 }
 
 class PathFolderAccessService implements FolderAccessService {
-  const PathFolderAccessService();
+  const PathFolderAccessService({
+    this.chooseDirectory = chooseDirectoryWithFilePicker,
+  });
+
+  final DirectoryChooser chooseDirectory;
 
   @override
   bool get requiresPersistentGrant => false;
 
   @override
   Future<FolderAccessLease?> choose(FolderAccessRequest request) async {
-    final selected = await FilePicker.getDirectoryPath(
-      dialogTitle: request.title,
-      initialDirectory: request.initialPath,
-    );
+    final selected = await chooseDirectory(request);
     if (selected == null) {
       return null;
     }
@@ -113,10 +154,13 @@ class PathFolderAccessService implements FolderAccessService {
   Future<void> dispose() async {}
 }
 
+// The service a sandboxed macOS build needs: inside the App Sandbox a path is
+// not a credential, so every folder is reached through a security scoped
+// bookmark taken from the panel selection.
 class MacOSFolderAccessService implements FolderAccessService {
   const MacOSFolderAccessService();
 
-  static const _channel = MethodChannel('gaming-memories/folder-access');
+  static const _channel = _folderAccessChannel;
 
   @override
   bool get requiresPersistentGrant => true;
