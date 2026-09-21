@@ -1,14 +1,14 @@
 ---
 id: TQ-0044
 title: Publish desktop releases from GitHub CI
-status: todo
+status: in-progress
 priority: normal
 labels:
   - component/ci
   - component/build
   - chore
 created: 2026-09-20T21:31:11+02:00
-updated: 2026-09-20T21:36:43+02:00
+updated: 2026-09-21T14:32:46+02:00
 ---
 
 # Release distribution for Windows, macOS, and Linux
@@ -327,3 +327,11 @@ Details:
   Decision 4 (bundle Linux dependencies) is researched and answered: almost nothing can be bundled. GTK 3 is linked by the Flutter embedder, xdg-utils is a set of system scripts, and libmpv drags in an AppImage-sized tree. The hard dependency set stays at gtk3, libmpv and xdg-utils.
 
   Decision 5 (license) is still open and blocks the first release. The research found that macOS ships an LGPL-2.1 libmpv but Windows ships a GPL one, so GPL-3.0-or-later is the recommended option.
+- 2026-09-21T14:32:46+02:00 — Owner decisions, all four asked before implementation:
+
+  1. License: GPL-3.0-or-later (option A). LICENSE added at the repository root.
+  2. macOS signing secrets are not configured yet. The workflow expects MACOS_CERTIFICATE_P12, MACOS_CERTIFICATE_PASSWORD, MACOS_KEYCHAIN_PASSWORD, APPLE_ID, APPLE_APP_PASSWORD and APPLE_TEAM_ID, and docs/releasing.md documents how to produce each one. The macOS job builds an unsigned dmg when the certificate secret is absent so a dry run still produces an artifact.
+  3. The App Sandbox is dropped from the macOS build so exiftool, ffmpeg, ffprobe and the libmtp tools can start. Mac App Store distribution is ruled out; direct dmg distribution is the plan.
+  4. Verification stops at a workflow_dispatch dry run. No tag is pushed.
+
+  Conflict found during implementation and resolved with the owner: dropping the App Sandbox breaks the security-scoped bookmark bridge TQ-0026 built, because bookmarkData(options: .withSecurityScope) and startAccessingSecurityScopedResource() are sandbox facilities. Outside the sandbox a plain path carries the same access, so createFolderAccessService() now returns PathFolderAccessService on every platform. MacOSFolderAccessService and the Swift bridge stay in the repository but are no longer wired up.

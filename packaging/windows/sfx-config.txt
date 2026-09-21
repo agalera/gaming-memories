@@ -1,0 +1,4 @@
+;!@Install@!UTF-8!
+Title="Gaming Memories"
+RunProgram="gaming_memories.exe"
+;!@InstallEnd@!

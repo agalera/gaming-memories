@@ -65,10 +65,13 @@ abstract interface class FolderAccessService {
   Future<void> dispose();
 }
 
+// The macOS release build is distributed with Developer ID and runs outside
+// the App Sandbox, so it can start exiftool, ffmpeg and ffprobe. Security
+// scoped bookmarks are a sandbox facility and cannot be created there, and
+// outside the sandbox a plain path carries the same access, so every platform
+// uses the path service.
 FolderAccessService createFolderAccessService() {
-  return Platform.isMacOS
-      ? const MacOSFolderAccessService()
-      : const PathFolderAccessService();
+  return const PathFolderAccessService();
 }
 
 class PathFolderAccessService implements FolderAccessService {

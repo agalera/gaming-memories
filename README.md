@@ -47,7 +47,63 @@ platform and game, or open a capture for a closer look without leaving the app.
 | **PlayStation 5** | Folder exported from the console | FFprobe recommended for clip dates |
 | **Steam** | Local screenshots and the optional online gallery | Steam Web API key; SteamID64 for online imports |
 
-## Getting Started
+## Download and Install
+
+Every release publishes a build for each desktop platform on the
+[releases page](https://github.com/fmartingr/gaming-memories/releases). A
+`SHA256SUMS` file beside the downloads carries the checksum of each one.
+
+### Windows
+
+Download `gaming-memories-<version>-windows-x64.exe` and run it. The file is a
+self-executing archive: it unpacks the app to a temporary folder, starts it,
+and clears that folder when the app exits. There is nothing to install and
+nothing to uninstall.
+
+**The download is not code signed**, so Windows SmartScreen shows a blue
+"Windows protected your PC" panel the first time you run it. Select **More
+info**, then **Run anyway**.
+
+`gaming-memories-<version>-windows-x64.zip` holds the same build as a plain
+folder. Unpack it anywhere and run `gaming_memories.exe` if you would rather
+keep the app in one place.
+
+### macOS
+
+Download `gaming-memories-<version>-macos-universal.dmg`, open it, and drag
+**Gaming Memories** into **Applications**. The app is signed with a Developer
+ID certificate and notarized by Apple, so Gatekeeper opens it without a
+warning. The build is universal and runs natively on Apple silicon and Intel.
+
+macOS asks for permission the first time the app reads a folder inside
+Desktop, Documents, Downloads, or a removable volume. Allow it once and the
+grant persists.
+
+### Linux
+
+Three formats are published. Each one declares GTK 3, libmpv, and
+`xdg-utils` as dependencies, so the package manager pulls what the app needs.
+
+| Distribution | Command |
+| --- | --- |
+| Debian, Ubuntu | `sudo apt install ./gaming-memories_<version>-1_amd64.deb` |
+| Fedora, RHEL | `sudo dnf install ./gaming-memories-<version>-1.x86_64.rpm` |
+| Arch | `sudo pacman -U gaming-memories-<version>-1-x86_64.pkg.tar.zst` |
+
+The packages are built on Ubuntu 24.04 and need glibc 2.39 or newer, which
+means Ubuntu 24.04, Debian 13, Fedora 40, or a current Arch. The app lands in
+`/usr/lib/gaming-memories` with a `gaming-memories` command in `/usr/bin` and
+an entry in the desktop menu.
+
+The deb and rpm packages recommend `ffmpeg` and ExifTool and suggest the libmtp
+tools. See [Optional Tools](#optional-tools) for what each one adds. The Arch
+package format cannot carry optional dependencies, so install them yourself:
+
+```sh
+sudo pacman -S ffmpeg perl-image-exiftool libmtp
+```
+
+## Build From Source
 
 ### Requirements
 
@@ -58,7 +114,7 @@ platform and game, or open a capture for a closer look without leaving the app.
 ### Build and run
 
 ```sh
-git clone https://git.nakama.town/fmartingr/gaming-memories.git
+git clone https://github.com/fmartingr/gaming-memories.git
 cd gaming-memories
 make setup
 make run
@@ -140,3 +196,18 @@ make check
 ```
 
 Use `make help` to see every available development and build command.
+
+Use `make help` to see every available development and build command,
+including the `package-linux`, `package-macos`, and `package-windows` targets
+that produce the release artifacts. [docs/releasing.md](docs/releasing.md)
+describes how a release is cut and which secrets the workflow needs.
+
+## License
+
+Gaming Memories is released under the
+[GNU General Public License v3.0 or later](LICENSE).
+
+The Windows build ships a prebuilt libmpv that links GPL-licensed components,
+so the distributed binaries are GPL in any case. The macOS build ships an
+LGPL-2.1 libmpv. Every Dart and Flutter package the app depends on is
+BSD-3-Clause or MIT.

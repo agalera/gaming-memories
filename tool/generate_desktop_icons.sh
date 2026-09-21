@@ -7,6 +7,8 @@ source_icon="$project_root/assets/logo.png"
 macos_icon_dir="$project_root/macos/Runner/Assets.xcassets/AppIcon.appiconset"
 windows_icon="$project_root/windows/runner/resources/app_icon.ico"
 linux_icon="$project_root/linux/runner/resources/app_icon.png"
+hicolor_dir="$project_root/packaging/linux/icons/hicolor"
+hicolor_name="dev.fmartingr.gaming_memories"
 
 # macOS 26 scales the whole 1024 canvas into the plate it draws behind every
 # legacy icon, so artwork on a transparent canvas ends up inset twice and reads
@@ -48,5 +50,15 @@ magick "$source_icon" -filter Lanczos \
   -define icon:auto-resize=256,128,64,48,32,24,16 "$windows_icon"
 
 magick "$source_icon" -filter Lanczos -resize 512x512 "$linux_icon"
+
+# The Linux packages install into the hicolor theme, which is what a desktop
+# menu reads. The .desktop file names the icon "dev.fmartingr.gaming_memories".
+rm -rf "$hicolor_dir"
+for size in 16 32 48 64 128 256 512; do
+  icon_dir="$hicolor_dir/${size}x${size}/apps"
+  mkdir -p "$icon_dir"
+  magick "$source_icon" -filter Lanczos -resize "${size}x${size}" \
+    "$icon_dir/$hicolor_name.png"
+done
 
 echo "Desktop icons generated from assets/logo.png."

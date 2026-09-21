@@ -1,0 +1,12 @@
+[Desktop Entry]
+Type=Application
+Name=Gaming Memories
+GenericName=Game Capture Library
+Comment=A desktop image and video library for video games.
+Exec=gaming-memories %U
+Icon=dev.fmartingr.gaming_memories
+Terminal=false
+Categories=Graphics;Viewer;Photography;AudioVideo;
+Keywords=screenshots;captures;games;gaming;library;
+StartupWMClass=dev.fmartingr.gaming_memories
+StartupNotify=true

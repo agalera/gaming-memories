@@ -9,8 +9,12 @@ DEVICE ?= linux
 PLATFORM ?= linux
 BUILD_MODE ?= debug
 ARGS ?=
+VERSION ?= $(shell sed -n 's/^version: \([0-9][0-9.]*\)+.*/\1/p' pubspec.yaml)
+BUILD_NUMBER ?= 1
+DIST_DIR ?= dist
+PACKAGE_ENV := GM_VERSION=$(VERSION) DIST_DIR=$(DIST_DIR)
 
-.PHONY: help setup deps outdated upgrade devices doctor run run-linux run-macos run-windows analyze format format-check test check icons icons-reset build build-linux build-macos build-windows clean
+.PHONY: help setup deps outdated upgrade devices doctor run run-linux run-macos run-windows analyze format format-check test check icons icons-reset build build-linux build-macos build-windows package-linux package-macos package-windows clean
 
 help: ## Show the available commands.
 	@awk 'BEGIN {FS = ":.*## "; printf "Usage: make <target> [VARIABLE=value]\n\nTargets:\n"} /^[a-zA-Z0-9_-]+:.*## / {printf "  %-16s %s\n", $$1, $$2}' $(MAKEFILE_LIST)
@@ -78,5 +82,19 @@ build-macos: ## Build the macOS app.
 build-windows: ## Build the Windows app.
 	$(MAKE) build PLATFORM=windows BUILD_MODE=$(BUILD_MODE) ARGS="$(ARGS)"
 
+package-linux: ## Build the Linux deb, rpm and Arch packages into DIST_DIR.
+	$(FLUTTER) build linux --release --build-name=$(VERSION) --build-number=$(BUILD_NUMBER)
+	$(PACKAGE_ENV) ./tool/package_linux.sh
+
+package-macos: ## Build the macOS .dmg into DIST_DIR, signing it when a certificate is available.
+	$(FLUTTER) build macos --release --build-name=$(VERSION) --build-number=$(BUILD_NUMBER)
+	$(PACKAGE_ENV) ./tool/package_macos.sh
+
+package-windows: ## Build the Windows self-executing .exe and .zip into DIST_DIR.
+	$(FLUTTER) build windows --release --build-name=$(VERSION) --build-number=$(BUILD_NUMBER)
+	$(PACKAGE_ENV) pwsh -NoProfile -File ./tool/fetch_sfx_module.ps1
+	$(PACKAGE_ENV) pwsh -NoProfile -File ./tool/package_windows.ps1
+
 clean: ## Remove generated build files.
 	$(FLUTTER) clean
+	rm -rf $(DIST_DIR)

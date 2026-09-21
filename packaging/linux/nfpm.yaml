@@ -1,0 +1,104 @@
+name: gaming-memories
+arch: amd64
+platform: linux
+version: ${GM_VERSION}
+release: "1"
+section: graphics
+priority: optional
+maintainer: Felipe M. <me@fmartingr.com>
+description: |
+  A desktop image and video library for video games.
+  Gaming Memories collects screenshots and clips from PC games, Steam, console
+  exports and Nintendo Switch 2 albums into one browsable local library.
+vendor: fmartingr
+homepage: https://github.com/fmartingr/gaming-memories
+license: GPL-3.0-or-later
+
+# GTK 3 is linked by the Flutter embedder, libmpv is loaded at run time by
+# media_kit, and xdg-utils opens a capture in the desktop file manager. None of
+# the three can be bundled, so every format declares them.
+depends:
+  - libgtk-3-0
+  - xdg-utils
+
+contents:
+  - src: build/linux/x64/release/bundle
+    dst: /usr/lib/gaming-memories
+    type: tree
+  - src: /usr/lib/gaming-memories/gaming_memories
+    dst: /usr/bin/gaming-memories
+    type: symlink
+  - src: packaging/linux/dev.fmartingr.gaming_memories.desktop
+    dst: /usr/share/applications/dev.fmartingr.gaming_memories.desktop
+  - src: packaging/linux/icons/hicolor
+    dst: /usr/share/icons/hicolor
+    type: tree
+  - src: LICENSE
+    dst: /usr/share/doc/gaming-memories/copyright
+
+overrides:
+  deb:
+    depends:
+      - libgtk-3-0
+      - libmpv2 | libmpv1
+      - xdg-utils
+    recommends:
+      - ffmpeg
+      - libimage-exiftool-perl
+    suggests:
+      - libmtp-runtime
+  rpm:
+    depends:
+      - gtk3
+      - mpv-libs
+      - xdg-utils
+    recommends:
+      - ffmpeg
+      - perl-Image-ExifTool
+    suggests:
+      - libmtp
+    contents:
+      - src: build/linux/x64/release/bundle
+        dst: /usr/lib/gaming-memories
+        type: tree
+      - src: /usr/lib/gaming-memories/gaming_memories
+        dst: /usr/bin/gaming-memories
+        type: symlink
+      - src: packaging/linux/dev.fmartingr.gaming_memories.desktop
+        dst: /usr/share/applications/dev.fmartingr.gaming_memories.desktop
+      - src: packaging/linux/icons/hicolor
+        dst: /usr/share/icons/hicolor
+        type: tree
+      - src: LICENSE
+        dst: /usr/share/licenses/gaming-memories/LICENSE
+  archlinux:
+    depends:
+      - gtk3
+      - mpv
+      - xdg-utils
+    contents:
+      - src: build/linux/x64/release/bundle
+        dst: /usr/lib/gaming-memories
+        type: tree
+      - src: /usr/lib/gaming-memories/gaming_memories
+        dst: /usr/bin/gaming-memories
+        type: symlink
+      - src: packaging/linux/dev.fmartingr.gaming_memories.desktop
+        dst: /usr/share/applications/dev.fmartingr.gaming_memories.desktop
+      - src: packaging/linux/icons/hicolor
+        dst: /usr/share/icons/hicolor
+        type: tree
+      - src: LICENSE
+        dst: /usr/share/licenses/gaming-memories/LICENSE
+
+deb:
+  fields:
+    Bugs: https://github.com/fmartingr/gaming-memories/issues
+
+rpm:
+  group: Applications/Multimedia
+  summary: A desktop image and video library for video games.
+
+archlinux:
+  pkgbase: gaming-memories
+  packager: Felipe M. <me@fmartingr.com>
