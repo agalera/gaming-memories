@@ -52,6 +52,12 @@ for (const match of css.matchAll(/url\(["']?([^"')]+)["']?\)/g)) {
   record(fs.existsSync(path.resolve(root, reference)), `styles.css has a missing file: ${reference}`);
 }
 
+const screenshotCarouselRule = css.match(/\.screenshot-carousel\s*\{([^}]*)\}/)?.[1] || '';
+record(
+  !/\bbackground(?:-color)?\s*:/.test(screenshotCarouselRule),
+  'styles.css paints a background behind the transparent screenshots.',
+);
+
 if (failures.length) {
   console.error(failures.join('\n'));
   process.exit(1);

@@ -201,6 +201,43 @@ function setUpDetails() {
   });
 }
 
+function setUpScreenshotCarousel() {
+  const carousel = document.querySelector('[data-screenshot-carousel]');
+  const slides = [...document.querySelectorAll('[data-screenshot-slide]')];
+  if (!carousel || slides.length < 2) return;
+
+  const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
+  let currentSlide = 0;
+  let timer;
+
+  function showSlide(index) {
+    currentSlide = index;
+    slides.forEach((slide, slideIndex) => {
+      const active = slideIndex === currentSlide;
+      slide.classList.toggle('is-active', active);
+      slide.setAttribute('aria-hidden', String(!active));
+    });
+  }
+
+  function stop() {
+    window.clearInterval(timer);
+    timer = undefined;
+  }
+
+  function start() {
+    stop();
+    if (reducedMotion.matches || document.hidden) return;
+    timer = window.setInterval(() => {
+      showSlide((currentSlide + 1) % slides.length);
+    }, 10000);
+  }
+
+  document.addEventListener('visibilitychange', start);
+  reducedMotion.addEventListener?.('change', start);
+  showSlide(0);
+  start();
+}
+
 document.querySelectorAll('[data-year]').forEach((item) => {
   item.textContent = new Date().getFullYear();
 });
@@ -211,4 +248,5 @@ setUpReveal();
 setUpTabs();
 setUpCopyButtons();
 setUpDetails();
+setUpScreenshotCarousel();
 loadLatestRelease();
