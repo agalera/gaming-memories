@@ -979,6 +979,26 @@ class _SettingsPageState extends State<SettingsPage> {
                         ),
                         if (_expandedProvider == _SettingsProvider.steam) ...[
                           const SizedBox(height: 18),
+                          _SettingsSectionHeader(
+                            title: 'Steam Web API key',
+                            description: 'Required. Steam gives no game name and no online screenshot without this key.',
+                            helpKey: const ValueKey('steam-api-key-help'),
+                            helpSemanticsLabel:
+                                'Help with the Steam Web API key',
+                            onHelp: _showSteamApiKeyHelp,
+                          ),
+                          const SizedBox(height: 12),
+                          FTextField.password(
+                            key: const ValueKey('steam-api-key'),
+                            control: FTextFieldControl.managed(
+                              controller: _steamKeyController,
+                            ),
+                            label: const Text('Steam Web API key'),
+                            hint: '32 hexadecimal characters',
+                          ),
+                          const SizedBox(height: 4),
+                          const FDivider(),
+                          const SizedBox(height: 4),
                           FCheckbox(
                             key: const ValueKey('steam-custom-path'),
                             label: const Text('Use custom folder'),
@@ -1051,52 +1071,31 @@ class _SettingsPageState extends State<SettingsPage> {
                               _scheduleAutosave();
                             },
                           ),
-                          const SizedBox(height: 16),
-                          Row(
-                            children: [
-                              Text(
-                                'Steam credentials',
-                                style: context.theme.typography.body.sm
-                                    .copyWith(fontWeight: FontWeight.w600),
+                          if (_steamOnlineGallery) ...[
+                            const SizedBox(height: 12),
+                            FTextField(
+                              key: const ValueKey('steam-user-id'),
+                              control: FTextFieldControl.managed(
+                                controller: _steamUserController,
                               ),
-                              const SizedBox(width: 6),
-                              FButton.icon(
-                                key: const ValueKey('steam-credentials-help'),
-                                variant: FButtonVariant.ghost,
-                                size: FButtonSizeVariant.xs,
-                                semanticsLabel: 'Help with Steam credentials',
-                                onPress: _showSteamCredentialHelp,
-                                child: const Icon(FLucideIcons.circleHelp),
+                              label: const Text('Steam user ID'),
+                              hint: '7656119…',
+                              description: const Text(
+                                'Required for the online gallery. Open Steam, select your account name, then select Account details. Copy the 17-digit Steam ID.',
                               ),
-                            ],
+                            ),
+                          ],
+                          const SizedBox(height: 4),
+                          const FDivider(),
+                          const SizedBox(height: 4),
+                          _SettingsSectionHeader(
+                            title: 'Ignored apps',
+                            description: 'Gaming Memories skips the screenshots of these Steam app IDs.',
+                            helpKey: const ValueKey('steam-ignored-help'),
+                            helpSemanticsLabel: 'Help with ignored apps',
+                            onHelp: _showSteamIgnoredAppsHelp,
                           ),
-                          const SizedBox(height: 8),
-                          Row(
-                            children: [
-                              Expanded(
-                                child: FTextField(
-                                  key: const ValueKey('steam-user-id'),
-                                  control: FTextFieldControl.managed(
-                                    controller: _steamUserController,
-                                  ),
-                                  label: const Text('Steam user ID'),
-                                  hint: '7656119…',
-                                ),
-                              ),
-                              const SizedBox(width: 12),
-                              Expanded(
-                                child: FTextField.password(
-                                  key: const ValueKey('steam-api-key'),
-                                  control: FTextFieldControl.managed(
-                                    controller: _steamKeyController,
-                                  ),
-                                  label: const Text('Steam Web API key'),
-                                  hint: 'Required for game names',
-                                ),
-                              ),
-                            ],
-                          ),
-                          const SizedBox(height: 16),
+                          const SizedBox(height: 12),
                           Row(
                             crossAxisAlignment: CrossAxisAlignment.end,
                             children: [
@@ -1135,7 +1134,18 @@ class _SettingsPageState extends State<SettingsPage> {
                             enabled: true,
                             onRemove: _removeIgnoredGame,
                           ),
-                          const SizedBox(height: 16),
+                          const SizedBox(height: 4),
+                          const FDivider(),
+                          const SizedBox(height: 4),
+                          _SettingsSectionHeader(
+                            title: 'Custom apps',
+                            description:
+                                'Give your own name to a Steam app ID.',
+                            helpKey: const ValueKey('steam-custom-help'),
+                            helpSemanticsLabel: 'Help with custom apps',
+                            onHelp: _showSteamCustomAppsHelp,
+                          ),
+                          const SizedBox(height: 12),
                           Row(
                             crossAxisAlignment: CrossAxisAlignment.end,
                             children: [
@@ -1794,12 +1804,68 @@ class _SettingsPageState extends State<SettingsPage> {
     };
   }
 
-  void _showSteamCredentialHelp() {
+  void _showSteamApiKeyHelp() {
+    _showHelpDialog(
+      keyPrefix: 'steam-api-key-help',
+      title: 'Steam Web API key',
+      summary: 'Every Steam import needs this key.',
+      sections: const [
+        _HelpSection(
+          title: 'Why Gaming Memories needs it',
+          body: 'Steam returns game names and published screenshots only to requests that carry a Web API key. Without the key, albums keep their numeric app ID as a name and no online screenshot is imported.',
+          steps: 'Sign in at the address below. Register a key and accept the Steam Web API terms.',
+          address: 'https://steamcommunity.com/dev/apikey',
+        ),
+      ],
+      footnote: 'Gaming Memories stores the key in its local settings file. Do not share it.',
+    );
+  }
+
+  void _showSteamIgnoredAppsHelp() {
+    _showHelpDialog(
+      keyPrefix: 'steam-ignored-help',
+      title: 'Ignored apps',
+      summary: 'Every Steam import skips these app IDs.',
+      sections: const [
+        _HelpSection(
+          title: 'When to use it',
+          body: 'Some Steam app IDs are tools, launchers or games you do not want in the library. An ignored app ID gets no album, and its screenshots are never copied.',
+          steps: 'The app ID is the number in the Steam store address of the game. Type it in the field, then select Add.',
+        ),
+      ],
+      footnote: 'Remove an app ID from the list to import it again.',
+    );
+  }
+
+  void _showSteamCustomAppsHelp() {
+    _showHelpDialog(
+      keyPrefix: 'steam-custom-help',
+      title: 'Custom apps',
+      summary:
+          'A custom name replaces the name that Steam reports for an app ID.',
+      sections: const [
+        _HelpSection(
+          title: 'When to use it',
+          body: 'Non-Steam shortcuts, betas and delisted games have no store page, so Steam reports no name for them. A custom name gives their album a readable title.',
+          steps: 'Type the app ID and the name you want, then select Add.',
+        ),
+      ],
+      footnote: 'A custom name applies to new albums and to existing ones on the next import.',
+    );
+  }
+
+  void _showHelpDialog({
+    required String keyPrefix,
+    required String title,
+    required String summary,
+    required List<Widget> sections,
+    String? footnote,
+  }) {
     showFDialog<void>(
       context: context,
       builder: (dialogContext, _, animation) => FDialog(
         animation: animation,
-        semanticsLabel: 'Steam credential help',
+        semanticsLabel: title,
         builder: (context, _) => Padding(
           padding: const EdgeInsets.all(24),
           child: SingleChildScrollView(
@@ -1807,42 +1873,33 @@ class _SettingsPageState extends State<SettingsPage> {
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(
-                  'Steam credentials',
-                  style: context.theme.typography.display.sm,
-                ),
+                Text(title, style: context.theme.typography.display.sm),
                 const SizedBox(height: 8),
                 Text(
-                  'Steam uses these values for online screenshots and game information.',
+                  summary,
                   style: context.theme.typography.body.sm.copyWith(
                     color: context.theme.colors.mutedForeground,
                   ),
                 ),
                 const SizedBox(height: 20),
-                const _CredentialHelpSection(
-                  title: 'Steam user ID',
-                  body: 'This 17-digit SteamID64 identifies the owner of the online gallery. It is required only for online gallery imports.',
-                  steps: 'Open Steam. Select your account name, then select Account details. Copy the Steam ID below your account name.',
-                ),
-                const SizedBox(height: 18),
-                const _CredentialHelpSection(
-                  title: 'Steam Web API key',
-                  body: 'The API key authorizes requests for game names and published screenshots. Do not share this key.',
-                  steps: 'Sign in at the address below. Register a key and accept the Steam Web API terms.',
-                  address: 'https://steamcommunity.com/dev/apikey',
-                ),
-                const SizedBox(height: 12),
-                Text(
-                  'Gaming Memories stores the key in its local settings file.',
-                  style: context.theme.typography.body.xs.copyWith(
-                    color: context.theme.colors.mutedForeground,
+                for (final (index, section) in sections.indexed) ...[
+                  if (index > 0) const SizedBox(height: 18),
+                  section,
+                ],
+                if (footnote case final value?) ...[
+                  const SizedBox(height: 12),
+                  Text(
+                    value,
+                    style: context.theme.typography.body.xs.copyWith(
+                      color: context.theme.colors.mutedForeground,
+                    ),
                   ),
-                ),
+                ],
                 const SizedBox(height: 22),
                 Align(
                   alignment: Alignment.centerRight,
                   child: FButton(
-                    key: const ValueKey('steam-credentials-help-close'),
+                    key: ValueKey('$keyPrefix-close'),
                     mainAxisSize: MainAxisSize.min,
                     onPress: () => Navigator.of(dialogContext).pop(),
                     child: const Text('Close'),
@@ -2449,8 +2506,59 @@ class _ThemeModeSelector extends StatelessWidget {
   }
 }
 
-class _CredentialHelpSection extends StatelessWidget {
-  const _CredentialHelpSection({
+class _SettingsSectionHeader extends StatelessWidget {
+  const _SettingsSectionHeader({
+    required this.title,
+    required this.description,
+    required this.helpKey,
+    required this.helpSemanticsLabel,
+    required this.onHelp,
+  });
+
+  final String title;
+  final String description;
+  final Key helpKey;
+  final String helpSemanticsLabel;
+  final VoidCallback onHelp;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            Text(
+              title,
+              style: context.theme.typography.body.lg.copyWith(
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+            const SizedBox(width: 4),
+            FButton.icon(
+              key: helpKey,
+              variant: FButtonVariant.ghost,
+              size: FButtonSizeVariant.xs,
+              semanticsLabel: helpSemanticsLabel,
+              onPress: onHelp,
+              child: const Icon(FLucideIcons.circleHelp),
+            ),
+          ],
+        ),
+        const SizedBox(height: 2),
+        Text(
+          description,
+          style: context.theme.typography.body.xs.copyWith(
+            color: context.theme.colors.mutedForeground,
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _HelpSection extends StatelessWidget {
+  const _HelpSection({
     required this.title,
     required this.body,
     required this.steps,

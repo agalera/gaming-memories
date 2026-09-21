@@ -213,7 +213,7 @@ void main() {
       'nintendo-switch-2': 'nintendo-switch-2-enabled',
       'minecraft': 'minecraft-enabled',
       'guild-wars-2': 'guild-wars-2-enabled',
-      'steam': 'steam-credentials-help',
+      'steam': 'steam-api-key-help',
     }.entries) {
       await _openSettingsTab(tester, entry.key);
       expect(find.byKey(ValueKey(entry.value)), findsOneWidget);
@@ -1351,22 +1351,49 @@ void main() {
     await tester.pumpWidget(GamingMemoriesApp(controller: controller));
     await tester.pump();
     await _openSettingsTab(tester, 'steam');
-    final help = find.byKey(const ValueKey('steam-credentials-help'));
+    final help = find.byKey(const ValueKey('steam-api-key-help'));
     await tester.ensureVisible(help);
     await tester.tap(help);
     await tester.pumpAndSettle();
 
-    expect(find.text('Steam credentials'), findsWidgets);
-    expect(find.text('Steam user ID'), findsWidgets);
     expect(find.text('Steam Web API key'), findsWidgets);
+    expect(find.text('Why Gaming Memories needs it'), findsOneWidget);
     expect(find.text('https://steamcommunity.com/dev/apikey'), findsOneWidget);
 
-    final closeHelp = find.byKey(
-      const ValueKey('steam-credentials-help-close'),
-    );
+    final closeHelp = find.byKey(const ValueKey('steam-api-key-help-close'));
     await tester.ensureVisible(closeHelp);
     await tester.pumpAndSettle();
     await tester.tap(closeHelp);
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const ValueKey('steam-user-id')), findsNothing);
+
+    final ignoredHelp = find.byKey(const ValueKey('steam-ignored-help'));
+    await tester.ensureVisible(ignoredHelp);
+    await tester.tap(ignoredHelp);
+    await tester.pumpAndSettle();
+
+    expect(find.text('Ignored apps'), findsWidgets);
+    final closeIgnoredHelp = find.byKey(
+      const ValueKey('steam-ignored-help-close'),
+    );
+    await tester.ensureVisible(closeIgnoredHelp);
+    await tester.pumpAndSettle();
+    await tester.tap(closeIgnoredHelp);
+    await tester.pumpAndSettle();
+
+    final customHelp = find.byKey(const ValueKey('steam-custom-help'));
+    await tester.ensureVisible(customHelp);
+    await tester.tap(customHelp);
+    await tester.pumpAndSettle();
+
+    expect(find.text('Custom apps'), findsWidgets);
+    final closeCustomHelp = find.byKey(
+      const ValueKey('steam-custom-help-close'),
+    );
+    await tester.ensureVisible(closeCustomHelp);
+    await tester.pumpAndSettle();
+    await tester.tap(closeCustomHelp);
     await tester.pumpAndSettle();
 
     final input = find.byKey(const ValueKey('steam-ignored-input'));
