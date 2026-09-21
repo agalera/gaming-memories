@@ -276,10 +276,79 @@ class NintendoSwitch2Settings {
   };
 }
 
+/// Battle.net is one provider over several games, so it carries a master
+/// switch plus a setting per game, keyed by [BattleNetGame.id].
+class BattleNetSettings {
+  const BattleNetSettings({required this.enabled, this.games = const {}});
+
+  const BattleNetSettings.disabled() : enabled = false, games = const {};
+
+  final bool enabled;
+  final Map<String, ProviderSettings> games;
+
+  /// A game with nothing stored is on: the provider should work as soon as
+  /// the user enables Battle.net, and a game whose folder is not there is
+  /// skipped anyway.
+  ProviderSettings game(String id) =>
+      games[id] ??
+      const ProviderSettings(
+        enabled: true,
+        useCustomPath: false,
+        sourcePath: '',
+      );
+
+  BattleNetSettings copyWith({
+    bool? enabled,
+    Map<String, ProviderSettings>? games,
+  }) {
+    return BattleNetSettings(
+      enabled: enabled ?? this.enabled,
+      games: games ?? this.games,
+    );
+  }
+
+  BattleNetSettings withGame(String id, ProviderSettings value) {
+    return copyWith(games: Map.unmodifiable({...games, id: value}));
+  }
+
+  factory BattleNetSettings.fromJson(Map<String, Object?> json) {
+    final gamesJson = json['games'];
+    final games = <String, ProviderSettings>{};
+    if (gamesJson is Map) {
+      for (final entry in gamesJson.entries) {
+        final value = entry.value;
+        if (value is Map) {
+          games[entry.key.toString()] = ProviderSettings.fromJson(
+            value.map((key, value) => MapEntry(key.toString(), value)),
+          );
+        }
+      }
+    }
+    return BattleNetSettings(
+      enabled: json['enabled'] as bool? ?? false,
+      games: Map.unmodifiable(games),
+    );
+  }
+
+  /// Reads a settings file from before the provider was split per game. Only
+  /// the master switch survives: the old path pointed at one games root, and
+  /// there is no way to tell which game it was for.
+  factory BattleNetSettings.fromLegacyJson(Map<String, Object?> json) {
+    return BattleNetSettings(enabled: json['enabled'] as bool? ?? false);
+  }
+
+  Map<String, Object?> toJson() => {
+    'enabled': enabled,
+    'games': {
+      for (final entry in games.entries) entry.key: entry.value.toJson(),
+    },
+  };
+}
+
 class AppSettings {
   const AppSettings({
     required this.outputPath,
-    this.battleNet = const ProviderSettings.disabled(),
+    this.battleNet = const BattleNetSettings.disabled(),
     this.guildWars2 = const ProviderSettings.disabled(),
     this.hytale = const ProviderSettings.disabled(),
     this.minecraft = const ProviderSettings.disabled(),
@@ -293,7 +362,7 @@ class AppSettings {
 
   const AppSettings.defaults()
     : outputPath = '',
-      battleNet = const ProviderSettings.disabled(),
+      battleNet = const BattleNetSettings.disabled(),
       guildWars2 = const ProviderSettings.disabled(),
       hytale = const ProviderSettings.disabled(),
       minecraft = const ProviderSettings.disabled(),
@@ -305,7 +374,7 @@ class AppSettings {
       folderGrants = const {};
 
   final String outputPath;
-  final ProviderSettings battleNet;
+  final BattleNetSettings battleNet;
   final ProviderSettings guildWars2;
   final ProviderSettings hytale;
   final ProviderSettings minecraft;
@@ -318,7 +387,7 @@ class AppSettings {
 
   AppSettings copyWith({
     String? outputPath,
-    ProviderSettings? battleNet,
+    BattleNetSettings? battleNet,
     ProviderSettings? guildWars2,
     ProviderSettings? hytale,
     ProviderSettings? minecraft,
@@ -373,9 +442,11 @@ class AppSettings {
 
     return AppSettings(
       outputPath: json['outputPath'] as String? ?? '',
-      battleNet: battleNetJson is Map<String, Object?>
-          ? ProviderSettings.fromJson(battleNetJson)
-          : const ProviderSettings.disabled(),
+      battleNet: battleNetJson is! Map<String, Object?>
+          ? const BattleNetSettings.disabled()
+          : battleNetJson.containsKey('games')
+          ? BattleNetSettings.fromJson(battleNetJson)
+          : BattleNetSettings.fromLegacyJson(battleNetJson),
       guildWars2: guildWars2Json is Map<String, Object?>
           ? ProviderSettings.fromJson(guildWars2Json)
           : const ProviderSettings.disabled(),
@@ -403,7 +474,7 @@ class AppSettings {
   }
 
   Map<String, Object?> toJson() => {
-    'version': 11,
+    'version': 12,
     'outputPath': outputPath,
     'themeMode': themeMode.name,
     'battleNet': battleNet.toJson(),

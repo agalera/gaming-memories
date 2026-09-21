@@ -7,6 +7,8 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:forui/forui.dart';
 import 'package:gaming_memories/app.dart';
 import 'package:gaming_memories/controllers/library_controller.dart';
+import 'package:gaming_memories/providers/battle_net_provider.dart';
+import 'package:gaming_memories/services/battle_net_games.dart';
 import 'package:gaming_memories/models/app_settings.dart';
 import 'package:gaming_memories/models/library.dart';
 import 'package:gaming_memories/providers/playstation_4_provider.dart';
@@ -203,10 +205,7 @@ void main() {
     await _openSettingsTab(tester, 'battle-net');
 
     expect(find.text('Media library'), findsNothing);
-    expect(
-      find.byKey(const ValueKey('battle-net-custom-path')),
-      findsOneWidget,
-    );
+    expect(find.byKey(const ValueKey('battle-net-summary')), findsOneWidget);
     for (final entry in {
       'hytale': 'hytale-enabled',
       'playstation-4': 'playstation-4-enabled',
@@ -1356,11 +1355,11 @@ void main() {
     await tester.pump(const Duration(milliseconds: 200));
   });
 
-  testWidgets('shows custom folders and only autosaves valid paths', (
+  testWidgets('shows a row per Battle.net game with its own folder', (
     tester,
   ) async {
     final directory = Directory.systemTemp.createTempSync('gaming-memories-');
-    final validSource = Directory(p.join(directory.path, 'diablo'))
+    final validSource = Directory(p.join(directory.path, 'starcraft'))
       ..createSync();
     addTearDown(() => directory.deleteSync(recursive: true));
     final store = _MemoryConfigStore();
@@ -1368,26 +1367,44 @@ void main() {
         LibraryController(
             configStore: store,
             scanner: const LibraryScanner(),
-            providers: const [],
+            providers: const [
+              BattleNetProvider(
+                locator: BattleNetLocator(
+                  operatingSystem: 'macos',
+                  userHomeDirectory: '/gaming-memories-missing-home',
+                  allowEnvironmentHome: false,
+                ),
+              ),
+            ],
           )
           ..isInitializing = false
           ..view = LibraryView.settings
           ..settings = const AppSettings(
             outputPath: '',
-            battleNet: ProviderSettings(
-              enabled: true,
-              useCustomPath: false,
-              sourcePath: '',
-            ),
+            battleNet: BattleNetSettings(enabled: true),
           );
 
     await tester.pumpWidget(GamingMemoriesApp(controller: controller));
     await tester.pumpAndSettle();
     await _openSettingsTab(tester, 'battle-net');
 
-    expect(find.byKey(const ValueKey('battle-net-path-field')), findsNothing);
+    // Every supported game is listed, installed or not.
+    for (final game in battleNetGames) {
+      expect(
+        find.byKey(ValueKey('battle-net-game-${game.id}')),
+        findsOneWidget,
+        reason: game.name,
+      );
+    }
+    expect(find.text('World of Warcraft'), findsWidgets);
+    expect(
+      find.byKey(const ValueKey('battle-net-game-starcraft_ii-path')),
+      findsNothing,
+    );
 
-    final customPath = find.byKey(const ValueKey('battle-net-custom-path'));
+    final customPath = find.byKey(
+      const ValueKey('battle-net-game-starcraft_ii-custom'),
+    );
     await tester.ensureVisible(customPath);
     await tester.pumpAndSettle();
     await tester.tap(customPath);
@@ -1397,10 +1414,10 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    final field = find.byKey(const ValueKey('battle-net-path-field'));
+    final field = find.byKey(
+      const ValueKey('battle-net-game-starcraft_ii-path'),
+    );
     expect(field, findsOneWidget);
-    expect(find.text('Choose a folder.'), findsOneWidget);
-    expect(controller.settings.battleNet.useCustomPath, isFalse);
 
     await tester.enterText(field, validSource.path);
     await tester.pump(const Duration(milliseconds: 400));
@@ -1409,32 +1426,71 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    expect(find.text('Choose a folder.'), findsNothing);
-    expect(controller.settings.battleNet.useCustomPath, isTrue);
-    expect(controller.settings.battleNet.sourcePath, validSource.path);
-    expect(store.saved?.battleNet.sourcePath, validSource.path);
+    final saved = controller.settings.battleNet.game('starcraft_ii');
+    expect(saved.useCustomPath, isTrue);
+    expect(saved.sourcePath, validSource.path);
+    // Only the game that was edited changes.
+    expect(
+      controller.settings.battleNet.game('diablo_iii').useCustomPath,
+      isFalse,
+    );
+    expect(
+      store.saved?.battleNet.game('starcraft_ii').sourcePath,
+      validSource.path,
+    );
 
-    final invalidPath = p.join(directory.path, 'missing');
-    await tester.enterText(field, invalidPath);
+    await tester.pumpWidget(const SizedBox.shrink());
+    await tester.pump(const Duration(milliseconds: 200));
+  });
+
+  testWidgets('switching a Battle.net game off keeps the others on', (
+    tester,
+  ) async {
+    final store = _MemoryConfigStore();
+    final controller =
+        LibraryController(
+            configStore: store,
+            scanner: const LibraryScanner(),
+            providers: const [
+              BattleNetProvider(
+                locator: BattleNetLocator(
+                  operatingSystem: 'macos',
+                  userHomeDirectory: '/gaming-memories-missing-home',
+                  allowEnvironmentHome: false,
+                ),
+              ),
+            ],
+          )
+          ..isInitializing = false
+          ..view = LibraryView.settings
+          ..settings = const AppSettings(
+            outputPath: '',
+            battleNet: BattleNetSettings(enabled: true),
+          );
+
+    await tester.pumpWidget(GamingMemoriesApp(controller: controller));
+    await tester.pumpAndSettle();
+    await _openSettingsTab(tester, 'battle-net');
+
+    final toggle = find.byKey(
+      const ValueKey('battle-net-game-wow_classic-enabled'),
+    );
+    await tester.ensureVisible(toggle);
+    await tester.pumpAndSettle();
+    tester.widget<FSwitch>(toggle).onChange!(false);
     await tester.pump(const Duration(milliseconds: 400));
     await tester.runAsync(
       () => Future<void>.delayed(const Duration(milliseconds: 20)),
     );
     await tester.pumpAndSettle();
 
-    expect(find.text('Battle.net folder does not exist.'), findsOneWidget);
-    expect(controller.settings.battleNet.sourcePath, validSource.path);
-    expect(store.saved?.battleNet.sourcePath, validSource.path);
-
-    await tester.tap(customPath);
-    await tester.pump();
-    await tester.runAsync(
-      () => Future<void>.delayed(const Duration(milliseconds: 20)),
+    expect(controller.settings.battleNet.game('wow_classic').enabled, isFalse);
+    expect(controller.settings.battleNet.game('wow_retail').enabled, isTrue);
+    expect(
+      store.saved?.battleNet.game('wow_classic').enabled,
+      isFalse,
+      reason: 'the change is persisted',
     );
-    await tester.pumpAndSettle();
-
-    expect(find.byKey(const ValueKey('battle-net-path-field')), findsNothing);
-    expect(controller.settings.battleNet.useCustomPath, isFalse);
 
     await tester.pumpWidget(const SizedBox.shrink());
     await tester.pump(const Duration(milliseconds: 200));
@@ -1447,16 +1503,29 @@ void main() {
         LibraryController(
             configStore: _MemoryConfigStore(),
             scanner: const LibraryScanner(),
-            providers: const [],
+            providers: const [
+              BattleNetProvider(
+                locator: BattleNetLocator(
+                  operatingSystem: 'macos',
+                  userHomeDirectory: '/gaming-memories-missing-home',
+                  allowEnvironmentHome: false,
+                ),
+              ),
+            ],
           )
           ..isInitializing = false
           ..view = LibraryView.settings
           ..settings = const AppSettings(
             outputPath: '',
-            battleNet: ProviderSettings(
+            battleNet: BattleNetSettings(
               enabled: true,
-              useCustomPath: true,
-              sourcePath: '/definitely/missing/gaming-memories',
+              games: {
+                'diablo_iii': ProviderSettings(
+                  enabled: true,
+                  useCustomPath: true,
+                  sourcePath: '/definitely/missing/gaming-memories',
+                ),
+              },
             ),
           );
 
@@ -1468,7 +1537,10 @@ void main() {
     await tester.pumpAndSettle();
     await _openSettingsTab(tester, 'battle-net');
 
-    expect(find.text('Battle.net folder does not exist.'), findsOneWidget);
+    expect(
+      find.text('Diablo III screenshot folder does not exist.'),
+      findsWidgets,
+    );
 
     await tester.pumpWidget(const SizedBox.shrink());
     await tester.pump(const Duration(milliseconds: 200));
@@ -1542,16 +1614,29 @@ void main() {
         LibraryController(
             configStore: _MemoryConfigStore(),
             scanner: const LibraryScanner(),
-            providers: const [],
+            providers: const [
+              BattleNetProvider(
+                locator: BattleNetLocator(
+                  operatingSystem: 'macos',
+                  userHomeDirectory: '/gaming-memories-missing-home',
+                  allowEnvironmentHome: false,
+                ),
+              ),
+            ],
           )
           ..isInitializing = false
           ..view = LibraryView.settings
           ..settings = const AppSettings(
             outputPath: '',
-            battleNet: ProviderSettings(
+            battleNet: BattleNetSettings(
               enabled: false,
-              useCustomPath: true,
-              sourcePath: '/definitely/missing/gaming-memories',
+              games: {
+                'diablo_iii': ProviderSettings(
+                  enabled: true,
+                  useCustomPath: true,
+                  sourcePath: '/definitely/missing/gaming-memories',
+                ),
+              },
             ),
           );
 
@@ -1569,7 +1654,10 @@ void main() {
 
     expect(tester.widget<FSwitch>(enabled).value, isFalse);
     expect(controller.settings.battleNet.enabled, isFalse);
-    expect(find.text('Battle.net folder does not exist.'), findsWidgets);
+    expect(
+      find.text('Diablo III screenshot folder does not exist.'),
+      findsWidgets,
+    );
 
     await tester.pumpWidget(const SizedBox.shrink());
     await tester.pump(const Duration(milliseconds: 200));

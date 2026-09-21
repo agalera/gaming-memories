@@ -94,29 +94,4 @@ void main() {
       [p.join(appData, '.minecraft', 'screenshots')],
     );
   });
-
-  test('Battle.net discovery points at the macOS World of Warcraft root', () {
-    expect(ProviderPaths.battleNetRootCandidates(operatingSystem: 'macos'), [
-      '/Applications/World of Warcraft',
-    ]);
-  });
-
-  test('Battle.net discovery points at the Windows installation root', () {
-    expect(ProviderPaths.battleNetRootCandidates(operatingSystem: 'windows'), [
-      r'C:\Program Files (x86)\World of Warcraft',
-    ]);
-  });
-
-  test('Diablo IV discovery accepts an explicit Windows user home', () {
-    expect(
-      ProviderPaths.diabloIVScreenshots(
-        operatingSystem: 'windows',
-        userHomeDirectory: r'C:\Users\alice',
-      ),
-      [
-        p.join(r'C:\Users\alice', 'Pictures', 'Diablo IV'),
-        p.join(r'C:\Users\alice', 'Documents', 'Diablo IV', 'Screenshots'),
-      ],
-    );
-  });
 }

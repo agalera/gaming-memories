@@ -9,7 +9,9 @@ import '../services/media_importer.dart';
 import '../services/provider_paths.dart';
 import 'screenshot_provider.dart';
 
-class MinecraftProvider implements FolderBackedScreenshotProvider {
+class MinecraftProvider
+    with SingleFolderRequirement
+    implements FolderBackedScreenshotProvider {
   const MinecraftProvider({
     this.importer = const MediaImporter(),
     this.providerPaths = const ProviderPathResolver(),

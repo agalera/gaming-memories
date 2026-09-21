@@ -1,17 +1,19 @@
 import 'dart:io';
 
-import 'package:flutter/foundation.dart';
 import 'package:path/path.dart' as p;
 
 import '../models/app_settings.dart';
 import '../services/exiftool_service.dart';
 import '../services/folder_access_service.dart';
+import '../services/app_log.dart';
 import '../services/library_scanner.dart';
 import '../services/media_importer.dart';
 import 'playstation_media.dart';
 import 'screenshot_provider.dart';
 
-class PlayStation4Provider implements FolderBackedScreenshotProvider {
+class PlayStation4Provider
+    with SingleFolderRequirement
+    implements FolderBackedScreenshotProvider {
   const PlayStation4Provider({
     this.importer = const MediaImporter(),
     this.dateReader = const ExifToolDateReader(),
@@ -121,8 +123,10 @@ class PlayStation4Provider implements FolderBackedScreenshotProvider {
             await dateReader.fileModifiedAt(file),
           );
         } on Object catch (exception) {
-          debugPrint(
-            '[Gaming Memories] PlayStation 4 skipped "${file.path}" because its EXIF date could not be read: $exception',
+          diagnosticLog.warning(
+            'PlayStation 4 skipped "${file.path}": its EXIF date could not be read.',
+            category: 'provider',
+            error: exception,
           );
           skipped++;
           continue;

@@ -6,7 +6,10 @@ import 'package:path/path.dart' as p;
 
 import '../models/app_settings.dart';
 import '../models/library.dart';
+import '../providers/battle_net_provider.dart';
 import '../providers/screenshot_provider.dart';
+import '../services/app_log.dart';
+import '../services/battle_net_games.dart';
 import '../services/config_store.dart';
 import '../services/folder_access_service.dart';
 import '../services/library_scanner.dart';
@@ -14,6 +17,7 @@ import '../services/library_watcher.dart';
 import '../services/provider_paths.dart';
 import '../services/screenshot_action_service.dart';
 import '../services/timeline_cache.dart';
+import '../services/user_facing_error.dart';
 
 enum LibraryView { timeline, platform, album, subAlbum, settings }
 
@@ -28,8 +32,8 @@ enum FolderAuthorizationStatus {
 
 enum SettingsFolderTarget {
   library,
-  battleNetCustom,
-  battleNetAutomatic,
+  battleNetGameCustom,
+  battleNetGameAutomatic,
   guildWars2Custom,
   hytaleCustom,
   hytaleAutomatic,
@@ -43,10 +47,22 @@ enum SettingsFolderTarget {
 }
 
 class AutomaticFolderCandidate {
-  const AutomaticFolderCandidate({required this.name, required this.path});
+  const AutomaticFolderCandidate({
+    required this.name,
+    required this.path,
+    required this.grantId,
+    this.description,
+  });
 
   final String name;
   final String path;
+
+  /// The grant this folder is stored under. Providers that span several
+  /// folders give each one its own id.
+  final String grantId;
+
+  /// What this folder holds, when the provider says.
+  final String? description;
 }
 
 class FolderAuthorization {
@@ -109,7 +125,11 @@ class LibraryController extends ChangeNotifier {
     this.folderAccess = const PathFolderAccessService(),
     this.providerPaths = const ProviderPathResolver(),
     this.screenshotActions = const NativeScreenshotActionService(),
-  });
+    this.log = const SilentAppLog(),
+  }) {
+    // The log does not know what a secret looks like; this does.
+    log.redact = _redactDiagnostic;
+  }
 
   final ConfigStore configStore;
   final LibraryScanner scanner;
@@ -119,6 +139,7 @@ class LibraryController extends ChangeNotifier {
   final FolderAccessService folderAccess;
   final ProviderPathResolver providerPaths;
   final ScreenshotActionService screenshotActions;
+  final AppLog log;
 
   AppSettings settings = const AppSettings.defaults();
   MediaLibrary library = const MediaLibrary.empty();
@@ -159,6 +180,18 @@ class LibraryController extends ChangeNotifier {
 
   List<AppNotification> get notifications => List.unmodifiable(_notifications);
 
+  /// The Battle.net provider, when it is configured. The settings page asks it
+  /// which games it found; nothing else needs to know a provider's type.
+  BattleNetProvider? get battleNetProvider =>
+      providers.whereType<BattleNetProvider>().firstOrNull;
+
+  BattleNetLocator get _battleNetLocator =>
+      battleNetProvider?.locator ?? const BattleNetLocator();
+
+  /// Every Battle.net game with its resolved folder, for the settings rows.
+  List<BattleNetGameFolder> battleNetGameFolders(AppSettings value) =>
+      battleNetProvider?.gameFolders(value) ?? const [];
+
   Map<String, String> get providerValidationErrors => _providerValidationErrors;
 
   String? providerValidationError(String providerName) =>
@@ -185,8 +218,6 @@ class LibraryController extends ChangeNotifier {
     SettingsFolderTarget target,
   ) {
     final paths = switch (target) {
-      SettingsFolderTarget.battleNetAutomatic =>
-        providerPaths.battleNetRootCandidates(),
       SettingsFolderTarget.steamAutomatic =>
         providerPaths.steamUserdataCandidates(),
       SettingsFolderTarget.hytaleAutomatic => [
@@ -196,14 +227,35 @@ class LibraryController extends ChangeNotifier {
         providerPaths.minecraftScreenshots(),
       _ => const <String>[],
     };
+    final grantId = _folderTargetGrantId(target);
     return paths
         .map(
           (path) => AutomaticFolderCandidate(
             name: p.basename(p.normalize(path)),
             path: path,
+            grantId: grantId,
           ),
         )
         .toList(growable: false);
+  }
+
+  String _folderTargetGrantId(SettingsFolderTarget target) {
+    return switch (target) {
+      SettingsFolderTarget.library => FolderGrantIds.library,
+      SettingsFolderTarget.battleNetGameCustom ||
+      SettingsFolderTarget.battleNetGameAutomatic => FolderGrantIds.battleNet,
+      SettingsFolderTarget.guildWars2Custom => FolderGrantIds.guildWars2,
+      SettingsFolderTarget.hytaleCustom ||
+      SettingsFolderTarget.hytaleAutomatic => FolderGrantIds.hytale,
+      SettingsFolderTarget.minecraftCustom ||
+      SettingsFolderTarget.minecraftAutomatic => FolderGrantIds.minecraft,
+      SettingsFolderTarget.nintendoSwitch2Custom =>
+        FolderGrantIds.nintendoSwitch2,
+      SettingsFolderTarget.playStation4Custom => FolderGrantIds.playStation4,
+      SettingsFolderTarget.playStation5Custom => FolderGrantIds.playStation5,
+      SettingsFolderTarget.steamCustom ||
+      SettingsFolderTarget.steamAutomatic => FolderGrantIds.steam,
+    };
   }
 
   List<MediaItem> get visibleMedia {
@@ -375,9 +427,9 @@ class LibraryController extends ChangeNotifier {
         notifyListeners();
         await _prepareSelectedFolder(request, listing);
       }
-    } catch (exception) {
+    } catch (exception, stackTrace) {
       if (request == _folderRequest && !_disposed) {
-        _setError('Could not load this folder: $exception');
+        _fail('open this folder', exception, stackTrace, category: 'library');
       }
     } finally {
       if (request == _folderRequest && !_disposed) {
@@ -402,9 +454,9 @@ class LibraryController extends ChangeNotifier {
           }
         },
       );
-    } catch (exception) {
+    } catch (exception, stackTrace) {
       if (request == _folderRequest && !_disposed) {
-        _setError('Could not prepare media previews: $exception');
+        _fail('prepare previews', exception, stackTrace, category: 'library');
         notifyListeners();
       }
     }
@@ -451,8 +503,8 @@ class LibraryController extends ChangeNotifier {
         isAlbumTreeLoading = false;
         view = LibraryView.settings;
       }
-    } catch (exception) {
-      _setError('Could not load the library: $exception');
+    } catch (exception, stackTrace) {
+      _fail('load the library', exception, stackTrace, category: 'library');
     } finally {
       isAlbumTreeLoading = false;
       isInitializing = false;
@@ -529,54 +581,56 @@ class LibraryController extends ChangeNotifier {
     var changed = false;
     for (final provider
         in providers.whereType<FolderBackedScreenshotProvider>()) {
-      final requirement = provider.folderRequirement(settings);
-      if (requirement == null) {
+      final requirements = provider.folderRequirements(settings);
+      if (requirements.isEmpty) {
         _folderAuthorizations[provider.folderGrantId] =
             const FolderAuthorization.notRequired();
         continue;
       }
-      final grant = settings.folderGrants[requirement.id];
-      if (grant == null ||
-          grant.bookmark.isEmpty ||
-          !_samePath(grant.path, requirement.path)) {
-        _folderAuthorizations[requirement.id] =
-            FolderAuthorization.needsAuthorization(path: requirement.path);
-        continue;
-      }
-
-      FolderAccessLease? lease;
-      try {
-        lease = await folderAccess.activate(grant);
-        if (requirement.automatic &&
-            !_samePath(lease.grant.path, requirement.path)) {
+      for (final requirement in requirements) {
+        final grant = settings.folderGrants[requirement.id];
+        if (grant == null ||
+            grant.bookmark.isEmpty ||
+            !_samePath(grant.path, requirement.path)) {
           _folderAuthorizations[requirement.id] =
               FolderAuthorization.needsAuthorization(path: requirement.path);
           continue;
         }
-        await _ensureReadableDirectory(lease.grant.path);
-        _folderAuthorizations[requirement.id] = FolderAuthorization(
-          FolderAuthorizationStatus.ready,
-          path: lease.grant.path,
-        );
-        if (_grantChanged(grant, lease.grant)) {
-          var next = _withGrant(settings, requirement.id, lease.grant);
-          if (!requirement.automatic) {
-            next = provider.withFolderPath(next, lease.grant.path);
+
+        FolderAccessLease? lease;
+        try {
+          lease = await folderAccess.activate(grant);
+          if (requirement.automatic &&
+              !_samePath(lease.grant.path, requirement.path)) {
+            _folderAuthorizations[requirement.id] =
+                FolderAuthorization.needsAuthorization(path: requirement.path);
+            continue;
           }
-          settings = next;
-          changed = true;
-        }
-      } on FolderAccessException {
-        _folderAuthorizations[requirement.id] =
-            FolderAuthorization.needsAuthorization(path: grant.path);
-      } on FileSystemException {
-        _folderAuthorizations[requirement.id] = FolderAuthorization(
-          FolderAuthorizationStatus.unavailable,
-          path: grant.path,
-        );
-      } finally {
-        if (lease != null) {
-          await folderAccess.release(lease);
+          await _ensureReadableDirectory(lease.grant.path);
+          _folderAuthorizations[requirement.id] = FolderAuthorization(
+            FolderAuthorizationStatus.ready,
+            path: lease.grant.path,
+          );
+          if (_grantChanged(grant, lease.grant)) {
+            var next = _withGrant(settings, requirement.id, lease.grant);
+            if (!requirement.automatic) {
+              next = provider.withFolderPath(next, lease.grant.path);
+            }
+            settings = next;
+            changed = true;
+          }
+        } on FolderAccessException {
+          _folderAuthorizations[requirement.id] =
+              FolderAuthorization.needsAuthorization(path: grant.path);
+        } on FileSystemException {
+          _folderAuthorizations[requirement.id] = FolderAuthorization(
+            FolderAuthorizationStatus.unavailable,
+            path: grant.path,
+          );
+        } finally {
+          if (lease != null) {
+            await folderAccess.release(lease);
+          }
         }
       }
     }
@@ -640,9 +694,9 @@ class LibraryController extends ChangeNotifier {
             platformFolder,
       ];
       notifyListeners();
-    } catch (exception) {
+    } catch (exception, stackTrace) {
       if (!_disposed) {
-        _setError('Could not load sub-albums: $exception');
+        _fail('load sub-albums', exception, stackTrace, category: 'library');
         notifyListeners();
       }
     }
@@ -768,8 +822,8 @@ class LibraryController extends ChangeNotifier {
         unawaited(_refreshTimeline(showResult: false));
       }
       return true;
-    } catch (exception) {
-      _setError('Could not save settings: $exception');
+    } catch (exception, stackTrace) {
+      _fail('save your settings', exception, stackTrace, category: 'settings');
       notifyListeners();
       return false;
     }
@@ -815,21 +869,32 @@ class LibraryController extends ChangeNotifier {
     AppSettings candidate,
   ) async {
     if (provider case FolderBackedScreenshotProvider folderProvider) {
-      final requirement = folderProvider.folderRequirement(candidate);
-      if (requirement == null) {
+      final requirements = folderProvider.folderRequirements(candidate);
+      if (requirements.isEmpty) {
         if (provider.name == 'Nintendo Switch 2' && Platform.isLinux) {
           return null;
         }
         return 'No supported ${provider.name} folder is configured.';
       }
       if (usesPersistentFolderAccess) {
-        final authorization = folderAuthorization(requirement.id);
-        if (!authorization.isReady ||
-            !_samePath(authorization.path ?? '', requirement.path)) {
+        // One granted folder is enough to run: a provider that spans several
+        // folders imports whichever of them it can reach.
+        final anyReady = requirements.any((requirement) {
+          final authorization = folderAuthorization(requirement.id);
+          return authorization.isReady &&
+              _samePath(authorization.path ?? '', requirement.path);
+        });
+        if (!anyReady) {
           return 'Folder access is required for ${provider.name}.';
         }
-      } else if (!await _providerFolderExists(provider, requirement)) {
-        return '${provider.name} folder does not exist.';
+      } else {
+        final existing = <bool>[
+          for (final requirement in requirements)
+            await _providerFolderExists(provider, requirement),
+        ];
+        if (!existing.contains(true)) {
+          return '${provider.name} folder does not exist.';
+        }
       }
     }
     if (provider is ProviderConfigurationValidator) {
@@ -851,7 +916,6 @@ class LibraryController extends ChangeNotifier {
       return false;
     }
     final candidates = switch (provider.name) {
-      'Battle.net' => providerPaths.battleNetRootCandidates(),
       'Hytale' => [providerPaths.hytaleScreenshots()],
       'Minecraft' => providerPaths.minecraftScreenshots(),
       'Steam' => providerPaths.steamUserdataCandidates(),
@@ -925,8 +989,9 @@ class LibraryController extends ChangeNotifier {
   Future<FolderChoiceResult> chooseFolder(
     SettingsFolderTarget target, {
     String? initialPath,
+    String? gameId,
   }) async {
-    final specification = _folderSpecification(target, initialPath);
+    final specification = _folderSpecification(target, initialPath, gameId);
     if (specification == null) {
       return const FolderChoiceResult.failure(
         'No supported automatic folder is available on this platform.',
@@ -998,9 +1063,15 @@ class LibraryController extends ChangeNotifier {
       );
     } on FolderAccessException catch (exception) {
       return FolderChoiceResult.failure(exception.message);
-    } catch (exception) {
+    } catch (exception, stackTrace) {
+      log.error(
+        'Could not save folder access.',
+        category: 'folder-access',
+        error: exception,
+        stackTrace: stackTrace,
+      );
       return FolderChoiceResult.failure(
-        'Could not save folder access: $exception',
+        describeFailure(exception, action: 'save folder access'),
       );
     } finally {
       if (lease != null) {
@@ -1012,6 +1083,7 @@ class LibraryController extends ChangeNotifier {
   _FolderSpecification? _folderSpecification(
     SettingsFolderTarget target,
     String? initialPath,
+    String? gameId,
   ) {
     switch (target) {
       case SettingsFolderTarget.library:
@@ -1025,47 +1097,45 @@ class LibraryController extends ChangeNotifier {
           ),
           selectedPath: (settings) => settings.outputPath,
         );
-      case SettingsFolderTarget.battleNetCustom:
+      case SettingsFolderTarget.battleNetGameCustom:
+        final game = gameId == null ? null : battleNetGameById(gameId);
+        if (game == null) {
+          return null;
+        }
         return _FolderSpecification(
           request: FolderAccessRequest(
-            id: FolderGrantIds.battleNet,
-            title: 'Choose the Battle.net or game installation folder',
+            id: BattleNetProvider.grantIdForGame(game.id),
+            title: 'Choose the ${game.name} screenshot folder',
             access: FolderGrantAccess.readOnly,
             initialPath:
                 _nonEmpty(initialPath) ??
-                _nonEmpty(settings.battleNet.sourcePath),
+                _nonEmpty(settings.battleNet.game(game.id).sourcePath),
           ),
-          selectedPath: (settings) => settings.battleNet.sourcePath,
+          selectedPath: (settings) =>
+              settings.battleNet.game(game.id).sourcePath,
         );
-      case SettingsFolderTarget.battleNetAutomatic:
-        final candidates = automaticFolderCandidates(target);
-        if (candidates.isEmpty) {
+      case SettingsFolderTarget.battleNetGameAutomatic:
+        final game = gameId == null ? null : battleNetGameById(gameId);
+        if (game == null) {
           return null;
         }
-        final requested = _nonEmpty(initialPath);
-        final selected = requested == null
-            ? candidates.length == 1
-                  ? candidates.single
-                  : null
-            : candidates
-                  .where((candidate) => _samePath(candidate.path, requested))
-                  .firstOrNull;
-        if (selected == null) {
+        final candidate = _battleNetLocator.resolve(game).path;
+        if (candidate == null) {
           return null;
         }
-        final candidate = selected.path;
         return _FolderSpecification(
           request: FolderAccessRequest(
-            id: FolderGrantIds.battleNet,
-            title: 'Allow access to Battle.net screenshots',
+            id: BattleNetProvider.grantIdForGame(game.id),
+            title: 'Allow access to ${game.name} screenshots',
             access: FolderGrantAccess.readOnly,
             initialPath: candidate,
             suggestedPath: candidate,
             message:
-                'Click Allow Access to grant Gaming Memories access to the “${selected.name}” installation folder.',
+                'Click Allow Access to grant Gaming Memories access to the ${game.name} screenshot folder.',
           ),
           expectedPath: candidate,
-          pathMismatchMessage: 'Choose the Battle.net game installation folder shown by Gaming Memories.',
+          pathMismatchMessage:
+              'Choose the ${game.name} folder shown by Gaming Memories.',
           selectedPath: (_) => candidate,
         );
       case SettingsFolderTarget.guildWars2Custom:
@@ -1238,20 +1308,8 @@ class LibraryController extends ChangeNotifier {
   AppSettings _settingsWithFolder(SettingsFolderTarget target, String path) {
     return switch (target) {
       SettingsFolderTarget.library => settings.copyWith(outputPath: path),
-      SettingsFolderTarget.battleNetCustom => settings.copyWith(
-        battleNet: settings.battleNet.copyWith(
-          enabled: true,
-          useCustomPath: true,
-          sourcePath: path,
-        ),
-      ),
-      SettingsFolderTarget.battleNetAutomatic => settings.copyWith(
-        battleNet: settings.battleNet.copyWith(
-          enabled: true,
-          useCustomPath: false,
-          sourcePath: path,
-        ),
-      ),
+      SettingsFolderTarget.battleNetGameCustom ||
+      SettingsFolderTarget.battleNetGameAutomatic => settings,
       SettingsFolderTarget.guildWars2Custom => settings.copyWith(
         guildWars2: settings.guildWars2.copyWith(
           enabled: true,
@@ -1468,9 +1526,14 @@ class LibraryController extends ChangeNotifier {
       if (showResult) {
         _setMessage('Timeline refreshed.');
       }
-    } catch (exception) {
+    } catch (exception, stackTrace) {
       if (!_disposed) {
-        _setError('Could not refresh the timeline: $exception');
+        _fail(
+          'refresh the timeline',
+          exception,
+          stackTrace,
+          category: 'library',
+        );
       }
     } finally {
       if (!_disposed) {
@@ -1562,7 +1625,12 @@ class LibraryController extends ChangeNotifier {
     if (!hasListeners) {
       return;
     }
-    debugPrint('[Gaming Memories] Library watcher failed: $error\n$stackTrace');
+    log.warning(
+      'The library watcher failed.',
+      category: 'watcher',
+      error: error,
+      stackTrace: stackTrace,
+    );
     _libraryWatchRecoveryTimer?.cancel();
     _libraryWatchRecoveryTimer = Timer(
       const Duration(seconds: 1),
@@ -1646,9 +1714,11 @@ class LibraryController extends ChangeNotifier {
     try {
       await operation;
     } catch (error, stackTrace) {
-      debugPrint(
-        '[Gaming Memories] Could not apply library changes: '
-        '$error\n$stackTrace',
+      log.warning(
+        'Could not apply library changes.',
+        category: 'watcher',
+        error: error,
+        stackTrace: stackTrace,
       );
     } finally {
       if (identical(_libraryChangeRefresh, operation)) {
@@ -2060,7 +2130,7 @@ class LibraryController extends ChangeNotifier {
       _logProviderFailure(provider, exception, stackTrace);
       return ImportResult.warning(
         provider.name,
-        '${provider.name} could not be processed: ${_providerFailureSummary(exception)}',
+        describeFailure(exception, action: 'import from ${provider.name}'),
       );
     }
   }
@@ -2070,25 +2140,12 @@ class LibraryController extends ChangeNotifier {
     Object exception,
     StackTrace stackTrace,
   ) {
-    final timestamp = DateTime.now().toUtc().toIso8601String();
-    debugPrint(
-      '[Gaming Memories][$timestamp] Provider "${provider.name}" failed.\n'
-      'Error: ${_redactDiagnostic('$exception')}\n'
-      'Stack trace:\n${_redactDiagnostic('$stackTrace')}',
+    log.error(
+      'Provider "${provider.name}" failed.',
+      category: 'provider',
+      error: exception,
+      stackTrace: stackTrace,
     );
-  }
-
-  String _providerFailureSummary(Object exception) {
-    final lines = _redactDiagnostic('$exception').split('\n');
-    final firstLine = lines.first.trim();
-    if (firstLine.isEmpty) {
-      return 'Unexpected ${exception.runtimeType} failure. See the console log for details.';
-    }
-    const maximumLength = 240;
-    final summary = firstLine.length <= maximumLength
-        ? firstLine
-        : '${firstLine.substring(0, maximumLength - 1)}…';
-    return '$summary See the console log for details.';
   }
 
   String _redactDiagnostic(String value) {
@@ -2109,20 +2166,57 @@ class LibraryController extends ChangeNotifier {
       return provider.collect(settings, onProgress: _providerProgress);
     }
 
-    final requirement = provider.folderRequirement(settings);
-    if (requirement == null) {
+    final requirements = provider.folderRequirements(settings);
+    if (requirements.isEmpty) {
       return provider.collect(settings, onProgress: _providerProgress);
     }
+
+    final leases = <FolderAccessLease>[];
+    try {
+      for (final requirement in requirements) {
+        final lease = await _activateRequirement(provider, requirement);
+        if (lease != null) {
+          leases.add(lease);
+        }
+      }
+      if (leases.isEmpty) {
+        return ImportResult.warning(
+          provider.name,
+          '${provider.name} was skipped because its screenshot folders need access. Open Settings and allow access.',
+        );
+      }
+      // The primary requirement carries the custom root, which is the only
+      // path a provider stores. Automatic requirements span several folders
+      // and must not be written back.
+      final runtimeSettings = requirements.first.automatic
+          ? settings
+          : provider.withFolderPath(settings, leases.first.grant.path);
+      return await provider.collect(
+        runtimeSettings,
+        onProgress: _providerProgress,
+      );
+    } finally {
+      for (final lease in leases) {
+        await folderAccess.release(lease);
+      }
+    }
+  }
+
+  /// Activates one required folder, recording its authorization state.
+  ///
+  /// Returns null when the folder is not usable, leaving the caller to decide
+  /// whether the provider can still run on the folders that are.
+  Future<FolderAccessLease?> _activateRequirement(
+    FolderBackedScreenshotProvider provider,
+    ProviderFolderRequirement requirement,
+  ) async {
     final grant = settings.folderGrants[requirement.id];
     if (grant == null ||
         grant.bookmark.isEmpty ||
         !_samePath(grant.path, requirement.path)) {
       _folderAuthorizations[requirement.id] =
           FolderAuthorization.needsAuthorization(path: requirement.path);
-      return ImportResult.warning(
-        provider.name,
-        '${provider.name} was skipped because its screenshot folder needs access. Open Settings and allow access.',
-      );
+      return null;
     }
 
     FolderAccessLease? lease;
@@ -2132,10 +2226,8 @@ class LibraryController extends ChangeNotifier {
           !_samePath(lease.grant.path, requirement.path)) {
         _folderAuthorizations[requirement.id] =
             FolderAuthorization.needsAuthorization(path: requirement.path);
-        return ImportResult.warning(
-          provider.name,
-          '${provider.name} was skipped because its automatically discovered folder needs access again.',
-        );
+        await folderAccess.release(lease);
+        return null;
       }
       await _ensureReadableDirectory(lease.grant.path);
       _folderAuthorizations[requirement.id] = FolderAuthorization(
@@ -2150,37 +2242,22 @@ class LibraryController extends ChangeNotifier {
         await configStore.save(next);
         settings = next;
       }
-      final runtimeSettings = provider.withFolderPath(
-        settings,
-        lease.grant.path,
-      );
-      return await provider.collect(
-        runtimeSettings,
-        onProgress: _providerProgress,
-      );
+      return lease;
     } on FolderAccessException catch (exception, stackTrace) {
       _logProviderFailure(provider, exception, stackTrace);
       _folderAuthorizations[requirement.id] =
           FolderAuthorization.needsAuthorization(path: grant.path);
-      return ImportResult.warning(
-        provider.name,
-        '${provider.name} was skipped because folder access could not be restored. Open Settings and allow access again.',
-      );
     } on FileSystemException catch (exception, stackTrace) {
       _logProviderFailure(provider, exception, stackTrace);
       _folderAuthorizations[requirement.id] = FolderAuthorization(
         FolderAuthorizationStatus.unavailable,
         path: grant.path,
       );
-      return ImportResult.warning(
-        provider.name,
-        '${provider.name} was skipped because its screenshot folder is unavailable.',
-      );
-    } finally {
-      if (lease != null) {
-        await folderAccess.release(lease);
-      }
     }
+    if (lease != null) {
+      await folderAccess.release(lease);
+    }
+    return null;
   }
 
   void _providerProgress(ProviderProgress progress) {
@@ -2233,16 +2310,18 @@ class LibraryController extends ChangeNotifier {
 
     for (final provider
         in providers.whereType<FolderBackedScreenshotProvider>()) {
-      final requirement = provider.folderRequirement(settings);
-      if (requirement == null) {
+      final requirements = provider.folderRequirements(settings);
+      if (requirements.isEmpty) {
         _folderAuthorizations[provider.folderGrantId] =
             const FolderAuthorization.notRequired();
         continue;
       }
-      final grant = settings.folderGrants[requirement.id];
-      if (grant == null || !_samePath(grant.path, requirement.path)) {
-        _folderAuthorizations[requirement.id] =
-            FolderAuthorization.needsAuthorization(path: requirement.path);
+      for (final requirement in requirements) {
+        final grant = settings.folderGrants[requirement.id];
+        if (grant == null || !_samePath(grant.path, requirement.path)) {
+          _folderAuthorizations[requirement.id] =
+              FolderAuthorization.needsAuthorization(path: requirement.path);
+        }
       }
     }
   }
@@ -2298,8 +2377,8 @@ class LibraryController extends ChangeNotifier {
 
     try {
       await action();
-    } catch (exception) {
-      _setError(exception.toString().replaceFirst('FileSystemException: ', ''));
+    } catch (exception, stackTrace) {
+      _fail('finish that', exception, stackTrace, category: 'app');
     } finally {
       isBusy = false;
       progressMessage = null;
@@ -2327,8 +2406,8 @@ class LibraryController extends ChangeNotifier {
     try {
       await action();
       _setMessage(success);
-    } catch (exception) {
-      _setError('$failure: $exception');
+    } catch (exception, stackTrace) {
+      _fail(failure, exception, stackTrace, category: 'media');
     }
     notifyListeners();
   }
@@ -2345,6 +2424,22 @@ class LibraryController extends ChangeNotifier {
     error = null;
     notificationKind = NotificationKind.warning;
     _recordNotification(value, NotificationKind.warning);
+  }
+
+  /// Logs a failure in full and shows the user a sentence about it.
+  void _fail(
+    String action,
+    Object exception,
+    StackTrace stackTrace, {
+    required String category,
+  }) {
+    log.error(
+      'Could not $action.',
+      category: category,
+      error: exception,
+      stackTrace: stackTrace,
+    );
+    _setError(describeFailure(exception, action: action));
   }
 
   void _setError(String value) {

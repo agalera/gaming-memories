@@ -1,16 +1,18 @@
 import 'dart:io';
 
-import 'package:flutter/foundation.dart';
 import 'package:path/path.dart' as p;
 
 import '../models/app_settings.dart';
 import '../services/folder_access_service.dart';
+import '../services/app_log.dart';
 import '../services/library_scanner.dart';
 import '../services/media_importer.dart';
 import '../services/mtp_client.dart';
 import 'screenshot_provider.dart';
 
-class NintendoSwitch2Provider implements FolderBackedScreenshotProvider {
+class NintendoSwitch2Provider
+    with SingleFolderRequirement
+    implements FolderBackedScreenshotProvider {
   const NintendoSwitch2Provider({
     this.importer = const MediaImporter(),
     this.mtpClient = const LibMtpClient(),
@@ -132,8 +134,10 @@ class NintendoSwitch2Provider implements FolderBackedScreenshotProvider {
           }
         }
       } on FileSystemException catch (exception) {
-        debugPrint(
-          '[Gaming Memories] Nintendo Switch 2 could not read "${game.path}": $exception',
+        diagnosticLog.warning(
+          'Nintendo Switch 2 could not read "${game.path}".',
+          category: 'provider',
+          error: exception,
         );
       }
     }
@@ -212,13 +216,19 @@ class NintendoSwitch2Provider implements FolderBackedScreenshotProvider {
         try {
           await stage.delete(recursive: true);
         } on FileSystemException catch (exception) {
-          debugPrint(
-            '[Gaming Memories] Nintendo Switch 2 could not remove staging folder "${stage.path}": $exception',
+          diagnosticLog.warning(
+            'Nintendo Switch 2 could not remove staging folder "${stage.path}".',
+            category: 'provider',
+            error: exception,
           );
         }
       }
     } on MtpException catch (exception) {
-      debugPrint('[Gaming Memories] Nintendo Switch 2 MTP: $exception');
+      diagnosticLog.warning(
+        'Nintendo Switch 2 MTP transfer failed.',
+        category: 'provider',
+        error: exception,
+      );
       final warning = _mtpWarning(exception);
       if (warning != null) {
         return ImportResult.warning(name, warning);

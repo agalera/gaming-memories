@@ -5,6 +5,8 @@ import 'package:forui/forui.dart';
 import 'package:material_ui/material_ui.dart';
 
 import '../controllers/library_controller.dart';
+import '../providers/battle_net_provider.dart';
+import '../services/battle_net_games.dart';
 import '../models/app_settings.dart';
 import '../services/folder_access_service.dart';
 import '../services/library_scanner.dart';
@@ -20,7 +22,7 @@ class SettingsPage extends StatefulWidget {
 
 class _SettingsPageState extends State<SettingsPage> {
   late final TextEditingController _outputController;
-  late final TextEditingController _diabloController;
+  final Map<String, TextEditingController> _battleNetControllers = {};
   late final TextEditingController _guildWars2Controller;
   late final TextEditingController _hytaleController;
   late final TextEditingController _minecraftController;
@@ -39,7 +41,8 @@ class _SettingsPageState extends State<SettingsPage> {
   late final List<_CustomGame> _steamCustomGames;
   late AppThemeMode _themeMode;
   late bool _diabloEnabled;
-  late bool _diabloUseCustomPath;
+  final Map<String, bool> _battleNetUseCustomPath = {};
+  final Map<String, bool> _battleNetGameEnabled = {};
   late bool _guildWars2Enabled;
   late bool _guildWars2UseCustomPath;
   late bool _hytaleEnabled;
@@ -57,6 +60,7 @@ class _SettingsPageState extends State<SettingsPage> {
   late bool _steamDownloadCovers;
   String? _outputPathError;
   String? _diabloPathError;
+  final Map<String, String?> _battleNetGameErrors = {};
   String? _guildWars2PathError;
   String? _hytalePathError;
   String? _minecraftPathError;
@@ -73,15 +77,75 @@ class _SettingsPageState extends State<SettingsPage> {
   final _providerActivationErrors = <_SettingsProvider, String>{};
   Future<void> _saveQueue = Future.value();
 
+  /// Rebuilds the per-game editing state from saved settings. Each game keeps
+  /// its own switch, custom-folder flag and path, so they are held in maps
+  /// keyed by game id rather than as fields.
+  void _loadBattleNetGameState(AppSettings settings) {
+    for (final game in battleNetGames) {
+      final saved = settings.battleNet.game(game.id);
+      _battleNetGameEnabled[game.id] = saved.enabled;
+      _battleNetUseCustomPath[game.id] = saved.useCustomPath;
+      final controller = _battleNetControllers[game.id];
+      if (controller == null) {
+        _battleNetControllers[game.id] = TextEditingController(
+          text: saved.sourcePath,
+        );
+      } else {
+        controller.text = saved.sourcePath;
+      }
+    }
+  }
+
+  void _setBattleNetGameEnabled(BattleNetGame game, bool value) {
+    setState(() {
+      _battleNetGameEnabled[game.id] = value;
+      if (!value) {
+        _battleNetGameErrors.remove(game.id);
+      }
+    });
+    _scheduleAutosave(immediate: true);
+  }
+
+  Future<void> _setBattleNetGameCustomPath(
+    BattleNetGame game,
+    bool value,
+  ) async {
+    setState(() {
+      _battleNetUseCustomPath[game.id] = value;
+      if (!value) {
+        _battleNetControllerFor(game.id).text = '';
+        _battleNetGameErrors.remove(game.id);
+      }
+    });
+    if (!value || !widget.controller.usesPersistentFolderAccess) {
+      // Off macOS the field is simply typed into, as it is for every other
+      // provider. On macOS picking the folder is also how the grant is made,
+      // so the dialog opens straight away.
+      _scheduleAutosave(immediate: true);
+      return;
+    }
+    await _chooseDirectory(
+      SettingsFolderTarget.battleNetGameCustom,
+      initialPath: _battleNetControllerFor(game.id).text,
+      gameId: game.id,
+    );
+  }
+
+  bool _battleNetGameOn(String gameId) => _battleNetGameEnabled[gameId] ?? true;
+
+  bool _battleNetGameCustom(String gameId) =>
+      _battleNetUseCustomPath[gameId] ?? false;
+
+  TextEditingController _battleNetControllerFor(String gameId) =>
+      _battleNetControllers.putIfAbsent(gameId, TextEditingController.new);
+
   @override
   void initState() {
     super.initState();
     _outputController = TextEditingController(
       text: widget.controller.settings.outputPath,
     );
-    _diabloController = TextEditingController(
-      text: widget.controller.settings.battleNet.sourcePath,
-    );
+    _loadBattleNetGameState(widget.controller.settings);
     _guildWars2Controller = TextEditingController(
       text: widget.controller.settings.guildWars2.sourcePath,
     );
@@ -115,7 +179,6 @@ class _SettingsPageState extends State<SettingsPage> {
         .map((entry) => _CustomGame(entry.key, entry.value))
         .toList();
     _diabloEnabled = widget.controller.settings.battleNet.enabled;
-    _diabloUseCustomPath = widget.controller.settings.battleNet.useCustomPath;
     _guildWars2Enabled = widget.controller.settings.guildWars2.enabled;
     _guildWars2UseCustomPath =
         widget.controller.settings.guildWars2.useCustomPath;
@@ -147,7 +210,7 @@ class _SettingsPageState extends State<SettingsPage> {
 
     for (final controller in [
       _outputController,
-      _diabloController,
+      ..._battleNetControllers.values,
       _guildWars2Controller,
       _hytaleController,
       _minecraftController,
@@ -183,7 +246,9 @@ class _SettingsPageState extends State<SettingsPage> {
       unawaited(_validateAndSave(draft, revision: revision, showErrors: false));
     }
     _outputController.dispose();
-    _diabloController.dispose();
+    for (final controller in _battleNetControllers.values) {
+      controller.dispose();
+    }
     _guildWars2Controller.dispose();
     _hytaleController.dispose();
     _minecraftController.dispose();
@@ -342,7 +407,7 @@ class _SettingsPageState extends State<SettingsPage> {
                           headerKey: const ValueKey('provider-card-battle-net'),
                           switchKey: const ValueKey('battle-net-enabled'),
                           name: 'Battle.net',
-                          description: 'PC · Diablo IV and World of Warcraft',
+                          description: 'PC · Installed Blizzard games',
                           expanded:
                               _expandedProvider == _SettingsProvider.battleNet,
                           enabled: _diabloEnabled,
@@ -361,55 +426,60 @@ class _SettingsPageState extends State<SettingsPage> {
                         if (_expandedProvider ==
                             _SettingsProvider.battleNet) ...[
                           const SizedBox(height: 18),
-                          FCheckbox(
-                            key: const ValueKey('battle-net-custom-path'),
-                            label: const Text('Use custom folder'),
-                            description: const Text(
-                              'Otherwise, installed Battle.net games are discovered automatically.',
-                            ),
-                            value: _diabloUseCustomPath,
-                            enabled: true,
-                            onChange: (value) => unawaited(
-                              _setCustomPath(
-                                _SettingsProvider.battleNet,
-                                value,
-                              ),
+                          Text(
+                            _diabloPathError ?? 'Each game is checked for in its default screenshot folder. Turn off a game to skip it, or point it somewhere else.',
+                            key: const ValueKey('battle-net-summary'),
+                            style: context.theme.typography.body.sm.copyWith(
+                              color: _diabloPathError == null
+                                  ? context.theme.colors.mutedForeground
+                                  : context.theme.colors.destructive,
                             ),
                           ),
-                          if (_diabloUseCustomPath) ...[
-                            const SizedBox(height: 16),
-                            _DirectoryField(
-                              fieldKey: const ValueKey('battle-net-path-field'),
-                              controller: _diabloController,
-                              label: 'Battle.net or game installation folder',
-                              hint: '/path/to/World of Warcraft',
-                              error: _diabloPathError,
-                              readOnly:
+                          for (final folder
+                              in widget.controller.battleNetGameFolders(
+                                _draftSettings(),
+                              )) ...[
+                            const SizedBox(height: 18),
+                            _BattleNetGameRow(
+                              folder: folder,
+                              enabled: _battleNetGameOn(folder.game.id),
+                              useCustomPath: _battleNetGameCustom(
+                                folder.game.id,
+                              ),
+                              controller: _battleNetControllerFor(
+                                folder.game.id,
+                              ),
+                              error: _battleNetGameErrors[folder.game.id],
+                              usesPersistentFolderAccess:
                                   widget.controller.usesPersistentFolderAccess,
-                              buttonLabel: _folderButtonLabel(
-                                FolderGrantIds.battleNet,
+                              access: widget.controller.folderAuthorization(
+                                BattleNetProvider.grantIdForGame(
+                                  folder.game.id,
+                                ),
                               ),
+                              folderButtonLabel: _folderButtonLabel(
+                                BattleNetProvider.grantIdForGame(
+                                  folder.game.id,
+                                ),
+                              ),
+                              onEnabled: (value) =>
+                                  _setBattleNetGameEnabled(folder.game, value),
+                              onUseCustomPath: (value) =>
+                                  _setBattleNetGameCustomPath(
+                                    folder.game,
+                                    value,
+                                  ),
                               onBrowse: () => _chooseDirectory(
-                                SettingsFolderTarget.battleNetCustom,
-                                initialPath: _diabloController.text,
+                                SettingsFolderTarget.battleNetGameCustom,
+                                initialPath: _battleNetControllerFor(
+                                  folder.game.id,
+                                ).text,
+                                gameId: folder.game.id,
                               ),
-                            ),
-                          ] else if (widget
-                              .controller
-                              .usesPersistentFolderAccess) ...[
-                            const SizedBox(height: 16),
-                            _FolderAccessRow(
-                              buttonKey: const ValueKey(
-                                'battle-net-automatic-folder-access',
-                              ),
-                              providerName: 'Battle.net',
-                              automaticDescription: 'World of Warcraft screenshots are stored in its installation folder. The macOS dialog will open it; click Allow Access to grant access.',
-                              status: widget.controller.folderAuthorization(
-                                FolderGrantIds.battleNet,
-                              ),
-                              error: _diabloPathError,
-                              onAllow: () => _chooseAutomaticDirectory(
-                                SettingsFolderTarget.battleNetAutomatic,
+                              onAllow: () => _chooseDirectory(
+                                SettingsFolderTarget.battleNetGameAutomatic,
+                                initialPath: folder.path,
+                                gameId: folder.game.id,
                               ),
                             ),
                           ],
@@ -1150,6 +1220,7 @@ class _SettingsPageState extends State<SettingsPage> {
   Future<void> _chooseDirectory(
     SettingsFolderTarget target, {
     String? initialPath,
+    String? gameId,
   }) async {
     final provider = _providerForFolderTarget(target);
     final wasEnabled = provider == null ? null : _providerEnabled(provider);
@@ -1161,6 +1232,7 @@ class _SettingsPageState extends State<SettingsPage> {
     final result = await widget.controller.chooseFolder(
       target,
       initialPath: initialPath,
+      gameId: gameId,
     );
     if (!mounted || result.cancelled) {
       return;
@@ -1187,7 +1259,7 @@ class _SettingsPageState extends State<SettingsPage> {
     _suppressAutosave = true;
     final saved = widget.controller.settings;
     _outputController.text = saved.outputPath;
-    _diabloController.text = saved.battleNet.sourcePath;
+    _loadBattleNetGameState(saved);
     _guildWars2Controller.text = saved.guildWars2.sourcePath;
     _hytaleController.text = saved.hytale.sourcePath;
     _minecraftController.text = saved.minecraft.sourcePath;
@@ -1198,7 +1270,6 @@ class _SettingsPageState extends State<SettingsPage> {
     _suppressAutosave = false;
     setState(() {
       _diabloEnabled = saved.battleNet.enabled;
-      _diabloUseCustomPath = saved.battleNet.useCustomPath;
       _guildWars2Enabled = saved.guildWars2.enabled;
       _guildWars2UseCustomPath = saved.guildWars2.useCustomPath;
       _hytaleEnabled = saved.hytale.enabled;
@@ -1333,10 +1404,8 @@ class _SettingsPageState extends State<SettingsPage> {
     }
 
     final target = switch ((provider, _usesCustomPath(provider))) {
-      (_SettingsProvider.battleNet, true) =>
-        SettingsFolderTarget.battleNetCustom,
-      (_SettingsProvider.battleNet, false) =>
-        SettingsFolderTarget.battleNetAutomatic,
+      // Battle.net folders are chosen per game, from the game's own row.
+      (_SettingsProvider.battleNet, _) => null,
       (_SettingsProvider.guildWars2, true) =>
         SettingsFolderTarget.guildWars2Custom,
       (_SettingsProvider.hytale, true) => SettingsFolderTarget.hytaleCustom,
@@ -1436,8 +1505,8 @@ class _SettingsPageState extends State<SettingsPage> {
     SettingsFolderTarget target,
   ) => switch (target) {
     SettingsFolderTarget.library => null,
-    SettingsFolderTarget.battleNetCustom ||
-    SettingsFolderTarget.battleNetAutomatic => _SettingsProvider.battleNet,
+    SettingsFolderTarget.battleNetGameCustom ||
+    SettingsFolderTarget.battleNetGameAutomatic => _SettingsProvider.battleNet,
     SettingsFolderTarget.guildWars2Custom => _SettingsProvider.guildWars2,
     SettingsFolderTarget.hytaleCustom ||
     SettingsFolderTarget.hytaleAutomatic => _SettingsProvider.hytale,
@@ -1496,7 +1565,7 @@ class _SettingsPageState extends State<SettingsPage> {
 
     final target = value
         ? switch (provider) {
-            _SettingsProvider.battleNet => SettingsFolderTarget.battleNetCustom,
+            _SettingsProvider.battleNet => null,
             _SettingsProvider.guildWars2 =>
               SettingsFolderTarget.guildWars2Custom,
             _SettingsProvider.hytale => SettingsFolderTarget.hytaleCustom,
@@ -1510,8 +1579,7 @@ class _SettingsPageState extends State<SettingsPage> {
             _SettingsProvider.steam => SettingsFolderTarget.steamCustom,
           }
         : switch (provider) {
-            _SettingsProvider.battleNet =>
-              SettingsFolderTarget.battleNetAutomatic,
+            _SettingsProvider.battleNet => null,
             _SettingsProvider.hytale => SettingsFolderTarget.hytaleAutomatic,
             _SettingsProvider.minecraft =>
               SettingsFolderTarget.minecraftAutomatic,
@@ -1544,7 +1612,7 @@ class _SettingsPageState extends State<SettingsPage> {
   }
 
   bool _usesCustomPath(_SettingsProvider provider) => switch (provider) {
-    _SettingsProvider.battleNet => _diabloUseCustomPath,
+    _SettingsProvider.battleNet => false,
     _SettingsProvider.guildWars2 => _guildWars2UseCustomPath,
     _SettingsProvider.hytale => _hytaleUseCustomPath,
     _SettingsProvider.minecraft => _minecraftUseCustomPath,
@@ -1555,7 +1623,7 @@ class _SettingsPageState extends State<SettingsPage> {
   };
 
   String _providerPath(_SettingsProvider provider) => switch (provider) {
-    _SettingsProvider.battleNet => _diabloController.text,
+    _SettingsProvider.battleNet => '',
     _SettingsProvider.guildWars2 => _guildWars2Controller.text,
     _SettingsProvider.hytale => _hytaleController.text,
     _SettingsProvider.minecraft => _minecraftController.text,
@@ -1611,7 +1679,7 @@ class _SettingsPageState extends State<SettingsPage> {
   void _setUseCustomPathValue(_SettingsProvider provider, bool value) {
     switch (provider) {
       case _SettingsProvider.battleNet:
-        _diabloUseCustomPath = value;
+        // Battle.net has no provider-level custom folder; each game has one.
         break;
       case _SettingsProvider.guildWars2:
         _guildWars2UseCustomPath = value;
@@ -1668,8 +1736,8 @@ class _SettingsPageState extends State<SettingsPage> {
       case SettingsFolderTarget.library:
         _outputPathError = value;
         break;
-      case SettingsFolderTarget.battleNetCustom:
-      case SettingsFolderTarget.battleNetAutomatic:
+      case SettingsFolderTarget.battleNetGameCustom:
+      case SettingsFolderTarget.battleNetGameAutomatic:
         _diabloPathError = value;
         break;
       case SettingsFolderTarget.guildWars2Custom:
@@ -1707,7 +1775,7 @@ class _SettingsPageState extends State<SettingsPage> {
   }
 
   bool _isAutomaticTarget(SettingsFolderTarget target) {
-    return target == SettingsFolderTarget.battleNetAutomatic ||
+    return target == SettingsFolderTarget.battleNetGameAutomatic ||
         target == SettingsFolderTarget.hytaleAutomatic ||
         target == SettingsFolderTarget.minecraftAutomatic ||
         target == SettingsFolderTarget.steamAutomatic;
@@ -1715,7 +1783,7 @@ class _SettingsPageState extends State<SettingsPage> {
 
   String _automaticProviderName(SettingsFolderTarget target) {
     return switch (target) {
-      SettingsFolderTarget.battleNetAutomatic => 'Battle.net',
+      SettingsFolderTarget.battleNetGameAutomatic => 'Battle.net',
       SettingsFolderTarget.hytaleAutomatic => 'Hytale',
       SettingsFolderTarget.minecraftAutomatic => 'Minecraft',
       SettingsFolderTarget.steamAutomatic => 'Steam',
@@ -1806,10 +1874,16 @@ class _SettingsPageState extends State<SettingsPage> {
     return AppSettings(
       outputPath: _outputController.text.trim(),
       themeMode: _themeMode,
-      battleNet: ProviderSettings(
+      battleNet: BattleNetSettings(
         enabled: _diabloEnabled,
-        useCustomPath: _diabloUseCustomPath,
-        sourcePath: _diabloController.text.trim(),
+        games: {
+          for (final game in battleNetGames)
+            game.id: ProviderSettings(
+              enabled: _battleNetGameOn(game.id),
+              useCustomPath: _battleNetGameCustom(game.id),
+              sourcePath: _battleNetControllerFor(game.id).text.trim(),
+            ),
+        },
       ),
       guildWars2: ProviderSettings(
         enabled: _guildWars2Enabled,
@@ -1907,9 +1981,7 @@ class _SettingsPageState extends State<SettingsPage> {
           ? draft.outputPath
           : saved.outputPath,
       themeMode: draft.themeMode,
-      battleNet: errors.battleNet == null
-          ? draft.battleNet
-          : saved.battleNet.copyWith(enabled: draft.battleNet.enabled),
+      battleNet: _safeBattleNet(draft.battleNet, saved.battleNet),
       guildWars2: errors.guildWars2 == null
           ? draft.guildWars2
           : saved.guildWars2.copyWith(enabled: draft.guildWars2.enabled),
@@ -1996,22 +2068,7 @@ class _SettingsPageState extends State<SettingsPage> {
         allowEmpty: true,
         grantId: FolderGrantIds.library,
       ),
-      draft.battleNet.useCustomPath
-          ? _directoryError(
-              draft.battleNet.sourcePath,
-              label: 'Battle.net folder',
-              grantId: FolderGrantIds.battleNet,
-            )
-          : draft.battleNet.enabled &&
-                widget.controller.usesPersistentFolderAccess
-          ? Future.value(
-              _folderAuthorizationError(
-                FolderGrantIds.battleNet,
-                label: 'Battle.net game installation folder',
-                needsAuthorizationMessage: 'World of Warcraft screenshots are stored in its installation folder. Click Allow Access to grant access to that folder.',
-              ),
-            )
-          : Future.value(),
+      _battleNetError(draft),
       draft.guildWars2.useCustomPath
           ? _directoryError(
               draft.guildWars2.sourcePath,
@@ -2124,6 +2181,85 @@ class _SettingsPageState extends State<SettingsPage> {
       // The same field error covers inaccessible and missing directories.
     }
     return '$label does not exist.';
+  }
+
+  /// Keeps the draft, except for the games whose own folder failed to
+  /// validate. Reverting the whole provider would throw away edits to games
+  /// that are perfectly fine — turning one off, for instance.
+  BattleNetSettings _safeBattleNet(
+    BattleNetSettings draft,
+    BattleNetSettings saved,
+  ) {
+    if (_battleNetGameErrors.isEmpty) {
+      return draft;
+    }
+    return draft.copyWith(
+      games: {
+        for (final entry in draft.games.entries)
+          entry.key: _battleNetGameErrors.containsKey(entry.key)
+              ? saved.game(entry.key)
+              : entry.value,
+      },
+    );
+  }
+
+  /// Validates every Battle.net game and records each game's own error, so a
+  /// misconfigured game says so on its own row.
+  ///
+  /// The provider-level error is deliberately quiet about games that are
+  /// simply not installed: a game nobody owns is skipped, not broken.
+  Future<String?> _battleNetError(AppSettings draft) async {
+    _battleNetGameErrors.clear();
+    if (!draft.battleNet.enabled) {
+      return null;
+    }
+
+    final folders = widget.controller.battleNetGameFolders(draft);
+    var configured = 0;
+    for (final folder in folders) {
+      final game = draft.battleNet.game(folder.game.id);
+      if (!game.enabled) {
+        continue;
+      }
+      if (game.useCustomPath) {
+        final error = await _directoryError(
+          game.sourcePath,
+          label: '${folder.game.name} screenshot folder',
+          grantId: BattleNetProvider.grantIdForGame(folder.game.id),
+        );
+        if (error != null) {
+          _battleNetGameErrors[folder.game.id] = error;
+          continue;
+        }
+        configured++;
+        continue;
+      }
+      if (!folder.exists) {
+        continue;
+      }
+      if (widget.controller.usesPersistentFolderAccess) {
+        final error = _folderAuthorizationError(
+          BattleNetProvider.grantIdForGame(folder.game.id),
+          label: '${folder.game.name} screenshot folder',
+          needsAuthorizationMessage:
+              'Click Allow Access to let Gaming Memories read ${folder.game.name} screenshots.',
+        );
+        if (error != null) {
+          _battleNetGameErrors[folder.game.id] = error;
+          continue;
+        }
+      }
+      configured++;
+    }
+
+    if (_battleNetGameErrors.isEmpty) {
+      return configured == 0
+          ? 'No Battle.net games were found. Turn on a game and choose its folder.'
+          : null;
+    }
+    return _battleNetGameErrors.length == 1
+        ? _battleNetGameErrors.values.single
+        : '${_battleNetGameErrors.length} Battle.net games need attention.';
   }
 
   String? _folderAuthorizationError(
@@ -2903,6 +3039,150 @@ class _InlinePathError extends StatelessWidget {
         color: context.theme.colors.destructive,
       ),
     );
+  }
+}
+
+/// One Battle.net game: its switch, whether its folder was found, macOS
+/// access, and an optional custom folder.
+class _BattleNetGameRow extends StatelessWidget {
+  const _BattleNetGameRow({
+    required this.folder,
+    required this.enabled,
+    required this.useCustomPath,
+    required this.controller,
+    required this.usesPersistentFolderAccess,
+    required this.access,
+    required this.folderButtonLabel,
+    required this.onEnabled,
+    required this.onUseCustomPath,
+    required this.onBrowse,
+    required this.onAllow,
+    this.error,
+  });
+
+  final BattleNetGameFolder folder;
+  final bool enabled;
+  final bool useCustomPath;
+  final TextEditingController controller;
+  final bool usesPersistentFolderAccess;
+  final FolderAuthorization access;
+  final String folderButtonLabel;
+  final ValueChanged<bool> onEnabled;
+  final ValueChanged<bool> onUseCustomPath;
+  final VoidCallback onBrowse;
+  final VoidCallback onAllow;
+  final String? error;
+
+  bool get _hasDefaultPath => folder.path != null && !folder.isCustom;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = context.theme.colors;
+    final typography = context.theme.typography;
+    final found = folder.exists;
+
+    return Column(
+      key: ValueKey('battle-net-game-${folder.game.id}'),
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            Icon(
+              found ? FLucideIcons.circleCheck : FLucideIcons.circleDashed,
+              size: 18,
+              color: found ? colors.primary : colors.mutedForeground,
+            ),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(folder.game.name, style: typography.body.lg),
+                  const SizedBox(height: 2),
+                  Text(
+                    _statusLine(),
+                    style: typography.body.sm.copyWith(
+                      color: error == null
+                          ? colors.mutedForeground
+                          : colors.destructive,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(width: 10),
+            FSwitch(
+              key: ValueKey('battle-net-game-${folder.game.id}-enabled'),
+              value: enabled,
+              onChange: onEnabled,
+            ),
+          ],
+        ),
+        if (enabled) ...[
+          const SizedBox(height: 10),
+          Padding(
+            padding: const EdgeInsets.only(left: 26),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                FCheckbox(
+                  key: ValueKey('battle-net-game-${folder.game.id}-custom'),
+                  label: const Text('Use custom folder'),
+                  value: useCustomPath,
+                  enabled: true,
+                  onChange: onUseCustomPath,
+                ),
+                if (useCustomPath) ...[
+                  const SizedBox(height: 10),
+                  _DirectoryField(
+                    fieldKey: ValueKey(
+                      'battle-net-game-${folder.game.id}-path',
+                    ),
+                    controller: controller,
+                    label: '${folder.game.name} screenshot folder',
+                    hint: '/path/to/screenshots',
+                    error: error,
+                    readOnly: usesPersistentFolderAccess,
+                    buttonLabel: folderButtonLabel,
+                    onBrowse: onBrowse,
+                  ),
+                ] else if (usesPersistentFolderAccess && found) ...[
+                  const SizedBox(height: 10),
+                  _FolderAccessRow(
+                    buttonKey: ValueKey(
+                      'battle-net-game-${folder.game.id}-access',
+                    ),
+                    providerName: folder.game.name,
+                    automaticDescription:
+                        'Click Allow Access to let Gaming Memories read “${folder.path}”.',
+                    status: access,
+                    error: error,
+                    onAllow: onAllow,
+                  ),
+                ],
+              ],
+            ),
+          ),
+        ],
+      ],
+    );
+  }
+
+  String _statusLine() {
+    if (error != null) {
+      return error!;
+    }
+    if (folder.isCustom) {
+      return folder.exists
+          ? 'Custom folder: ${folder.path}'
+          : 'Custom folder not found: ${folder.path}';
+    }
+    if (!_hasDefaultPath) {
+      return 'No default folder on this platform. Choose one to import it.';
+    }
+    return folder.exists
+        ? 'Found in ${folder.path}'
+        : 'Not found in ${folder.path}';
   }
 }
 

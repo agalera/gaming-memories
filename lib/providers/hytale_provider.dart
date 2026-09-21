@@ -13,7 +13,9 @@ import 'screenshot_provider.dart';
 
 typedef HytaleCoverLoader = Future<List<int>> Function();
 
-class HytaleProvider implements FolderBackedScreenshotProvider {
+class HytaleProvider
+    with SingleFolderRequirement
+    implements FolderBackedScreenshotProvider {
   HytaleProvider({
     this.importer = const MediaImporter(),
     this.providerPaths = const ProviderPathResolver(),

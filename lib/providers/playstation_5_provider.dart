@@ -10,7 +10,9 @@ import '../services/video_metadata_service.dart';
 import 'playstation_media.dart';
 import 'screenshot_provider.dart';
 
-class PlayStation5Provider implements FolderBackedScreenshotProvider {
+class PlayStation5Provider
+    with SingleFolderRequirement
+    implements FolderBackedScreenshotProvider {
   const PlayStation5Provider({
     this.importer = const MediaImporter(),
     this.durationReader = const VideoMetadataService(),

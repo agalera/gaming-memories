@@ -10,7 +10,9 @@ import '../services/folder_access_service.dart';
 import '../services/provider_paths.dart';
 import 'screenshot_provider.dart';
 
-class GuildWars2Provider implements FolderBackedScreenshotProvider {
+class GuildWars2Provider
+    with SingleFolderRequirement
+    implements FolderBackedScreenshotProvider {
   const GuildWars2Provider({
     this.importer = const MediaImporter(),
     this.dateReader = const ExifToolDateReader(),

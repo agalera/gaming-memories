@@ -3,153 +3,284 @@ import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:gaming_memories/models/app_settings.dart';
 import 'package:gaming_memories/providers/battle_net_provider.dart';
-import 'package:gaming_memories/services/battle_net_catalog.dart';
-import 'package:gaming_memories/services/provider_paths.dart';
+import 'package:gaming_memories/services/battle_net_games.dart';
 import 'package:image/image.dart' as image;
 import 'package:path/path.dart' as p;
 
 void main() {
-  late Directory source;
+  late Directory home;
   late Directory output;
 
   setUp(() async {
-    source = await Directory.systemTemp.createTemp('gaming-memories-bnet-');
+    home = await Directory.systemTemp.createTemp('gaming-memories-home-');
     output = await Directory.systemTemp.createTemp('gaming-memories-output-');
   });
 
   tearDown(() async {
-    await source.delete(recursive: true);
+    await home.delete(recursive: true);
     await output.delete(recursive: true);
   });
 
+  /// A provider whose macOS defaults live inside the temp home, so the tests
+  /// never see what is installed on the machine running them.
+  BattleNetProvider provider() =>
+      BattleNetProvider(locator: _TestLocator(home.path));
+
   AppSettings settings({
     bool enabled = true,
-    bool useCustomPath = true,
-    String? sourcePath,
+    Map<String, ProviderSettings> games = const {},
   }) {
     return AppSettings(
       outputPath: output.path,
-      battleNet: ProviderSettings(
-        enabled: enabled,
-        useCustomPath: useCustomPath,
-        sourcePath: sourcePath ?? source.path,
-      ),
+      battleNet: BattleNetSettings(enabled: enabled, games: games),
     );
   }
 
-  test('fans Diablo IV and World of Warcraft into their own albums', () async {
-    final wow = Directory(
-      p.join(source.path, 'World of Warcraft', '_retail_', 'Screenshots'),
-    )..createSync(recursive: true);
-    final diablo = Directory(p.join(source.path, 'Pictures', 'Diablo IV'))
-      ..createSync(recursive: true);
-    await File(p.join(wow.path, 'WoWScrnShot_092026_112233.jpg'))
-        .writeAsString('wow jpg');
+  Future<void> writeShot(String path, {DateTime? modified}) async {
+    final file = File(path);
+    await file.parent.create(recursive: true);
+    await file.writeAsString('shot');
+    if (modified != null) {
+      await file.setLastModified(modified);
+    }
+  }
+
+  String wowFlavor(String flavor) =>
+      p.join(home.path, 'World of Warcraft', flavor, 'Screenshots');
+
+  String documents(List<String> segments) =>
+      p.joinAll([home.path, 'Documents', ...segments]);
+
+  test(
+    'imports every game that is installed, each into its own album',
+    () async {
+      await writeShot(
+        p.join(wowFlavor('_retail_'), 'WoWScrnShot_092026_112233.jpg'),
+      );
+      await writeShot(
+        p.join(wowFlavor('_classic_'), 'WoWScrnShot_092126_122334.png'),
+      );
+      await writeShot(
+        p.join(documents(['Diablo III', 'Screenshots']), 'd3.jpg'),
+        modified: DateTime(2026, 9, 23, 14, 25, 36),
+      );
+      await writeShot(
+        p.join(documents(['StarCraft II', 'Screenshots']), 's2.png'),
+        modified: DateTime(2026, 9, 24, 15, 26, 37),
+      );
+      await writeShot(
+        p.join(documents(['Overwatch', 'ScreenShots', 'Overwatch']), 'ow.jpg'),
+        modified: DateTime(2026, 9, 25, 16, 27, 38),
+      );
+
+      final result = await provider().collect(settings());
+
+      expect(result.imported, 5);
+      for (final relative in [
+        ['World of Warcraft', '2026-09-20_11-22-33.jpg'],
+        ['WoW Classic', '2026-09-21_12-23-34.png'],
+        ['Diablo III', '2026-09-23_14-25-36.jpg'],
+        ['StarCraft II', '2026-09-24_15-26-37.png'],
+        ['Overwatch 2', '2026-09-25_16-27-38.jpg'],
+      ]) {
+        expect(
+          File(p.joinAll([output.path, 'PC', ...relative])).existsSync(),
+          isTrue,
+          reason: relative.join('/'),
+        );
+      }
+    },
+  );
+
+  test('converts World of Warcraft TGA captures to PNG', () async {
     final tga = image.Image(width: 2, height: 2)..setPixelRgb(0, 0, 255, 0, 0);
-    await File(p.join(wow.path, 'WoWScrnShot_092126_122334.tga'))
-        .writeAsBytes(image.encodeTga(tga));
-    await File(p.join(wow.path, 'invalid.jpg')).writeAsString('invalid');
-    final diabloShot = File(p.join(diablo.path, 'diablo.png'));
-    await diabloShot.writeAsString('diablo');
-    await diabloShot.setLastModified(DateTime(2026, 9, 22, 13, 24, 35));
+    final file = File(
+      p.join(wowFlavor('_retail_'), 'WoWScrnShot_010126_020304.tga'),
+    );
+    await file.parent.create(recursive: true);
+    await file.writeAsBytes(image.encodeTga(tga));
 
-    final result = await const BattleNetProvider().collect(settings());
+    final result = await provider().collect(settings());
 
-    expect(result.imported, 3);
+    expect(result.imported, 1);
+    expect(
+      File(
+        p.join(
+          output.path,
+          'PC',
+          'World of Warcraft',
+          '2026-01-01_02-03-04.png',
+        ),
+      ).existsSync(),
+      isTrue,
+    );
+  });
+
+  test('skips a World of Warcraft file with no date in its name', () async {
+    await writeShot(p.join(wowFlavor('_retail_'), 'invalid.jpg'));
+
+    final result = await provider().collect(settings());
+
+    expect(result.imported, 0);
     expect(result.skipped, 1);
-    expect(
-      File(
-        p.join(
-          output.path,
-          'PC',
-          'World of Warcraft',
-          '2026-09-20_11-22-33.jpg',
-        ),
-      ).existsSync(),
-      isTrue,
+  });
+
+  test('a game switched off is not imported', () async {
+    await writeShot(
+      p.join(wowFlavor('_retail_'), 'WoWScrnShot_092026_112233.jpg'),
     );
-    expect(
-      File(
-        p.join(
-          output.path,
-          'PC',
-          'World of Warcraft',
-          '2026-09-21_12-23-34.png',
-        ),
-      ).existsSync(),
-      isTrue,
+    await writeShot(
+      p.join(documents(['Diablo III', 'Screenshots']), 'd3.jpg'),
+      modified: DateTime(2026, 9, 23, 14, 25, 36),
     );
+
+    final result = await provider().collect(
+      settings(
+        games: const {
+          'diablo_iii': ProviderSettings(
+            enabled: false,
+            useCustomPath: false,
+            sourcePath: '',
+          ),
+        },
+      ),
+    );
+
+    expect(result.imported, 1);
     expect(
-      File(p.join(output.path, 'PC', 'Diablo IV', '2026-09-22_13-24-35.png'))
+      Directory(p.join(output.path, 'PC', 'Diablo III')).existsSync(),
+      isFalse,
+    );
+  });
+
+  test('a custom folder overrides the default', () async {
+    final custom = Directory(p.join(home.path, 'elsewhere'))
+      ..createSync(recursive: true);
+    await writeShot(
+      p.join(custom.path, 'sc2.png'),
+      modified: DateTime(2026, 9, 24, 15, 26, 37),
+    );
+
+    final result = await provider().collect(
+      settings(
+        games: {
+          'starcraft_ii': ProviderSettings(
+            enabled: true,
+            useCustomPath: true,
+            sourcePath: custom.path,
+          ),
+        },
+      ),
+    );
+
+    expect(result.imported, 1);
+    expect(
+      File(p.join(output.path, 'PC', 'StarCraft II', '2026-09-24_15-26-37.png'))
           .existsSync(),
       isTrue,
     );
   });
 
-  test(
-    'discovers installed games from the catalog in automatic mode',
-    () async {
-      final wowInstall = Directory(p.join(source.path, 'World of Warcraft'));
-      final wow = Directory(p.join(wowInstall.path, '_retail_', 'Screenshots'))
-        ..createSync(recursive: true);
-      final diablo = Directory(p.join(source.path, 'Diablo screenshots'))
-        ..createSync();
-      await File(p.join(wow.path, 'WoWScrnShot_092026_112233.png'))
-          .writeAsString('wow');
-      final diabloShot = File(p.join(diablo.path, 'diablo.jpg'));
-      await diabloShot.writeAsString('diablo');
-      await diabloShot.setLastModified(DateTime(2026, 9, 23, 1, 2, 3));
-
-      final result = await BattleNetProvider(
-        catalog: _FakeCatalog([
-          BattleNetInstall(
-            uid: 'wow',
-            productCode: 'WoW',
-            installPath: wowInstall.path,
-            installed: true,
-            playable: true,
-          ),
-          const BattleNetInstall(
-            uid: 'fenris',
-            productCode: 'Fen',
-            installPath: '/unused',
-            installed: true,
-            playable: true,
-          ),
-        ]),
-        providerPaths: _TestBattleNetPaths(diablo.path),
-      ).collect(settings(useCustomPath: false, sourcePath: ''));
-
-      expect(result.imported, 2);
-      expect(
-        File(
-          p.join(
-            output.path,
-            'PC',
-            'World of Warcraft',
-            '2026-09-20_11-22-33.png',
-          ),
-        ).existsSync(),
-        isTrue,
-      );
-      expect(
-        File(p.join(output.path, 'PC', 'Diablo IV', '2026-09-23_01-02-03.jpg'))
-            .existsSync(),
-        isTrue,
-      );
-    },
-  );
-
-  test('warns when automatic discovery finds no supported games', () async {
-    final result = await const BattleNetProvider(
-      catalog: _FakeCatalog([]),
-      providerPaths: _TestBattleNetPaths(null),
-    ).collect(settings(useCustomPath: false, sourcePath: ''));
+  test('warns when no game was found', () async {
+    final result = await provider().collect(settings());
 
     expect(result.imported, 0);
+    expect(result.warning, contains('none of its games were found'));
+  });
+
+  test('a disabled provider does nothing', () async {
+    await writeShot(
+      p.join(wowFlavor('_retail_'), 'WoWScrnShot_092026_112233.jpg'),
+    );
+
+    final result = await provider().collect(settings(enabled: false));
+
+    expect(result.imported, 0);
+    expect(result.warning, isNull);
+  });
+
+  group('folder requirements', () {
+    test('only installed games ask for access', () async {
+      Directory(wowFlavor('_retail_')).createSync(recursive: true);
+
+      final requirements = provider().folderRequirements(settings());
+
+      expect(requirements, hasLength(1));
+      expect(requirements.single.path, wowFlavor('_retail_'));
+      expect(
+        requirements.single.id,
+        BattleNetProvider.grantIdForGame('wow_retail'),
+      );
+      expect(requirements.single.automatic, isTrue);
+      expect(requirements.single.description, contains('World of Warcraft'));
+    });
+
+    test('every game has its own grant id', () async {
+      for (final flavor in ['_retail_', '_classic_', '_classic_era_']) {
+        Directory(wowFlavor(flavor)).createSync(recursive: true);
+      }
+
+      final requirements = provider().folderRequirements(settings());
+
+      expect(requirements, hasLength(3));
+      expect(
+        requirements.map((requirement) => requirement.id).toSet(),
+        hasLength(3),
+      );
+    });
+
+    test('a custom folder is not automatic', () async {
+      final custom = Directory(p.join(home.path, 'custom'))
+        ..createSync(recursive: true);
+
+      final requirements = provider().folderRequirements(
+        settings(
+          games: {
+            'diablo_iii': ProviderSettings(
+              enabled: true,
+              useCustomPath: true,
+              sourcePath: custom.path,
+            ),
+          },
+        ),
+      );
+
+      expect(requirements, hasLength(1));
+      expect(requirements.single.automatic, isFalse);
+      expect(requirements.single.path, custom.path);
+    });
+
+    test('a switched-off provider requires nothing', () async {
+      Directory(wowFlavor('_retail_')).createSync(recursive: true);
+
+      expect(provider().folderRequirements(settings(enabled: false)), isEmpty);
+    });
+
+    test('the provider stores no folder of its own', () {
+      final next = provider().withFolderPath(settings(), '/somewhere');
+
+      expect(next.battleNet.games, settings().battleNet.games);
+    });
+  });
+
+  test('lists every game for the settings rows, installed or not', () {
+    Directory(wowFlavor('_retail_')).createSync(recursive: true);
+
+    final folders = provider().gameFolders(settings());
+
+    expect(folders, hasLength(battleNetGames.length));
     expect(
-      result.warning,
-      'Battle.net was skipped because no Diablo IV or World of Warcraft screenshot folders were found.',
+      folders.firstWhere((folder) => folder.game.id == 'wow_retail').exists,
+      isTrue,
+    );
+    expect(
+      folders.firstWhere((folder) => folder.game.id == 'wow_classic').exists,
+      isFalse,
+    );
+    // Diablo IV has no macOS client, so it has no path to show.
+    expect(
+      folders.firstWhere((folder) => folder.game.id == 'diablo_iv').path,
+      isNull,
     );
   });
 
@@ -170,24 +301,24 @@ void main() {
   });
 }
 
-class _FakeCatalog implements BattleNetCatalog {
-  const _FakeCatalog(this.installs);
+/// Points the macOS install defaults at a temp directory.
+class _TestLocator extends BattleNetLocator {
+  const _TestLocator(this.root)
+    : super(
+        operatingSystem: 'macos',
+        userHomeDirectory: root,
+        allowEnvironmentHome: false,
+      );
 
-  final List<BattleNetInstall> installs;
-
-  @override
-  Future<List<BattleNetInstall>> installations({String? rootPath}) async =>
-      installs;
-}
-
-class _TestBattleNetPaths extends ProviderPathResolver {
-  const _TestBattleNetPaths(this.diabloPath);
-
-  final String? diabloPath;
+  final String root;
 
   @override
-  List<String> battleNetRootCandidates() => const [];
-
-  @override
-  List<String> diabloIVScreenshots() => [?diabloPath];
+  List<String> defaultPathsFor(BattleNetGame game) {
+    return [
+      for (final path in super.defaultPathsFor(game))
+        path.startsWith('/Applications/')
+            ? p.join(root, path.substring('/Applications/'.length))
+            : path,
+    ];
+  }
 }

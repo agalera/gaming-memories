@@ -12,6 +12,7 @@ import '../services/steam_client.dart';
 import 'screenshot_provider.dart';
 
 class SteamProvider
+    with SingleFolderRequirement
     implements FolderBackedScreenshotProvider, ProviderConfigurationValidator {
   const SteamProvider({
     required this.api,

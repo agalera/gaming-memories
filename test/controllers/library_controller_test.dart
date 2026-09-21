@@ -1,7 +1,6 @@
 import 'dart:async';
 import 'dart:io';
 
-import 'package:flutter/foundation.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:gaming_memories/controllers/library_controller.dart';
 import 'package:gaming_memories/models/app_settings.dart';
@@ -12,7 +11,8 @@ import 'package:gaming_memories/providers/playstation_4_provider.dart';
 import 'package:gaming_memories/providers/screenshot_provider.dart';
 import 'package:gaming_memories/providers/steam_provider.dart';
 import 'package:gaming_memories/services/config_store.dart';
-import 'package:gaming_memories/services/battle_net_catalog.dart';
+import 'package:gaming_memories/services/app_log.dart';
+import 'package:gaming_memories/services/battle_net_games.dart';
 import 'package:gaming_memories/services/folder_access_service.dart';
 import 'package:gaming_memories/services/library_scanner.dart';
 import 'package:gaming_memories/services/library_watcher.dart';
@@ -549,17 +549,20 @@ void main() {
               ),
               scanner: const LibraryScanner(),
               providers: const [
-                BattleNetProvider(catalog: _EmptyBattleNetCatalog()),
+                // Pin the game folders at a home that holds nothing, so the
+                // test does not see what is installed on the machine.
+                BattleNetProvider(
+                  locator: BattleNetLocator(
+                    operatingSystem: 'linux',
+                    allowEnvironmentHome: false,
+                  ),
+                ),
                 GuildWars2Provider(),
               ],
             )
             ..settings = AppSettings(
               outputPath: directory.path,
-              battleNet: const ProviderSettings(
-                enabled: true,
-                useCustomPath: false,
-                sourcePath: '',
-              ),
+              battleNet: const BattleNetSettings(enabled: true),
               guildWars2: const ProviderSettings(
                 enabled: true,
                 useCustomPath: false,
@@ -574,7 +577,7 @@ void main() {
       expect(
         controller.notifications.map((notification) => notification.message),
         [
-          'Battle.net was skipped because no Diablo IV or World of Warcraft screenshot folders were found.',
+          'Battle.net was skipped because none of its games were found. Turn on a game in Settings, or point it at a custom folder.',
           'Guild Wars 2 was skipped because no installation was found.',
         ],
       );
@@ -789,8 +792,8 @@ void main() {
     expect(
       controller.notifications.map((notification) => notification.message),
       [
-        'First was skipped because its screenshot folder needs access. Open Settings and allow access.',
-        'Second was skipped because its screenshot folder needs access. Open Settings and allow access.',
+        'First was skipped because its screenshot folders need access. Open Settings and allow access.',
+        'Second was skipped because its screenshot folders need access. Open Settings and allow access.',
       ],
     );
     expect(
@@ -800,12 +803,7 @@ void main() {
   });
 
   test('releases provider access when collection fails', () async {
-    final diagnostics = <String>[];
-    final previousDebugPrint = debugPrint;
-    debugPrint = (message, {wrapWidth}) {
-      diagnostics.add(message ?? '');
-    };
-    addTearDown(() => debugPrint = previousDebugPrint);
+    final log = _RecordingAppLog();
     final directory = await Directory.systemTemp.createTemp('gaming-memories-');
     final source = Directory(p.join(directory.path, 'source'))..createSync();
     addTearDown(() => directory.delete(recursive: true));
@@ -837,6 +835,7 @@ void main() {
       scanner: const LibraryScanner(),
       providers: [_ThrowingFolderProvider(source.path)],
       folderAccess: access,
+      log: log,
     );
     await controller.initialize();
 
@@ -848,28 +847,29 @@ void main() {
     );
     expect(controller.notifications.single.kind, NotificationKind.warning);
     expect(
-      diagnostics.join('\n'),
+      log.entries.join('\n'),
       allOf(
         contains('Provider "Throwing" failed'),
         contains('Bad state: provider failed'),
         contains('_ThrowingFolderProvider.collect'),
       ),
     );
+    // The user reads a sentence, not the exception.
+    expect(
+      controller.notifications.single.message,
+      isNot(contains('Bad state')),
+    );
   });
 
   test('redacts the Steam API key from provider failure diagnostics', () async {
     const apiKey = 'super-secret-api-key';
-    final diagnostics = <String>[];
-    final previousDebugPrint = debugPrint;
-    debugPrint = (message, {wrapWidth}) {
-      diagnostics.add(message ?? '');
-    };
-    addTearDown(() => debugPrint = previousDebugPrint);
+    final log = _RecordingAppLog();
     final controller =
         LibraryController(
             configStore: const ConfigStore(filePath: 'unused'),
             scanner: const LibraryScanner(),
             providers: const [_ThrowingProvider(apiKey)],
+            log: log,
           )
           ..settings = const AppSettings.defaults().copyWith(
             steam: const SteamSettings.disabled().copyWith(apiKey: apiKey),
@@ -877,7 +877,7 @@ void main() {
 
     await controller.collect();
 
-    final output = diagnostics.join('\n');
+    final output = log.entries.join('\n');
     expect(output, contains('Provider "Steam" failed'));
     expect(output, contains('key=<REDACTED>'));
     expect(output, isNot(contains(apiKey)));
@@ -909,30 +909,54 @@ void main() {
     expect(access.requests.single.message, contains('Click Allow Access'));
   });
 
-  test('points the macOS chooser at the Battle.net game root', () async {
+  test('points the macOS chooser at a Battle.net game folder', () async {
     final access = _FakeFolderAccess();
     final controller = LibraryController(
       configStore: const ConfigStore(filePath: 'unused'),
       scanner: const LibraryScanner(),
-      providers: const [],
+      providers: const [
+        BattleNetProvider(
+          locator: BattleNetLocator(
+            operatingSystem: 'macos',
+            userHomeDirectory: '/home/tester',
+            allowEnvironmentHome: false,
+          ),
+        ),
+      ],
       folderAccess: access,
-      providerPaths: const _TestProviderPathResolver(
-        [],
-        battleNetPaths: ['/Applications/World of Warcraft'],
-      ),
+      providerPaths: const _TestProviderPathResolver([]),
     );
 
     final result = await controller.chooseFolder(
-      SettingsFolderTarget.battleNetAutomatic,
-      initialPath: '/Applications/World of Warcraft',
+      SettingsFolderTarget.battleNetGameAutomatic,
+      gameId: 'wow_retail',
     );
 
     expect(result.cancelled, isTrue);
-    expect(access.requests.single.id, FolderGrantIds.battleNet);
+    expect(
+      access.requests.single.id,
+      BattleNetProvider.grantIdForGame('wow_retail'),
+    );
     expect(
       access.requests.single.suggestedPath,
-      '/Applications/World of Warcraft',
+      '/Applications/World of Warcraft/_retail_/Screenshots',
     );
+  });
+
+  test('a Battle.net folder choice needs a game', () async {
+    final controller = LibraryController(
+      configStore: const ConfigStore(filePath: 'unused'),
+      scanner: const LibraryScanner(),
+      providers: const [BattleNetProvider()],
+      folderAccess: _FakeFolderAccess(),
+      providerPaths: const _TestProviderPathResolver([]),
+    );
+
+    final result = await controller.chooseFolder(
+      SettingsFolderTarget.battleNetGameAutomatic,
+    );
+
+    expect(result.saved, isFalse);
   });
 
   test('saves PlayStation folder access as a custom provider path', () async {
@@ -1400,16 +1424,11 @@ class _TestProviderPathResolver extends ProviderPathResolver {
     this.paths, {
     this.hytalePath,
     this.minecraftPaths = const [],
-    this.battleNetPaths = const [],
   });
 
   final List<String> paths;
   final String? hytalePath;
   final List<String> minecraftPaths;
-  final List<String> battleNetPaths;
-
-  @override
-  List<String> battleNetRootCandidates() => battleNetPaths;
 
   @override
   String? hytaleScreenshots() => hytalePath;
@@ -1421,12 +1440,59 @@ class _TestProviderPathResolver extends ProviderPathResolver {
   List<String> steamUserdataCandidates() => paths;
 }
 
-class _EmptyBattleNetCatalog implements BattleNetCatalog {
-  const _EmptyBattleNetCatalog();
+/// Captures what would have gone to the log file, already redacted.
+class _RecordingAppLog implements AppLog {
+  final List<String> entries = [];
 
   @override
-  Future<List<BattleNetInstall>> installations({String? rootPath}) async =>
-      const [];
+  String Function(String value)? redact;
+
+  void _record(
+    LogLevel level,
+    String message,
+    String? category,
+    Object? error,
+    StackTrace? stackTrace,
+  ) {
+    final entry = [
+      level.name,
+      if (category != null) '[$category]',
+      message,
+      if (error != null) '$error',
+      if (stackTrace != null) '$stackTrace',
+    ].join(' ');
+    entries.add(redact?.call(entry) ?? entry);
+  }
+
+  @override
+  void debug(String message, {String? category}) =>
+      _record(LogLevel.debug, message, category, null, null);
+
+  @override
+  void info(String message, {String? category}) =>
+      _record(LogLevel.info, message, category, null, null);
+
+  @override
+  void warning(
+    String message, {
+    String? category,
+    Object? error,
+    StackTrace? stackTrace,
+  }) => _record(LogLevel.warning, message, category, error, stackTrace);
+
+  @override
+  void error(
+    String message, {
+    String? category,
+    Object? error,
+    StackTrace? stackTrace,
+  }) => _record(LogLevel.error, message, category, error, stackTrace);
+
+  @override
+  Future<String> read() async => entries.join('\n');
+
+  @override
+  Future<void> flush() async {}
 }
 
 class _ControllerSteamApi implements SteamApi {
@@ -1454,7 +1520,9 @@ class _ControllerSteamApi implements SteamApi {
   ) async => const [];
 }
 
-class _FolderProvider implements FolderBackedScreenshotProvider {
+class _FolderProvider
+    with SingleFolderRequirement
+    implements FolderBackedScreenshotProvider {
   const _FolderProvider(this.name, this.folderGrantId);
 
   @override
@@ -1485,7 +1553,9 @@ class _FolderProvider implements FolderBackedScreenshotProvider {
   }) async => ImportResult.empty(name);
 }
 
-class _ThrowingFolderProvider implements FolderBackedScreenshotProvider {
+class _ThrowingFolderProvider
+    with SingleFolderRequirement
+    implements FolderBackedScreenshotProvider {
   const _ThrowingFolderProvider(this.path);
 
   final String path;

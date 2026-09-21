@@ -16,10 +16,15 @@ void main() {
     const expected = AppSettings(
       outputPath: '/screenshots',
       themeMode: AppThemeMode.dark,
-      battleNet: ProviderSettings(
+      battleNet: BattleNetSettings(
         enabled: true,
-        useCustomPath: true,
-        sourcePath: '/diablo',
+        games: {
+          'wow_retail': ProviderSettings(
+            enabled: true,
+            useCustomPath: true,
+            sourcePath: '/wow',
+          ),
+        },
       ),
       guildWars2: ProviderSettings(
         enabled: true,
@@ -80,8 +85,8 @@ void main() {
     expect(actual.outputPath, expected.outputPath);
     expect(actual.themeMode, AppThemeMode.dark);
     expect(actual.battleNet.enabled, isTrue);
-    expect(actual.battleNet.useCustomPath, isTrue);
-    expect(actual.battleNet.sourcePath, expected.battleNet.sourcePath);
+    expect(actual.battleNet.game('wow_retail').useCustomPath, isTrue);
+    expect(actual.battleNet.game('wow_retail').sourcePath, '/wow');
     expect(actual.guildWars2.enabled, isTrue);
     expect(actual.guildWars2.useCustomPath, isTrue);
     expect(actual.guildWars2.sourcePath, '/guild-wars-2');
@@ -117,7 +122,7 @@ void main() {
     expect(actual.folderGrants['library']?.path, '/screenshots');
     expect(actual.folderGrants['library']?.access, FolderGrantAccess.readWrite);
     final json = jsonDecode(await File(store.filePath).readAsString()) as Map;
-    expect(json['version'], 11);
+    expect(json['version'], 12);
     expect(json['diabloIV'], isNull);
     expect(json['battleNet'], isA<Map>());
     expect(File('${store.filePath}.tmp').existsSync(), isFalse);
@@ -149,8 +154,11 @@ void main() {
 
     final settings = await ConfigStore(filePath: file.path).load();
 
-    expect(settings.battleNet.useCustomPath, isFalse);
-    expect(settings.battleNet.sourcePath, isEmpty);
+    // A settings file from before the split keeps only the master switch:
+    // its single path pointed at a games root, not at any one game.
+    expect(settings.battleNet.games, isEmpty);
+    expect(settings.battleNet.game('wow_retail').enabled, isTrue);
+    expect(settings.battleNet.game('wow_retail').useCustomPath, isFalse);
     expect(settings.guildWars2.useCustomPath, isTrue);
     expect(settings.guildWars2.sourcePath, '/legacy/gw2');
     expect(settings.hytale.useCustomPath, isFalse);
