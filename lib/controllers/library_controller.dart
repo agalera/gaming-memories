@@ -40,6 +40,7 @@ enum SettingsFolderTarget {
   hytaleAutomatic,
   minecraftCustom,
   minecraftAutomatic,
+  nintendoSwitchCustom,
   nintendoSwitch2Custom,
   playStation4Custom,
   playStation5Custom,
@@ -432,6 +433,8 @@ class LibraryController extends ChangeNotifier {
       SettingsFolderTarget.hytaleAutomatic => FolderGrantIds.hytale,
       SettingsFolderTarget.minecraftCustom ||
       SettingsFolderTarget.minecraftAutomatic => FolderGrantIds.minecraft,
+      SettingsFolderTarget.nintendoSwitchCustom =>
+        FolderGrantIds.nintendoSwitch,
       SettingsFolderTarget.nintendoSwitch2Custom =>
         FolderGrantIds.nintendoSwitch2,
       SettingsFolderTarget.playStation4Custom => FolderGrantIds.playStation4,
@@ -1041,6 +1044,11 @@ class LibraryController extends ChangeNotifier {
     return _SourceValidation(validated, errors);
   }
 
+  /// The consoles that collect straight from USB need no folder at all on
+  /// Linux, so an unconfigured folder is not a misconfiguration there.
+  bool _collectsOverUsb(String sourceName) =>
+      sourceName == 'Nintendo Switch' || sourceName == 'Nintendo Switch 2';
+
   Future<String?> _sourceConfigurationError(
     ScreenshotSource source,
     AppSettings candidate,
@@ -1048,7 +1056,7 @@ class LibraryController extends ChangeNotifier {
     if (source case FolderBackedScreenshotSource folderSource) {
       final requirements = folderSource.folderRequirements(candidate);
       if (requirements.isEmpty) {
-        if (source.name == 'Nintendo Switch 2' && Platform.isLinux) {
+        if (_collectsOverUsb(source.name) && Platform.isLinux) {
           return null;
         }
         return 'No supported ${source.name} folder is configured.';
@@ -1121,6 +1129,9 @@ class LibraryController extends ChangeNotifier {
     'Minecraft' => value.copyWith(
       minecraft: value.minecraft.copyWith(enabled: enabled),
     ),
+    'Nintendo Switch' => value.copyWith(
+      nintendoSwitch: value.nintendoSwitch.copyWith(enabled: enabled),
+    ),
     'Nintendo Switch 2' => value.copyWith(
       nintendoSwitch2: value.nintendoSwitch2.copyWith(enabled: enabled),
     ),
@@ -1139,6 +1150,7 @@ class LibraryController extends ChangeNotifier {
     'Guild Wars 2' ||
     'Hytale' ||
     'Minecraft' ||
+    'Nintendo Switch' ||
     'Nintendo Switch 2' ||
     'PlayStation 4' ||
     'PlayStation 5' ||
@@ -1400,6 +1412,18 @@ class LibraryController extends ChangeNotifier {
           pathMismatchMessage: 'Choose the Minecraft screenshots folder shown by Gaming Memories.',
           selectedPath: (_) => candidate,
         );
+      case SettingsFolderTarget.nintendoSwitchCustom:
+        return _FolderSpecification(
+          request: FolderAccessRequest(
+            id: FolderGrantIds.nintendoSwitch,
+            title: 'Choose the copied Nintendo Switch album folder',
+            access: FolderGrantAccess.readOnly,
+            initialPath:
+                _nonEmpty(initialPath) ??
+                _nonEmpty(settings.nintendoSwitch.sourcePath),
+          ),
+          selectedPath: (settings) => settings.nintendoSwitch.sourcePath,
+        );
       case SettingsFolderTarget.nintendoSwitch2Custom:
         return _FolderSpecification(
           request: FolderAccessRequest(
@@ -1537,6 +1561,13 @@ class LibraryController extends ChangeNotifier {
         minecraft: settings.minecraft.copyWith(
           enabled: true,
           useCustomPath: false,
+          sourcePath: path,
+        ),
+      ),
+      SettingsFolderTarget.nintendoSwitchCustom => settings.copyWith(
+        nintendoSwitch: settings.nintendoSwitch.copyWith(
+          enabled: true,
+          useCustomPath: true,
           sourcePath: path,
         ),
       ),

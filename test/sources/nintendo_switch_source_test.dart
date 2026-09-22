@@ -3,8 +3,7 @@ import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:gaming_memories/models/app_settings.dart';
 import 'package:gaming_memories/services/mtp_client.dart';
-import 'package:gaming_memories/sources/nintendo_switch_2_source.dart';
-import 'package:gaming_memories/sources/nintendo_switch_album.dart';
+import 'package:gaming_memories/sources/nintendo_switch_source.dart';
 import 'package:path/path.dart' as p;
 
 void main() {
@@ -12,7 +11,7 @@ void main() {
   late Directory output;
 
   setUp(() async {
-    source = await Directory.systemTemp.createTemp('gaming-memories-switch2-');
+    source = await Directory.systemTemp.createTemp('gaming-memories-switch-');
     output = await Directory.systemTemp.createTemp('gaming-memories-output-');
   });
 
@@ -27,7 +26,7 @@ void main() {
   }) {
     return AppSettings(
       outputPath: output.path,
-      nintendoSwitch2: NintendoSwitchSettings(
+      nintendoSwitch: NintendoSwitchSettings(
         enabled: true,
         useCustomPath: useCustomPath,
         sourcePath: useCustomPath ? source.path : '',
@@ -45,49 +44,41 @@ void main() {
   test(
     'imports copied screenshots and clips under their game folders',
     () async {
-      await write('Mario Kart World', '2025060720031600_s.jpg', 'screenshot');
-      await write('Mario Kart World', '2025060720031700_s.mp4', 'clip');
-      await write('Mario Kart World', '2025060720031800_c.jpg', 'copy');
-      await write('Mario Kart World', 'notes.txt', 'notes');
-      await write('Otra carpeta', '2025060720031900_s.jpg', 'ignored');
+      await write('Hollow Knight', '2023020909500400_s.jpg', 'screenshot');
+      await write('Hollow Knight', '2023020909500500_s.mp4', 'clip');
+      await write('Hollow Knight', '2023020909500600_c.jpg', 'copy');
+      await write('Hollow Knight', 'notes.txt', 'notes');
+      await write('Otra carpeta', '2023020909500700_s.jpg', 'ignored');
 
-      final result = await const NintendoSwitch2Source().collect(settings());
+      final result = await const NintendoSwitchSource().collect(settings());
 
-      final album = p.join(
-        output.path,
-        'Nintendo Switch 2',
-        'Mario Kart World',
-      );
+      final album = p.join(output.path, 'Nintendo Switch', 'Hollow Knight');
       expect(result.imported, 2);
       expect(result.skipped, 0);
       expect(
-        File(p.join(album, '2025060720031600_s.jpg')).existsSync(),
+        File(p.join(album, '2023020909500400_s.jpg')).existsSync(),
         isTrue,
       );
       expect(
-        File(p.join(album, '2025060720031700_s.mp4')).existsSync(),
+        File(p.join(album, '2023020909500500_s.mp4')).existsSync(),
         isTrue,
       );
       expect(
-        Directory(p.join(output.path, 'Nintendo Switch 2', 'Otra carpeta'))
+        Directory(p.join(output.path, 'Nintendo Switch', 'Otra carpeta'))
             .existsSync(),
         isFalse,
       );
     },
   );
 
-  test('uses the configured ignored folders case-insensitively', () async {
-    await write('MARIO KART WORLD', '2025060720031600_s.jpg', 'ignored');
-    await write('Zelda', '2025060720031700_s.jpg', 'imported');
+  test('keeps the Switch album separate from the Switch 2 album', () async {
+    await write('Celeste', '2023020909500400_s.jpg', 'screenshot');
 
-    final result = await const NintendoSwitch2Source().collect(
-      settings(ignoredFolders: const ['mario kart world']),
-    );
+    await const NintendoSwitchSource().collect(settings());
 
-    expect(result.imported, 1);
     expect(
-      Directory(p.join(output.path, 'Nintendo Switch 2', 'Zelda')).existsSync(),
-      isTrue,
+      Directory(p.join(output.path, 'Nintendo Switch 2')).existsSync(),
+      isFalse,
     );
   });
 
@@ -95,48 +86,49 @@ void main() {
     final existing = File(
       p.join(
         output.path,
-        'Nintendo Switch 2',
-        'Mario Kart World',
-        '2025060720031600_s.jpg',
+        'Nintendo Switch',
+        'Celeste',
+        '2023020909500400_s.jpg',
       ),
     );
     await existing.parent.create(recursive: true);
     await existing.writeAsString('existing');
     final mtp = _FakeMtpClient(
       folderValues: const [
-        MtpFolder(id: '10', name: 'Mario Kart World'),
+        MtpFolder(id: '10', name: 'Celeste'),
         MtpFolder(id: '20', name: 'Otra carpeta'),
       ],
       fileValues: const [
         MtpFile(
           id: '11',
-          name: '2025060720031600_s.jpg',
+          name: '2023020909500400_s.jpg',
           size: 4,
           parentId: '10',
         ),
         MtpFile(
           id: '12',
-          name: '2025060720031700_s.mp4',
+          name: '2023020909500500_s.mp4',
           size: 4,
           parentId: '10',
         ),
         MtpFile(
           id: '13',
-          name: '2025060720031800_c.jpg',
+          name: '2023020909500600_c.jpg',
           size: 4,
           parentId: '10',
         ),
         MtpFile(
           id: '21',
-          name: '2025060720031900_s.jpg',
+          name: '2023020909500700_s.jpg',
           size: 4,
           parentId: '20',
         ),
       ],
     );
-    final source = NintendoSwitch2Source(
+    final usb = _FakeUsbDeviceFinder(found: true);
+    final source = NintendoSwitchSource(
       mtpClient: mtp,
-      usbDeviceFinder: _FakeUsbDeviceFinder(found: true),
+      usbDeviceFinder: usb,
       operatingSystem: 'linux',
     );
 
@@ -149,41 +141,41 @@ void main() {
       File(
         p.join(
           output.path,
-          'Nintendo Switch 2',
-          'Mario Kart World',
-          '2025060720031700_s.mp4',
+          'Nintendo Switch',
+          'Celeste',
+          '2023020909500500_s.mp4',
         ),
       ).existsSync(),
       isTrue,
     );
   });
 
-  test('looks for the album product ID the Switch 2 reports', () async {
+  test('looks for the album product ID the Switch reports', () async {
     final usb = _FakeUsbDeviceFinder(found: false);
-    await NintendoSwitch2Source(
+    await NintendoSwitchSource(
       mtpClient: _FakeMtpClient(),
       usbDeviceFinder: usb,
       operatingSystem: 'linux',
     ).collect(settings(useCustomPath: false));
 
     expect(usb.vendorIds, ['057e']);
-    expect(usb.productIds, ['2061']);
+    expect(usb.productIds, ['201d']);
   });
 
   test('warns when no console is sharing its album', () async {
     final mtp = _FakeMtpClient();
-    final result = await NintendoSwitch2Source(
+    final result = await NintendoSwitchSource(
       mtpClient: mtp,
       usbDeviceFinder: _FakeUsbDeviceFinder(found: false),
       operatingSystem: 'linux',
     ).collect(settings(useCustomPath: false));
 
-    expect(result.warning, contains('No Nintendo Switch 2'));
+    expect(result.warning, contains('No Nintendo Switch is currently sharing'));
     expect(mtp.ensureAvailableCalls, 0);
   });
 
   test('explains that direct USB collection is Linux-only', () async {
-    final result = await const NintendoSwitch2Source(operatingSystem: 'macos')
+    final result = await const NintendoSwitchSource(operatingSystem: 'macos')
         .collect(settings(useCustomPath: false));
 
     expect(result.warning, contains('available on Linux'));
@@ -196,37 +188,13 @@ void main() {
         'Missing libmtp tools.',
       ),
     );
-    final result = await NintendoSwitch2Source(
+    final result = await NintendoSwitchSource(
       mtpClient: mtp,
       usbDeviceFinder: _FakeUsbDeviceFinder(found: true),
       operatingSystem: 'linux',
     ).collect(settings(useCustomPath: false));
 
     expect(result.warning, contains('requires the libmtp tools'));
-  });
-
-  test('explains how to release a busy console', () async {
-    final mtp = _FakeMtpClient(
-      failure: const MtpException(
-        MtpFailure.busy,
-        'Another program is using the MTP device.',
-      ),
-    );
-    final result = await NintendoSwitch2Source(
-      mtpClient: mtp,
-      usbDeviceFinder: _FakeUsbDeviceFinder(found: true),
-      operatingSystem: 'linux',
-    ).collect(settings(useCustomPath: false));
-
-    expect(result.warning, contains('Eject it from the file manager'));
-  });
-
-  test('recognizes only original Switch 2 screenshots and clips', () {
-    expect(isNintendoSwitchCapture('2026032619431800_s.jpg'), isTrue);
-    expect(isNintendoSwitchCapture('2026032619431800_s.MP4'), isTrue);
-    expect(isNintendoSwitchCapture('2026032619431800_c.jpg'), isFalse);
-    expect(isNintendoSwitchCapture('2026032619431800.jpg'), isFalse);
-    expect(isNintendoSwitchCapture('2026032619431800_s.txt'), isFalse);
   });
 }
 
@@ -290,8 +258,8 @@ class _FakeUsbDeviceFinder implements UsbDeviceFinder {
         ? UsbDevice(
             vendorId: vendorId,
             productId: productId,
-            product: 'Nintendo Switch 2',
-            serial: 'HAE100',
+            product: 'Nintendo Switch',
+            serial: 'XAJ100',
           )
         : null;
   }

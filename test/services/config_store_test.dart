@@ -42,7 +42,13 @@ void main() {
         useCustomPath: true,
         sourcePath: '/minecraft/screenshots',
       ),
-      nintendoSwitch2: NintendoSwitch2Settings(
+      nintendoSwitch: NintendoSwitchSettings(
+        enabled: true,
+        useCustomPath: true,
+        sourcePath: '/switch-album',
+        ignoredFolders: ['Otra carpeta'],
+      ),
+      nintendoSwitch2: NintendoSwitchSettings(
         enabled: true,
         useCustomPath: true,
         sourcePath: '/switch-2-album',
@@ -100,6 +106,10 @@ void main() {
     expect(actual.minecraft.enabled, isTrue);
     expect(actual.minecraft.useCustomPath, isTrue);
     expect(actual.minecraft.sourcePath, '/minecraft/screenshots');
+    expect(actual.nintendoSwitch.enabled, isTrue);
+    expect(actual.nintendoSwitch.useCustomPath, isTrue);
+    expect(actual.nintendoSwitch.sourcePath, '/switch-album');
+    expect(actual.nintendoSwitch.ignoredFolders, ['Otra carpeta']);
     expect(actual.nintendoSwitch2.enabled, isTrue);
     expect(actual.nintendoSwitch2.useCustomPath, isTrue);
     expect(actual.nintendoSwitch2.sourcePath, '/switch-2-album');
@@ -122,7 +132,7 @@ void main() {
     expect(actual.folderGrants['library']?.path, '/screenshots');
     expect(actual.folderGrants['library']?.access, FolderGrantAccess.readWrite);
     final json = jsonDecode(await File(store.filePath).readAsString()) as Map;
-    expect(json['version'], 12);
+    expect(json['version'], 13);
     expect(json['diabloIV'], isNull);
     expect(json['battleNet'], isA<Map>());
     expect(File('${store.filePath}.tmp').existsSync(), isFalse);
@@ -139,6 +149,7 @@ void main() {
   "guildWars2": {"enabled": true, "sourcePath": "/legacy/gw2"},
   "hytale": {"enabled": true, "sourcePath": "auto", "downloadCovers": true},
   "minecraft": {"enabled": true, "sourcePath": "/legacy/minecraft"},
+  "nintendoSwitch": {"enabled": true, "sourcePath": "auto"},
   "nintendoSwitch2": {"enabled": true, "sourcePath": "auto"},
   "steam": {"enabled": true, "userdataPath": "auto"},
   "folderGrants": {
@@ -166,11 +177,13 @@ void main() {
     expect(settings.hytale.downloadCovers, isTrue);
     expect(settings.minecraft.useCustomPath, isTrue);
     expect(settings.minecraft.sourcePath, '/legacy/minecraft');
+    expect(settings.nintendoSwitch.useCustomPath, isFalse);
+    expect(settings.nintendoSwitch.sourcePath, isEmpty);
     expect(settings.nintendoSwitch2.useCustomPath, isFalse);
     expect(settings.nintendoSwitch2.sourcePath, isEmpty);
     expect(
       settings.nintendoSwitch2.ignoredFolders,
-      NintendoSwitch2Settings.defaultIgnoredFolders,
+      NintendoSwitchSettings.defaultIgnoredFolders,
     );
     expect(settings.steam.useCustomPath, isFalse);
     expect(settings.steam.userdataPath, isEmpty);
@@ -181,8 +194,23 @@ void main() {
     );
   });
 
-  test('preserves an explicitly empty Switch 2 ignored folder list', () {
-    final settings = NintendoSwitch2Settings.fromJson({
+  test('defaults a settings file with no Nintendo Switch section', () async {
+    final directory = await Directory.systemTemp.createTemp('gaming-memories-');
+    addTearDown(() => directory.delete(recursive: true));
+    final file = File(p.join(directory.path, 'settings.json'));
+    await file.writeAsString('{"outputPath": "/screenshots"}');
+
+    final settings = await ConfigStore(filePath: file.path).load();
+
+    expect(settings.nintendoSwitch.enabled, isFalse);
+    expect(
+      settings.nintendoSwitch.ignoredFolders,
+      NintendoSwitchSettings.defaultIgnoredFolders,
+    );
+  });
+
+  test('preserves an explicitly empty console ignored folder list', () {
+    final settings = NintendoSwitchSettings.fromJson({
       'ignoredFolders': <String>[],
     });
 

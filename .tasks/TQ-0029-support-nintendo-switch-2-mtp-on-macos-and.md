@@ -11,7 +11,7 @@ labels:
 depends_on:
   - TQ-0009
 created: 2026-09-20T16:33:09+02:00
-updated: 2026-09-20T16:33:15+02:00
+updated: 2026-09-22T09:13:48+02:00
 ---
 
 Extend the Nintendo Switch 2 provider so direct USB/MTP album collection works on macOS and Windows as well as Linux. Keep copied-album folder imports available on every platform.
@@ -116,3 +116,15 @@ Verify on each platform:
 - [libmtp Windows build and driver notes](https://github.com/libmtp/libmtp/blob/master/README.windows.txt)
 - [libmtp build dependencies](https://github.com/libmtp/libmtp/blob/master/INSTALL)
 - [libmtp license](https://github.com/libmtp/libmtp/blob/master/COPYING)
+
+---
+
+## Notes
+
+- 2026-09-22T09:13:48+02:00 — Scope note after TQ-0068: this task now covers both consoles. The Switch 2
+  collection moved to the shared NintendoSwitchAlbumSource, so the MtpClient and
+  UsbDeviceFinder seams named here are the same seams the first-generation
+  Nintendo Switch uses. A macOS or Windows backend built against them serves both
+  without further work; only the album product ID differs (057e:201d for the
+  Switch and Switch Lite, 057e:2061 for the Switch 2), and each source already
+  supplies its own.

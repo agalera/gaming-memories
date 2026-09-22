@@ -22,6 +22,7 @@ import 'sources/guild_wars_2_source.dart';
 import 'sources/hytale_source.dart';
 import 'sources/minecraft_source.dart';
 import 'sources/nintendo_switch_2_source.dart';
+import 'sources/nintendo_switch_source.dart';
 import 'sources/playstation_4_source.dart';
 import 'sources/playstation_5_source.dart';
 import 'sources/steam_source.dart';
@@ -87,6 +88,7 @@ Future<void> main() async {
       const GuildWars2Source(),
       HytaleSource(sourcePaths: sourcePaths),
       MinecraftSource(sourcePaths: sourcePaths),
+      const NintendoSwitchSource(),
       const NintendoSwitch2Source(),
       const PlayStation4Source(),
       const PlayStation5Source(),

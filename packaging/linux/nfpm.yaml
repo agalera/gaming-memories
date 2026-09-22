@@ -9,7 +9,7 @@ maintainer: Felipe M. <me@fmartingr.com>
 description: |
   A desktop image and video library for video games.
   Gaming Memories collects screenshots and clips from PC games, Steam, console
-  exports and Nintendo Switch 2 albums into one browsable local library.
+  exports and Nintendo Switch albums into one browsable local library.
 vendor: fmartingr
 homepage: https://github.com/fmartingr/gaming-memories
 license: GPL-3.0-or-later

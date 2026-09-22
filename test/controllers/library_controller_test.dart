@@ -1571,6 +1571,47 @@ void main() {
     expect((await store.load()).playStation5.sourcePath, captures.path);
   });
 
+  test('saves Nintendo Switch folder access as a copied album path', () async {
+    final directory = await Directory.systemTemp.createTemp('gaming-memories-');
+    final album = Directory(p.join(directory.path, 'Switch album'))
+      ..createSync();
+    addTearDown(() => directory.delete(recursive: true));
+    final access = _FakeFolderAccess(
+      chosen: FolderAccessLease(
+        grant: FolderGrant(
+          platform: 'macos',
+          path: album.path,
+          access: FolderGrantAccess.readOnly,
+          bookmark: 'switch-bookmark',
+        ),
+        token: 'switch-lease',
+      ),
+    );
+    final store = ConfigStore(
+      filePath: p.join(directory.path, 'settings.json'),
+    );
+    final controller = LibraryController(
+      configStore: store,
+      scanner: const LibraryScanner(),
+      sources: const [],
+      folderAccess: access,
+    );
+
+    final result = await controller.chooseFolder(
+      SettingsFolderTarget.nintendoSwitchCustom,
+    );
+
+    expect(result.saved, isTrue);
+    expect(controller.settings.nintendoSwitch.enabled, isTrue);
+    expect(controller.settings.nintendoSwitch.useCustomPath, isTrue);
+    expect(controller.settings.nintendoSwitch.sourcePath, album.path);
+    expect(
+      controller.settings.folderGrants[FolderGrantIds.nintendoSwitch]?.bookmark,
+      'switch-bookmark',
+    );
+    expect((await store.load()).nintendoSwitch.sourcePath, album.path);
+  });
+
   test(
     'saves Nintendo Switch 2 folder access as a copied album path',
     () async {

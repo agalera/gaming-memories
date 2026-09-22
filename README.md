@@ -34,7 +34,7 @@ platform and game, or open a capture for a closer look without leaving the app.
 - **Video support:** See generated thumbnails and durations, then play clips
   directly in the library.
 - **Automatic collection:** Import from PC games, Steam, console exports, and
-  Nintendo Switch 2 albums.
+  Nintendo Switch albums.
 - **Safe imports:** SHA-1 collision suffixes prevent one capture from
   overwriting another.
 
@@ -46,6 +46,7 @@ platform and game, or open a capture for a closer look without leaving the app.
 | **Guild Wars 2** | Game screenshot folder | None |
 | **Hytale** | `Pictures/Hytale Screenshots` | None |
 | **Minecraft** | Launcher screenshot folders, including supported Linux Flatpak layouts | None |
+| **Nintendo Switch** | Copied album folder on every platform, or direct USB on Linux | libmtp tools for USB |
 | **Nintendo Switch 2** | Copied album folder on every platform, or direct USB on Linux | libmtp tools for USB |
 | **PlayStation 4** | Folder exported from the console | None |
 | **PlayStation 5** | Folder exported from the console | FFprobe recommended for clip dates |
@@ -153,9 +154,9 @@ piece of metadata or collection behavior.
 | --- | --- | --- |
 | **FFmpeg** | Generating video thumbnails | Existing `.thumb.jpg` sidecars are used when available |
 | **FFprobe** | Reading video duration and the start time of PlayStation 5 clips | Videos still play; PlayStation 5 clips use the end time in their filename |
-| **libmtp** | Collecting directly from a Nintendo Switch 2 over USB on Linux | Import a copied album folder instead |
+| **libmtp** | Collecting directly from a Nintendo Switch or Nintendo Switch 2 over USB on Linux | Import a copied album folder instead |
 
-For direct Nintendo Switch 2 collection, install the `mtp-folders`,
+For direct Nintendo Switch collection, install the `mtp-folders`,
 `mtp-files`, and `mtp-connect` commands. Open **Album** on the console, choose
 **Copy to a Computer**, connect it by USB, and close or eject it from any file
 manager first. Only one program can use the MTP device at a time.
@@ -186,9 +187,11 @@ Both supported Flatpak screenshot layouts are included on Linux.
 
 ### Consoles
 
-Nintendo Switch 2 imports original `_s.jpg` screenshots and `_s.mp4` clips
-while ignoring `_c` duplicates. Individual album folders, including the folder
-for captures taken outside a game, can be excluded in Settings.
+Nintendo Switch and Nintendo Switch 2 each have their own source, and both
+import original `_s.jpg` screenshots and `_s.mp4` clips while ignoring `_c`
+duplicates. Individual album folders, including the folder for captures taken
+outside a game, can be excluded in Settings. Collect from one console at a
+time: the libmtp tools answer for whichever console they open first.
 
 PlayStation 4 and PlayStation 5 use folders exported from the console. When
 FFprobe is available, the PlayStation 5 source dates a clip from its start
