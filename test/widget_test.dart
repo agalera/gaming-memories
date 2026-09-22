@@ -13,6 +13,7 @@ import 'package:gaming_memories/services/battle_net_games.dart';
 import 'package:gaming_memories/services/config_store.dart';
 import 'package:gaming_memories/services/folder_access_service.dart';
 import 'package:gaming_memories/services/library_scanner.dart';
+import 'package:gaming_memories/services/publish/publish_service.dart';
 import 'package:gaming_memories/services/screenshot_action_service.dart';
 import 'package:gaming_memories/services/source_paths.dart';
 import 'package:gaming_memories/sources/battle_net_source.dart';
@@ -1322,6 +1323,112 @@ void main() {
     await tester.pump(const Duration(milliseconds: 200));
   });
 
+  testWidgets('saves a non-text setting only when its value changes', (
+    tester,
+  ) async {
+    final store = _MemoryConfigStore();
+    final controller =
+        LibraryController(
+            configStore: store,
+            scanner: const LibraryScanner(),
+            sources: const [],
+          )
+          ..isInitializing = false
+          ..view = LibraryView.settings
+          ..settings = const AppSettings(
+            outputPath: '',
+            themeMode: AppThemeMode.dark,
+          );
+
+    await tester.pumpWidget(GamingMemoriesApp(controller: controller));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byKey(const ValueKey('theme-mode-dark')));
+    await tester.pumpAndSettle();
+    expect(store.saveCalls, 0);
+
+    await tester.tap(find.byKey(const ValueKey('theme-mode-light')));
+    await tester.pumpAndSettle();
+    expect(store.saveCalls, 1);
+
+    await tester.tap(find.byKey(const ValueKey('theme-mode-light')));
+    await tester.pumpAndSettle();
+    expect(store.saveCalls, 1);
+
+    await tester.pumpWidget(const SizedBox.shrink());
+    await tester.pump(const Duration(milliseconds: 200));
+  });
+
+  testWidgets('debounces text settings and flushes them on blur', (
+    tester,
+  ) async {
+    final directory = Directory.systemTemp.createTempSync('gaming-memories-');
+    final first = Directory(p.join(directory.path, 'first'))..createSync();
+    final second = Directory(p.join(directory.path, 'second'))..createSync();
+    addTearDown(() => directory.deleteSync(recursive: true));
+    final store = _MemoryConfigStore();
+    final controller =
+        LibraryController(
+            configStore: store,
+            scanner: const LibraryScanner(),
+            sources: const [],
+          )
+          ..isInitializing = false
+          ..view = LibraryView.settings
+          ..settings = AppSettings(outputPath: first.path);
+
+    await tester.pumpWidget(GamingMemoriesApp(controller: controller));
+    await tester.pumpAndSettle();
+    await _openSettingsTab(tester, 'library');
+
+    final field = find.byKey(const ValueKey('library-path-field'));
+    await tester.enterText(field, first.path);
+    await tester.pump(const Duration(milliseconds: 400));
+    expect(store.saveCalls, 0);
+
+    await tester.enterText(field, second.path);
+    await tester.pump(const Duration(milliseconds: 299));
+    expect(store.saveCalls, 0);
+
+    await _openSettingsTab(tester, 'appearance');
+    await tester.runAsync(
+      () => Future<void>.delayed(const Duration(milliseconds: 20)),
+    );
+    await tester.pumpAndSettle();
+    expect(store.saveCalls, 1);
+    expect(store.saved?.outputPath, second.path);
+
+    await tester.pumpWidget(const SizedBox.shrink());
+    await tester.pump(const Duration(milliseconds: 200));
+
+    final debouncedStore = _MemoryConfigStore();
+    final debouncedController =
+        LibraryController(
+            configStore: debouncedStore,
+            scanner: const LibraryScanner(),
+            sources: const [],
+          )
+          ..isInitializing = false
+          ..view = LibraryView.settings
+          ..settings = AppSettings(outputPath: second.path);
+    await tester.pumpWidget(GamingMemoriesApp(controller: debouncedController));
+    await tester.pumpAndSettle();
+    await _openSettingsTab(tester, 'library');
+    await tester.enterText(field, first.path);
+    await tester.pump(const Duration(milliseconds: 299));
+    expect(debouncedStore.saveCalls, 0);
+    await tester.pump(const Duration(milliseconds: 400));
+    await tester.runAsync(
+      () => Future<void>.delayed(const Duration(milliseconds: 20)),
+    );
+    await tester.pumpAndSettle();
+    expect(debouncedStore.saveCalls, 1);
+    expect(debouncedStore.saved?.outputPath, first.path);
+
+    await tester.pumpWidget(const SizedBox.shrink());
+    await tester.pump(const Duration(milliseconds: 200));
+  });
+
   testWidgets('edits Steam ignored and custom game lists', (tester) async {
     final store = _MemoryConfigStore();
     final controller =
@@ -2044,7 +2151,7 @@ void main() {
             configStore: _MemoryConfigStore(),
             scanner: const LibraryScanner(),
             sources: const [],
-            folderAccess: const _PersistentFolderAccess(),
+            folderAccess: _PersistentFolderAccess(),
           )
           ..isInitializing = false
           ..view = LibraryView.settings
@@ -2129,10 +2236,368 @@ void main() {
     await tester.pumpWidget(const SizedBox.shrink());
     await tester.pump(const Duration(milliseconds: 200));
   });
+
+  testWidgets('the publish tab hides its fields until publishing is on', (
+    tester,
+  ) async {
+    final store = _MemoryConfigStore();
+    final controller =
+        LibraryController(
+            configStore: store,
+            scanner: const LibraryScanner(),
+            sources: const [],
+          )
+          ..isInitializing = false
+          ..view = LibraryView.settings
+          ..settings = const AppSettings(outputPath: '');
+
+    await tester.pumpWidget(GamingMemoriesApp(controller: controller));
+    await tester.pumpAndSettle();
+    await _openSettingsTab(tester, 'publish');
+
+    expect(find.byKey(const ValueKey('publish-enabled')), findsOneWidget);
+    expect(find.byKey(const ValueKey('publish-host')), findsNothing);
+
+    final toggle = find.byKey(const ValueKey('publish-enabled'));
+    await tester.ensureVisible(toggle);
+    tester.widget<FSwitch>(toggle).onChange!(true);
+    await tester.pump(const Duration(milliseconds: 400));
+    await tester.runAsync(
+      () => Future<void>.delayed(const Duration(milliseconds: 200)),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const ValueKey('publish-site-title')), findsOneWidget);
+    expect(find.byKey(const ValueKey('publish-host')), findsOneWidget);
+    expect(find.byKey(const ValueKey('publish-remote-path')), findsOneWidget);
+    expect(find.byKey(const ValueKey('publish-file-mode')), findsOneWidget);
+    expect(
+      find.byKey(const ValueKey('publish-credential-automaticKey')),
+      findsOneWidget,
+    );
+    // Automatic is the default, so no key has to be chosen.
+    expect(find.byKey(const ValueKey('publish-key-path')), findsNothing);
+    expect(
+      find.byKey(const ValueKey('publish-transport-auto')),
+      findsOneWidget,
+    );
+
+    expect(store.saved?.publish.enabled, isTrue);
+  });
+
+  testWidgets('the key field appears only for a chosen key file', (
+    tester,
+  ) async {
+    final store = _MemoryConfigStore();
+    final controller =
+        LibraryController(
+            configStore: store,
+            scanner: const LibraryScanner(),
+            sources: const [],
+          )
+          ..isInitializing = false
+          ..view = LibraryView.settings
+          ..settings = const AppSettings(
+            outputPath: '',
+            publish: PublishSettings(enabled: true),
+          );
+
+    await tester.pumpWidget(GamingMemoriesApp(controller: controller));
+    await tester.pumpAndSettle();
+    await _openSettingsTab(tester, 'publish');
+
+    expect(find.byKey(const ValueKey('publish-key-path')), findsNothing);
+
+    final manual = find.byKey(const ValueKey('publish-credential-manualKey'));
+    await tester.ensureVisible(manual);
+    await tester.tap(manual);
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const ValueKey('publish-key-path')), findsOneWidget);
+    await tester.runAsync(
+      () => Future<void>.delayed(const Duration(milliseconds: 200)),
+    );
+    await tester.pumpAndSettle();
+    expect(
+      store.saved?.publish.target.credential,
+      PublishCredentialKind.manualKey,
+    );
+
+    final password = find.byKey(const ValueKey('publish-credential-password'));
+    await tester.ensureVisible(password);
+    await tester.tap(password);
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const ValueKey('publish-key-path')), findsNothing);
+    await tester.runAsync(
+      () => Future<void>.delayed(const Duration(milliseconds: 200)),
+    );
+    await tester.pumpAndSettle();
+    expect(
+      store.saved?.publish.target.credential,
+      PublishCredentialKind.password,
+    );
+  });
+
+  testWidgets('choosing a key asks for a chooser that can reach ~/.ssh', (
+    tester,
+  ) async {
+    final home = Directory.systemTemp.createTempSync('gaming-memories-home-');
+    Directory(p.join(home.path, '.ssh')).createSync();
+    addTearDown(() => home.deleteSync(recursive: true));
+    final keyPath = p.join(home.path, '.ssh', 'id_ed25519');
+    final access = _RecordingFileChooser(answer: keyPath);
+    final store = _MemoryConfigStore();
+    final controller =
+        LibraryController(
+            configStore: store,
+            scanner: const LibraryScanner(),
+            sources: const [],
+            folderAccess: access,
+            sourcePaths: SourcePathResolver(userHomeDirectory: home.path),
+          )
+          ..isInitializing = false
+          ..view = LibraryView.settings
+          ..settings = const AppSettings(
+            outputPath: '',
+            publish: PublishSettings(
+              enabled: true,
+              target: PublishTargetSettings(
+                host: 'example.com',
+                port: 22,
+                username: 'deploy',
+                remotePath: '/srv/site',
+                credential: PublishCredentialKind.manualKey,
+                fileMode: '644',
+                directoryMode: '755',
+                deleteRemoved: true,
+              ),
+            ),
+          );
+
+    await tester.pumpWidget(GamingMemoriesApp(controller: controller));
+    await tester.pumpAndSettle();
+    await _openSettingsTab(tester, 'publish');
+
+    final choose = find.widgetWithText(FButton, 'Choose');
+    await tester.ensureVisible(choose);
+    await tester.tap(choose);
+    await tester.pumpAndSettle();
+
+    expect(access.requests, hasLength(1));
+    // file_picker cannot show hidden entries and, on macOS, refuses to open
+    // at all without App Sandbox entitlements this app does not have.
+    expect(access.requests.single.showHiddenFiles, isTrue);
+    expect(access.requests.single.initialPath, p.join(home.path, '.ssh'));
+
+    expect(
+      tester
+          .widget<FTextField>(find.byKey(const ValueKey('publish-key-path')))
+          .control,
+      isNotNull,
+    );
+    await tester.runAsync(
+      () => Future<void>.delayed(const Duration(milliseconds: 200)),
+    );
+    await tester.pumpAndSettle();
+    expect(store.saved?.publish.target.keyPath, keyPath);
+  });
+
+  testWidgets('a chooser that fails says so beside the field', (tester) async {
+    final access = _RecordingFileChooser(
+      failure: const FolderAccessException(
+        'unavailable',
+        'macOS could not open the file chooser.',
+      ),
+    );
+    final controller =
+        LibraryController(
+            configStore: _MemoryConfigStore(),
+            scanner: const LibraryScanner(),
+            sources: const [],
+            folderAccess: access,
+          )
+          ..isInitializing = false
+          ..view = LibraryView.settings
+          ..settings = const AppSettings(
+            outputPath: '',
+            publish: PublishSettings(
+              enabled: true,
+              target: PublishTargetSettings(
+                host: 'example.com',
+                port: 22,
+                username: 'deploy',
+                remotePath: '/srv/site',
+                credential: PublishCredentialKind.manualKey,
+                fileMode: '644',
+                directoryMode: '755',
+                deleteRemoved: true,
+              ),
+            ),
+          );
+
+    await tester.pumpWidget(GamingMemoriesApp(controller: controller));
+    await tester.pumpAndSettle();
+    await _openSettingsTab(tester, 'publish');
+
+    final choose = find.widgetWithText(FButton, 'Choose');
+    await tester.ensureVisible(choose);
+    await tester.tap(choose);
+    await tester.pumpAndSettle();
+
+    expect(find.text('macOS could not open the file chooser.'), findsOneWidget);
+  });
+  testWidgets('excluding an album lists it and saves it', (tester) async {
+    final store = _MemoryConfigStore();
+    final controller =
+        LibraryController(
+            configStore: store,
+            scanner: const LibraryScanner(),
+            sources: const [],
+          )
+          ..isInitializing = false
+          ..view = LibraryView.settings
+          ..settings = const AppSettings(
+            outputPath: '',
+            publish: PublishSettings(enabled: true),
+          );
+
+    await tester.pumpWidget(GamingMemoriesApp(controller: controller));
+    await tester.pumpAndSettle();
+    await _openSettingsTab(tester, 'publish');
+
+    expect(find.text('The whole library is published.'), findsOneWidget);
+
+    final field = find.byKey(const ValueKey('publish-excluded-input'));
+    await tester.ensureVisible(field);
+    await tester.enterText(field, 'Steam/Private');
+    final add = find.byKey(const ValueKey('publish-excluded-add'));
+    await tester.ensureVisible(add);
+    await tester.tap(add);
+    await tester.pumpAndSettle();
+
+    expect(find.text('Steam/Private'), findsOneWidget);
+    await tester.runAsync(
+      () => Future<void>.delayed(const Duration(milliseconds: 200)),
+    );
+    await tester.pumpAndSettle();
+    expect(store.saved?.publish.excluded, ['Steam/Private']);
+
+    final remove = find.byKey(
+      const ValueKey('publish-excluded-remove-Steam/Private'),
+    );
+    await tester.ensureVisible(remove);
+    await tester.tap(remove);
+    await tester.pumpAndSettle();
+
+    expect(find.text('The whole library is published.'), findsOneWidget);
+  });
+
+  testWidgets('the sidebar Publish button follows the setting', (tester) async {
+    final controller = _PublishingController()
+      ..isInitializing = false
+      ..settings = const AppSettings(outputPath: '/library');
+
+    await tester.pumpWidget(GamingMemoriesApp(controller: controller));
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const ValueKey('publish-sidebar-button')), findsNothing);
+
+    controller
+      ..settings = _publishEnabledSettings
+      ..notifyListeners();
+    await tester.pumpAndSettle();
+
+    final button = find.byKey(const ValueKey('publish-sidebar-button'));
+    expect(button, findsOneWidget);
+    expect(find.text('Publish'), findsWidgets);
+
+    await tester.tap(button);
+    await tester.pumpAndSettle();
+    expect(controller.publishCalls, 1);
+
+    controller
+      ..isPublishing = true
+      ..publishProgressValue = 0.42
+      ..publishProgressMessage = 'Uploading Steam/Hades/a.png (3/40)'
+      ..notifyListeners();
+    // Not pumpAndSettle: the progress bar animates and never settles.
+    await tester.pump();
+
+    // The button gives way to the toast while a publish runs.
+    expect(find.byKey(const ValueKey('publish-sidebar-button')), findsNothing);
+    expect(find.byKey(const ValueKey('publish-status-toast')), findsOneWidget);
+    expect(find.text('Publishing · 42%'), findsOneWidget);
+    expect(find.text('Uploading Steam/Hades/a.png (3/40)'), findsOneWidget);
+
+    final progress = tester.widget<FDeterminateProgress>(
+      find.byKey(const ValueKey('publish-status-progress')),
+    );
+    expect(progress.value, closeTo(0.42, 0.001));
+
+    await tester.pumpWidget(const SizedBox.shrink());
+  });
+
+  testWidgets('the stop button stops the publish and then goes quiet', (
+    tester,
+  ) async {
+    final controller = _PublishingController()
+      ..isInitializing = false
+      ..settings = _publishEnabledSettings
+      ..isPublishing = true
+      ..publishProgressValue = 0.1;
+
+    await tester.pumpWidget(GamingMemoriesApp(controller: controller));
+    await tester.pump();
+
+    final stop = find.byKey(const ValueKey('publish-stop-button'));
+    expect(stop, findsOneWidget);
+
+    await tester.tap(stop);
+    // The tappable animates on press, so its timer has to run out before the
+    // test ends.
+    await tester.pump(const Duration(milliseconds: 300));
+    expect(controller.cancelCalls, 1);
+
+    controller
+      ..stopping = true
+      ..notifyListeners();
+    await tester.pump();
+
+    // Asking twice does nothing, so the button stops offering it.
+    expect(find.text('Stopping…'), findsOneWidget);
+    expect(tester.widget<FButton>(stop).onPress, isNull);
+
+    await tester.pumpWidget(const SizedBox.shrink());
+    await tester.pump(const Duration(milliseconds: 300));
+  });
+
+  testWidgets('a publish with no reported progress still shows movement', (
+    tester,
+  ) async {
+    final controller = _PublishingController()
+      ..isInitializing = false
+      ..settings = _publishEnabledSettings
+      ..isPublishing = true;
+
+    await tester.pumpWidget(GamingMemoriesApp(controller: controller));
+    await tester.pump();
+
+    expect(
+      find.byKey(const ValueKey('publish-status-progress')),
+      findsOneWidget,
+    );
+    expect(
+      tester.widget(find.byKey(const ValueKey('publish-status-progress'))),
+      isA<FProgress>(),
+    );
+
+    await tester.pumpWidget(const SizedBox.shrink());
+  });
 }
 
 Future<void> _openSettingsTab(WidgetTester tester, String name) async {
-  const directTabs = {'appearance', 'library', 'sources'};
+  const directTabs = {'appearance', 'library', 'sources', 'publish'};
   final tabName = directTabs.contains(name) ? name : 'sources';
   final tab = find.byKey(ValueKey('settings-tab-$tabName'));
   await tester.ensureVisible(tab);
@@ -2167,13 +2632,120 @@ class _LazySubAlbumScanner extends LibraryScanner {
   }
 }
 
+/// Counts publishes rather than running one, so the sidebar button can be
+/// tested without a server.
+class _PublishingController extends LibraryController {
+  _PublishingController()
+    : super(
+        configStore: const ConfigStore(filePath: 'unused'),
+        scanner: const LibraryScanner(),
+        sources: const [],
+        publishService: const _NoopPublishService(),
+      );
+
+  int publishCalls = 0;
+  int cancelCalls = 0;
+
+  /// Stands in for the cancellation the real publish owns, which a test
+  /// driving the sidebar alone never creates.
+  bool stopping = false;
+
+  @override
+  Future<void> publish({String? secret}) async => publishCalls++;
+
+  @override
+  Future<PublishSecretKind> publishSecretNeeded() async =>
+      PublishSecretKind.none;
+
+  @override
+  void cancelPublish() {
+    cancelCalls++;
+    notifyListeners();
+  }
+
+  @override
+  PublishActivity get publishActivity {
+    final activity = super.publishActivity;
+    if (!activity.isRunning || !stopping) {
+      return activity;
+    }
+    return PublishActivity(
+      isRunning: true,
+      title: 'Stopping…',
+      detail: 'Finishing the file in flight',
+      progress: activity.progress,
+      isStopping: true,
+    );
+  }
+}
+
+const _publishEnabledSettings = AppSettings(
+  outputPath: '/library',
+  publish: PublishSettings(
+    enabled: true,
+    target: PublishTargetSettings(
+      host: 'example.com',
+      port: 22,
+      username: 'deploy',
+      remotePath: '/srv/site',
+      fileMode: '644',
+      directoryMode: '755',
+      deleteRemoved: true,
+    ),
+  ),
+);
+
+class _NoopPublishService extends PublishService {
+  const _NoopPublishService() : super(buildPath: 'unused');
+}
+
+/// Records what the key chooser was asked for, and answers with a path.
+class _RecordingFileChooser implements FolderAccessService {
+  _RecordingFileChooser({this.answer, this.failure});
+
+  final String? answer;
+  final FolderAccessException? failure;
+  final List<FileChoiceRequest> requests = [];
+
+  @override
+  bool get requiresPersistentGrant => false;
+
+  @override
+  Future<String?> chooseFile(FileChoiceRequest request) async {
+    requests.add(request);
+    final problem = failure;
+    if (problem != null) {
+      throw problem;
+    }
+    return answer;
+  }
+
+  @override
+  Future<FolderAccessLease?> choose(FolderAccessRequest request) async => null;
+
+  @override
+  Future<FolderAccessLease> activate(FolderGrant grant) {
+    throw UnimplementedError();
+  }
+
+  @override
+  Future<void> release(FolderAccessLease lease) async {}
+
+  @override
+  Future<void> dispose() async {}
+}
+
 class _MemoryConfigStore extends ConfigStore {
   _MemoryConfigStore() : super(filePath: 'unused');
 
   AppSettings? saved;
+  int saveCalls = 0;
 
   @override
-  Future<void> save(AppSettings settings) async => saved = settings;
+  Future<void> save(AppSettings settings) async {
+    saveCalls++;
+    saved = settings;
+  }
 }
 
 class _LibraryActivityController extends LibraryController {
@@ -2261,10 +2833,13 @@ class _WarningSource implements ScreenshotSource {
 }
 
 class _PersistentFolderAccess implements FolderAccessService {
-  const _PersistentFolderAccess();
+  _PersistentFolderAccess();
 
   @override
   bool get requiresPersistentGrant => true;
+
+  @override
+  Future<String?> chooseFile(FileChoiceRequest request) async => null;
 
   @override
   Future<FolderAccessLease?> choose(FolderAccessRequest request) async => null;
@@ -2286,6 +2861,11 @@ class _RecordingPersistentFolderAccess implements FolderAccessService {
 
   @override
   bool get requiresPersistentGrant => true;
+
+  @override
+  Future<String?> chooseFile(FileChoiceRequest request) async => chosenFilePath;
+
+  String? chosenFilePath;
 
   @override
   Future<FolderAccessLease?> choose(FolderAccessRequest request) async {

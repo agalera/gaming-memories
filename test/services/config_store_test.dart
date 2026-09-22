@@ -132,7 +132,7 @@ void main() {
     expect(actual.folderGrants['library']?.path, '/screenshots');
     expect(actual.folderGrants['library']?.access, FolderGrantAccess.readWrite);
     final json = jsonDecode(await File(store.filePath).readAsString()) as Map;
-    expect(json['version'], 13);
+    expect(json['version'], 14);
     expect(json['diabloIV'], isNull);
     expect(json['battleNet'], isA<Map>());
     expect(File('${store.filePath}.tmp').existsSync(), isFalse);
@@ -215,5 +215,144 @@ void main() {
     });
 
     expect(settings.ignoredFolders, isEmpty);
+  });
+
+  test(
+    'a settings file from before Publish loads with it turned off',
+    () async {
+      final directory = await Directory.systemTemp.createTemp(
+        'gaming-memories-',
+      );
+      addTearDown(() => directory.delete(recursive: true));
+      final file = File(p.join(directory.path, 'settings.json'));
+      await file.writeAsString('{"outputPath": "/screenshots"}');
+
+      final actual = await ConfigStore(filePath: file.path).load();
+
+      expect(actual.publish.enabled, isFalse);
+      expect(actual.publish.transport, PublishTransportKind.auto);
+      expect(actual.publish.target.port, 22);
+      expect(actual.publish.target.fileMode, '644');
+      expect(actual.publish.target.directoryMode, '755');
+      expect(actual.publish.target.deleteRemoved, isTrue);
+      expect(
+        actual.publish.target.credential,
+        PublishCredentialKind.automaticKey,
+      );
+      expect(actual.publish.excluded, isEmpty);
+    },
+  );
+
+  test(
+    'a settings file from before the credential choice keeps its key',
+    () async {
+      final directory = await Directory.systemTemp.createTemp(
+        'gaming-memories-',
+      );
+      addTearDown(() => directory.delete(recursive: true));
+      final withKey = File(p.join(directory.path, 'with-key.json'));
+      await withKey.writeAsString(
+        '{"publish": {"target": {"keyPath": "/home/me/.ssh/id_ed25519"}}}',
+      );
+      final withoutKey = File(p.join(directory.path, 'without-key.json'));
+      await withoutKey.writeAsString('{"publish": {"target": {}}}');
+
+      final named = await ConfigStore(filePath: withKey.path).load();
+      final unnamed = await ConfigStore(filePath: withoutKey.path).load();
+
+      // A file that named a key meant that key, and one that named none meant
+      // whatever the system offers.
+      expect(named.publish.target.credential, PublishCredentialKind.manualKey);
+      expect(named.publish.target.keyPath, '/home/me/.ssh/id_ed25519');
+      expect(
+        unnamed.publish.target.credential,
+        PublishCredentialKind.automaticKey,
+      );
+    },
+  );
+
+  test('keeps the publish settings across a save and a load', () async {
+    final directory = await Directory.systemTemp.createTemp('gaming-memories-');
+    addTearDown(() => directory.delete(recursive: true));
+    final store = ConfigStore(
+      filePath: p.join(directory.path, 'settings.json'),
+    );
+
+    const settings = AppSettings(
+      outputPath: '/screenshots',
+      publish: PublishSettings(
+        enabled: true,
+        transport: PublishTransportKind.sftp,
+        site: PublishSiteSettings(
+          title: 'Games Screenshots',
+          author: '@fmartingr',
+          url: 'https://screenshots.example.com',
+          footerText: 'Be wary of spoilers!',
+        ),
+        target: PublishTargetSettings(
+          host: 'example.com',
+          port: 2222,
+          username: 'deploy',
+          remotePath: '/srv/site',
+          credential: PublishCredentialKind.manualKey,
+          keyPath: '/home/me/.ssh/id_ed25519',
+          fileMode: '600',
+          directoryMode: '700',
+          deleteRemoved: false,
+        ),
+        excluded: ['Steam/Private'],
+      ),
+    );
+
+    await store.save(settings);
+    final actual = await store.load();
+
+    expect(actual.publish.enabled, isTrue);
+    expect(actual.publish.transport, PublishTransportKind.sftp);
+    expect(actual.publish.site.title, 'Games Screenshots');
+    expect(actual.publish.site.url, 'https://screenshots.example.com');
+    expect(actual.publish.site.footerText, 'Be wary of spoilers!');
+    expect(actual.publish.target.host, 'example.com');
+    expect(actual.publish.target.port, 2222);
+    expect(actual.publish.target.username, 'deploy');
+    expect(actual.publish.target.remotePath, '/srv/site');
+    expect(actual.publish.target.credential, PublishCredentialKind.manualKey);
+    expect(actual.publish.target.keyPath, '/home/me/.ssh/id_ed25519');
+    expect(actual.publish.target.fileMode, '600');
+    expect(actual.publish.target.directoryMode, '700');
+    expect(actual.publish.target.deleteRemoved, isFalse);
+    expect(actual.publish.excluded, ['Steam/Private']);
+  });
+
+  test('no passphrase is ever written to the settings file', () async {
+    final directory = await Directory.systemTemp.createTemp('gaming-memories-');
+    addTearDown(() => directory.delete(recursive: true));
+    final store = ConfigStore(
+      filePath: p.join(directory.path, 'settings.json'),
+    );
+
+    await store.save(
+      const AppSettings(
+        outputPath: '/screenshots',
+        publish: PublishSettings(
+          enabled: true,
+          target: PublishTargetSettings(
+            host: 'example.com',
+            port: 22,
+            username: 'deploy',
+            remotePath: '/srv/site',
+            keyPath: '/home/me/.ssh/id_ed25519',
+            fileMode: '644',
+            directoryMode: '755',
+            deleteRemoved: true,
+          ),
+        ),
+      ),
+    );
+
+    final written = await File(store.filePath).readAsString();
+    expect(written, contains('/home/me/.ssh/id_ed25519'));
+    expect(written.toLowerCase(), isNot(contains('passphrase')));
+    expect(written.toLowerCase(), isNot(contains('"password"')));
   });
 }

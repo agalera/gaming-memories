@@ -91,6 +91,8 @@ private final class FolderAccessChannel {
       choose(arguments: call.arguments, result: result)
     case "choosePath":
       choosePath(arguments: call.arguments, result: result)
+    case "chooseFile":
+      chooseFile(arguments: call.arguments, result: result)
     case "activate":
       activate(arguments: call.arguments, result: result)
     case "release":
@@ -118,6 +120,46 @@ private final class FolderAccessChannel {
     }
     let values = arguments as? [String: Any]
     let panel = openPanel(values: values)
+    panel.prompt = "Choose"
+    if let initialPath = values?["initialPath"] as? String,
+       !initialPath.isEmpty {
+      panel.directoryURL = URL(fileURLWithPath: initialPath, isDirectory: true)
+    }
+
+    isChoosing = true
+    panel.beginSheetModal(for: window) { [weak self] response in
+      self?.isChoosing = false
+      guard response == .OK, let panelURL = panel.url else {
+        result(nil)
+        return
+      }
+      result(panelURL.standardizedFileURL.path)
+    }
+  }
+
+  /// Presents a file chooser and answers the selected path.
+  ///
+  /// Hidden files are shown on request, because the SSH keys this is used for
+  /// live in `~/.ssh`, which a panel would otherwise never reach.
+  private func chooseFile(arguments: Any?, result: @escaping FlutterResult) {
+    guard !isChoosing else {
+      result(error("chooserBusy", "Another chooser is already open."))
+      return
+    }
+    guard let window else {
+      result(error("unavailable", "The file chooser is unavailable."))
+      return
+    }
+    let values = arguments as? [String: Any]
+    let panel = NSOpenPanel()
+    panel.canChooseFiles = true
+    panel.canChooseDirectories = false
+    panel.allowsMultipleSelection = false
+    panel.canCreateDirectories = false
+    panel.resolvesAliases = true
+    panel.showsHiddenFiles = values?["showHiddenFiles"] as? Bool ?? false
+    panel.title = values?["title"] as? String ?? "Choose a file"
+    panel.message = values?["title"] as? String
     panel.prompt = "Choose"
     if let initialPath = values?["initialPath"] as? String,
        !initialPath.isEmpty {

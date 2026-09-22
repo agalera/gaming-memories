@@ -13,6 +13,8 @@ import '../services/config_store.dart';
 import '../services/folder_access_service.dart';
 import '../services/library_scanner.dart';
 import '../services/library_watcher.dart';
+import '../services/publish/publish_service.dart';
+import '../services/publish/publish_transport.dart';
 import '../services/screenshot_action_service.dart';
 import '../services/source_paths.dart';
 import '../services/timeline_cache.dart';
@@ -205,6 +207,36 @@ class LibraryChangeSummary {
   }
 }
 
+/// What the Publish button, or the toast that replaces it, is showing.
+class PublishActivity {
+  const PublishActivity({
+    required this.isRunning,
+    required this.title,
+    required this.detail,
+    this.progress,
+    this.isStopping = false,
+  });
+
+  const PublishActivity.idle()
+    : isRunning = false,
+      title = 'Publish',
+      detail = 'Render the gallery and upload it',
+      progress = null,
+      isStopping = false;
+
+  final bool isRunning;
+  final String title;
+
+  /// What the publish is on right now, such as the file being uploaded.
+  final String detail;
+
+  /// Completion between 0 and 1, or null while the transport cannot say.
+  final double? progress;
+
+  /// A stop has been asked for and the publish is winding down.
+  final bool isStopping;
+}
+
 class LibraryController extends ChangeNotifier {
   LibraryController({
     required this.configStore,
@@ -215,6 +247,7 @@ class LibraryController extends ChangeNotifier {
     this.folderAccess = const PathFolderAccessService(),
     this.sourcePaths = const SourcePathResolver(),
     this.screenshotActions = const NativeScreenshotActionService(),
+    this.publishService,
     this.log = const SilentAppLog(),
   }) {
     // The log does not know what a secret looks like; this does.
@@ -229,6 +262,10 @@ class LibraryController extends ChangeNotifier {
   final FolderAccessService folderAccess;
   final SourcePathResolver sourcePaths;
   final ScreenshotActionService screenshotActions;
+
+  /// Null when this build has nowhere to render a gallery, which keeps the
+  /// Publish button out of the sidebar entirely.
+  final PublishService? publishService;
   final AppLog log;
 
   AppSettings settings = const AppSettings.defaults();
@@ -251,6 +288,14 @@ class LibraryController extends ChangeNotifier {
   NotificationKind? notificationKind;
   String? progressMessage;
   double? progressValue;
+  bool isPublishing = false;
+  String? publishProgressMessage;
+  double? publishProgressValue;
+
+  /// The passphrase or password for this session only, so it is typed once
+  /// per run of the app and never written to the settings file.
+  String? _publishSecret;
+  PublishCancellation? _publishCancellation;
   int notificationRevision = 0;
   final List<AppNotification> _notifications = [];
   Map<String, String> _sourceValidationErrors = const {};
@@ -301,6 +346,147 @@ class LibraryController extends ChangeNotifier {
       detail: progressMessage ?? 'Checking enabled sources…',
       progress: progressValue,
     );
+  }
+
+  /// What the Publish button, or the toast that replaces it, shows.
+  PublishActivity get publishActivity {
+    if (!isPublishing) {
+      return const PublishActivity.idle();
+    }
+    final stopping = _publishCancellation?.isCancelled ?? false;
+    final percent = publishProgressValue == null
+        ? null
+        : (publishProgressValue! * 100).round();
+    return PublishActivity(
+      isRunning: true,
+      title: stopping
+          ? 'Stopping…'
+          : percent == null
+          ? 'Publishing…'
+          : 'Publishing · $percent%',
+      detail: stopping
+          ? 'Finishing the file in flight'
+          : publishProgressMessage ?? 'Starting…',
+      progress: publishProgressValue,
+      isStopping: stopping,
+    );
+  }
+
+  /// Stops the publish that is running. The file in flight ends, and nothing
+  /// the mirror would have removed is removed.
+  void cancelPublish() {
+    if (!isPublishing) {
+      return;
+    }
+    _publishCancellation?.cancel();
+    notifyListeners();
+  }
+
+  /// Whether the sidebar offers a Publish button at all.
+  bool get canPublish => publishService != null && settings.publish.enabled;
+
+  /// What the next publish has to ask the user for, if anything. A secret
+  /// already given this session answers for it.
+  Future<PublishSecretKind> publishSecretNeeded() async {
+    final service = publishService;
+    if (!canPublish || service == null || _publishSecret != null) {
+      return PublishSecretKind.none;
+    }
+    return service.secretNeeded(settings.publish);
+  }
+
+  /// Renders the gallery and uploads it in one step. [secret] is the
+  /// passphrase or password [publishSecretNeeded] asked for, and is only
+  /// needed the first time in a session.
+  Future<void> publish({String? secret}) async {
+    final service = publishService;
+    if (service == null) {
+      return;
+    }
+    if (isPublishing) {
+      return;
+    }
+    if (secret != null && secret.isNotEmpty) {
+      _publishSecret = secret;
+    }
+
+    final problem = PublishService.validate(
+      libraryPath: settings.outputPath,
+      settings: settings.publish,
+    );
+    if (problem != null) {
+      _setWarning(problem);
+      notifyListeners();
+      return;
+    }
+    if (libraryNeedsAuthorization) {
+      _setWarning(
+        'Library folder access is required. Open Settings and allow access.',
+      );
+      notifyListeners();
+      return;
+    }
+
+    final stop = PublishCancellation();
+    _publishCancellation = stop;
+    isPublishing = true;
+    publishProgressMessage = 'Starting…';
+    publishProgressValue = null;
+    message = null;
+    error = null;
+    notificationKind = null;
+    notifyListeners();
+
+    try {
+      final outcome = await service.publish(
+        libraryPath: expandUserPath(settings.outputPath.trim()),
+        settings: settings.publish,
+        secret: _publishSecret,
+        cancellation: stop,
+        onProgress: (progress) {
+          if (_disposed) {
+            return;
+          }
+          publishProgressMessage = progress.message;
+          publishProgressValue = progress.value;
+          notifyListeners();
+        },
+      );
+      if (outcome.stopped) {
+        _setWarning('Publish stopped. ${outcome.describe()}.');
+      } else {
+        _setMessage(
+          'Published to ${settings.publish.target.host}. '
+          '${outcome.describe()}.',
+        );
+      }
+    } on PublishStopped {
+      _setWarning('Publish stopped.');
+    } on PublishException catch (exception) {
+      // A secret that did not work must not be reused for the rest of the
+      // session.
+      _publishSecret = null;
+      log.error(
+        'Could not publish the gallery.',
+        category: 'publish',
+        error: exception,
+      );
+      _setError(
+        exception.detail == null
+            ? exception.message
+            : '${exception.message} ${exception.detail}',
+      );
+    } catch (exception, stackTrace) {
+      _fail('publish the gallery', exception, stackTrace, category: 'publish');
+    } finally {
+      isPublishing = false;
+      publishProgressMessage = null;
+      publishProgressValue = null;
+      _publishCancellation = null;
+      if (!_disposed) {
+        notifyListeners();
+      }
+    }
   }
 
   /// What the library is doing right now, most urgent state first.
@@ -980,6 +1166,16 @@ class LibraryController extends ChangeNotifier {
         validated.outputPath,
         allowEmpty: true,
       );
+      // A secret belongs to what it opened, so changing how the publish
+      // signs in asks for a new one.
+      final before = settings.publish.target;
+      final after = validated.publish.target;
+      if (after.credential != before.credential ||
+          after.keyPath.trim() != before.keyPath.trim() ||
+          after.username.trim() != before.username.trim() ||
+          after.host.trim() != before.host.trim()) {
+        _publishSecret = null;
+      }
       await configStore.save(validated);
       settings = validated;
       if (outputChanged) {
@@ -2662,6 +2858,10 @@ class LibraryController extends ChangeNotifier {
     final apiKey = settings.steam.apiKey.trim();
     if (apiKey.isNotEmpty) {
       redacted = redacted.replaceAll(apiKey, '<REDACTED>');
+    }
+    final secret = _publishSecret;
+    if (secret != null && secret.isNotEmpty) {
+      redacted = redacted.replaceAll(secret, '<REDACTED>');
     }
     return redacted.replaceAllMapped(
       RegExp(r'([?&](?:key|api[_-]?key)=)[^&\s]+', caseSensitive: false),

@@ -15,7 +15,7 @@ DIST_DIR ?= dist
 TAG ?= $(shell git describe --tags --exact-match 2>/dev/null)
 PACKAGE_ENV := GM_VERSION=$(VERSION) DIST_DIR=$(DIST_DIR)
 
-.PHONY: help setup deps outdated upgrade devices doctor run run-linux run-macos run-windows analyze format format-check test check icons icons-reset open-xcode build build-linux build-macos build-windows package-linux package-macos package-windows release-macos clean
+.PHONY: help setup deps outdated upgrade devices doctor run run-linux run-macos run-windows analyze format format-check test check icons icons-reset gallery-preview open-xcode build build-linux build-macos build-windows package-linux package-macos package-windows release-macos clean
 
 help: ## Show the available commands.
 	@awk 'BEGIN {FS = ":.*## "; printf "Usage: make <target> [VARIABLE=value]\n\nTargets:\n"} /^[a-zA-Z0-9_-]+:.*## / {printf "  %-16s %s\n", $$1, $$2}' $(MAKEFILE_LIST)
@@ -70,6 +70,11 @@ icons: ## Generate desktop icons from assets/logo.png.
 
 icons-reset: ## Reset the OS icon cache so a rebuilt app shows the current icon.
 	./tool/reset_icon_cache.sh $(ARGS)
+
+gallery-preview: ## Render LIBRARY into a servable gallery and serve it. Set LIBRARY and optionally PORT.
+	$(DART) run tool/render_demo_gallery.dart "$(LIBRARY)" build/gallery-preview
+	@echo "Serving build/gallery-preview on http://127.0.0.1:$(or $(PORT),8145)"
+	@cd build/gallery-preview && python3 -m http.server $(or $(PORT),8145)
 
 open-xcode: ## Open the macOS runner in Xcode.
 	open macos/Runner.xcworkspace

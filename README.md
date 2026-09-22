@@ -37,6 +37,8 @@ platform and game, or open a capture for a closer look without leaving the app.
   Nintendo Switch albums.
 - **Safe imports:** SHA-1 collision suffixes prevent one capture from
   overwriting another.
+- **Publish to the web:** Render the library as a static HTML gallery and
+  upload it to your own host over SSH.
 
 ## Supported Sources
 
@@ -196,6 +198,93 @@ time: the libmtp tools answer for whichever console they open first.
 PlayStation 4 and PlayStation 5 use folders exported from the console. When
 FFprobe is available, the PlayStation 5 source dates a clip from its start
 rather than the end time stored in its filename.
+
+## Publishing
+
+Gaming Memories can render the library as a static website and upload it to a
+host you control. Turn it on under **Settings → Publish**; a **Publish** button
+then appears in the sidebar, above **Settings**.
+
+Each album becomes one page, with folder tiles, a screenshot and clip filter, a
+sort toggle, a light and dark theme that follows the reader's system setting,
+and a lightbox with keyboard, click and swipe navigation. The pages
+are written to a folder of the app's own, so nothing is ever written between
+your captures. The upload merges the two: captures and their thumbnails from the
+library first, then the pages from that folder, so a page never arrives before
+the media it links to. While a publish runs the sidebar shows its progress and
+offers a stop.
+
+Platform tiles use covers bundled with the app, matched to the platform folder
+by name: Android, Game Boy, Game Boy Advance, Game Boy Color, Nintendo Switch,
+Nintendo Switch 2, PC, Pico-8, PlayStation 4, PlayStation 5 and Super Nintendo.
+A `cover.*` file you put in a platform folder yourself is used instead, and a
+platform with neither falls back to a capture from below it. Game albums keep
+using the cover their source saved beside them.
+
+The whole library is published, minus the platforms and albums listed under
+**Excluded albums**. With mirroring on, anything the gallery no longer holds is
+removed from the host too.
+
+### Connecting
+
+| Setting | What it is |
+| --- | --- |
+| **Host**, **Port**, **User** | Where the upload connects, over SSH |
+| **Remote folder** | The absolute path your web server serves |
+| **Sign in with** | Automatic key, a key file, or a password |
+| **File and folder permissions** | Applied as each file is written; `644` and `755` are what `chmod -R u=rwX,go=rX` leaves behind |
+
+### Signing in
+
+| Choice | What it uses |
+| --- | --- |
+| **Automatic key** | Whatever this machine already has, the same way `ssh` finds it |
+| **Key file** | One key you pick, and only that one |
+| **Password** | The account password on the host |
+
+Automatic is the default and needs nothing configured. It reads `~/.ssh/config`
+for the host you are publishing to and honours `IdentityAgent`, `IdentityFile`
+and `IdentitiesOnly`, including anything pulled in by `Include`. An agent set
+up that way — 1Password, Secretive, gpg-agent — is found even though a windowed
+app inherits no `SSH_AUTH_SOCK` from your shell. Failing all that, it falls back
+to `SSH_AUTH_SOCK` and then to the usual `~/.ssh/id_ed25519`, `id_ecdsa`,
+`id_rsa`, `id_dsa`.
+
+A key your agent already holds never asks for its passphrase. `Match` blocks are
+skipped, because their conditions cannot be evaluated here, and `HostName`,
+`User` and `Port` come from the fields above rather than from the config.
+
+No secret is ever saved. Only the path to a key file is stored; a passphrase or
+a password is asked for the first time you publish after starting the app, and
+kept in memory until it closes.
+
+### Host keys
+
+The first time you publish to a host, its key is taken on trust and remembered,
+the way answering `ssh`'s prompt with `yes` does. If that key ever changes, the
+publish refuses and uploads nothing: either the server was rebuilt, or
+something is pretending to be it.
+
+A host `ssh` already knows is not asked about again — `~/.ssh/known_hosts` is
+read, including hashed entries and any `UserKnownHostsFile` your config names
+for that host. Keys accepted here are kept beside the settings rather than
+written into your `known_hosts`, which stays yours; rsync maintains that file
+itself.
+
+### rsync or SFTP
+
+**Automatic** uses rsync when this machine has version 3 or newer and nothing
+has to be typed for it, because it compares the whole tree in far fewer round
+trips. Otherwise the upload goes over SFTP, which needs no external program and
+works on every platform, Windows included.
+
+Publishing with a password always goes over SFTP: rsync would have to type it
+on a terminal the app does not have.
+
+The `rsync` that macOS ships is openrsync. It accepts the flags a mirrored
+publish needs and then ignores them, which would leave captures you deleted on
+the host, so it is never used — install rsync 3 if you want the faster path
+there.
 
 ## Development
 

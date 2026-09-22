@@ -341,6 +341,296 @@ class BattleNetSettings {
   };
 }
 
+/// Which uploader carries a publish to the remote host.
+enum PublishTransportKind {
+  /// rsync when a capable one is on PATH and the key needs no passphrase,
+  /// SFTP otherwise.
+  auto,
+  rsync,
+  sftp;
+
+  factory PublishTransportKind.fromJson(Object? value) {
+    for (final kind in values) {
+      if (kind.name == value) {
+        return kind;
+      }
+    }
+    return auto;
+  }
+}
+
+/// How a publish proves who it is to the remote host.
+enum PublishCredentialKind {
+  /// Whatever the system already knows: a running SSH agent, and the usual
+  /// identity files under `~/.ssh`. Nothing to configure.
+  automaticKey,
+
+  /// One key file, named in the settings.
+  manualKey,
+
+  /// A password, asked for at publish time and never stored.
+  password;
+
+  factory PublishCredentialKind.fromJson(Object? value) {
+    for (final kind in values) {
+      if (kind.name == value) {
+        return kind;
+      }
+    }
+    return automaticKey;
+  }
+}
+
+/// What a publish has to ask the user for before it can start.
+enum PublishSecretKind {
+  /// Nothing: an agent, or an unprotected key, answers for it.
+  none,
+
+  /// The passphrase of the key it is about to use.
+  passphrase,
+
+  /// The account password on the remote host.
+  password,
+}
+
+/// What the rendered pages say about the site they belong to.
+class PublishSiteSettings {
+  const PublishSiteSettings({
+    required this.title,
+    required this.author,
+    required this.url,
+    required this.footerText,
+  });
+
+  const PublishSiteSettings.defaults()
+    : title = '',
+      author = '',
+      url = '',
+      footerText = '';
+
+  final String title;
+  final String author;
+
+  /// The site's public base URL, used for the absolute `og:` links. A page
+  /// leaves those tags out when this is empty.
+  final String url;
+  final String footerText;
+
+  PublishSiteSettings copyWith({
+    String? title,
+    String? author,
+    String? url,
+    String? footerText,
+  }) {
+    return PublishSiteSettings(
+      title: title ?? this.title,
+      author: author ?? this.author,
+      url: url ?? this.url,
+      footerText: footerText ?? this.footerText,
+    );
+  }
+
+  factory PublishSiteSettings.fromJson(Map<String, Object?> json) {
+    return PublishSiteSettings(
+      title: json['title'] as String? ?? '',
+      author: json['author'] as String? ?? '',
+      url: json['url'] as String? ?? '',
+      footerText: json['footerText'] as String? ?? '',
+    );
+  }
+
+  Map<String, Object?> toJson() => {
+    'title': title,
+    'author': author,
+    'url': url,
+    'footerText': footerText,
+  };
+}
+
+/// Where a publish goes and what it leaves behind.
+class PublishTargetSettings {
+  const PublishTargetSettings({
+    required this.host,
+    required this.port,
+    required this.username,
+    required this.remotePath,
+    required this.fileMode,
+    required this.directoryMode,
+    required this.deleteRemoved,
+    this.credential = PublishCredentialKind.automaticKey,
+    this.keyPath = '',
+  });
+
+  const PublishTargetSettings.defaults()
+    : host = '',
+      port = defaultPort,
+      username = '',
+      remotePath = '',
+      credential = PublishCredentialKind.automaticKey,
+      keyPath = '',
+      fileMode = defaultFileMode,
+      directoryMode = defaultDirectoryMode,
+      deleteRemoved = true;
+
+  static const defaultPort = 22;
+
+  /// The modes `chmod -R u=rwX,go=rX` leaves behind, which is what the site
+  /// this feature replaces is served with.
+  static const defaultFileMode = '644';
+  static const defaultDirectoryMode = '755';
+
+  final String host;
+  final int port;
+  final String username;
+  final String remotePath;
+
+  final PublishCredentialKind credential;
+
+  /// The private key file, for [PublishCredentialKind.manualKey] alone. The
+  /// other kinds ignore it.
+  final String keyPath;
+
+  /// Octal permissions, without a leading zero, as `chmod` takes them.
+  final String fileMode;
+  final String directoryMode;
+
+  /// Whether a remote file the gallery no longer holds is removed, which is
+  /// what `rsync --delete` does today.
+  final bool deleteRemoved;
+
+  PublishTargetSettings copyWith({
+    String? host,
+    int? port,
+    String? username,
+    String? remotePath,
+    PublishCredentialKind? credential,
+    String? keyPath,
+    String? fileMode,
+    String? directoryMode,
+    bool? deleteRemoved,
+  }) {
+    return PublishTargetSettings(
+      host: host ?? this.host,
+      port: port ?? this.port,
+      username: username ?? this.username,
+      remotePath: remotePath ?? this.remotePath,
+      credential: credential ?? this.credential,
+      keyPath: keyPath ?? this.keyPath,
+      fileMode: fileMode ?? this.fileMode,
+      directoryMode: directoryMode ?? this.directoryMode,
+      deleteRemoved: deleteRemoved ?? this.deleteRemoved,
+    );
+  }
+
+  factory PublishTargetSettings.fromJson(Map<String, Object?> json) {
+    final port = json['port'];
+    final keyPath = json['keyPath'] as String? ?? '';
+    return PublishTargetSettings(
+      host: json['host'] as String? ?? '',
+      port: port is int && port > 0 && port <= 65535 ? port : defaultPort,
+      username: json['username'] as String? ?? '',
+      remotePath: json['remotePath'] as String? ?? '',
+      // A settings file from before the choice existed named a key or it named
+      // nothing, which is exactly the difference between the two key kinds.
+      credential: json.containsKey('credential')
+          ? PublishCredentialKind.fromJson(json['credential'])
+          : keyPath.trim().isEmpty
+          ? PublishCredentialKind.automaticKey
+          : PublishCredentialKind.manualKey,
+      keyPath: keyPath,
+      fileMode: json['fileMode'] as String? ?? defaultFileMode,
+      directoryMode: json['directoryMode'] as String? ?? defaultDirectoryMode,
+      deleteRemoved: json['deleteRemoved'] as bool? ?? true,
+    );
+  }
+
+  Map<String, Object?> toJson() => {
+    'host': host,
+    'port': port,
+    'username': username,
+    'remotePath': remotePath,
+    'credential': credential.name,
+    'keyPath': keyPath,
+    'fileMode': fileMode,
+    'directoryMode': directoryMode,
+    'deleteRemoved': deleteRemoved,
+  };
+}
+
+/// Renders the library as a static site and uploads it. Nothing here holds a
+/// secret: the key is a path, and its passphrase is asked for at publish time
+/// and kept in memory only.
+class PublishSettings {
+  const PublishSettings({
+    required this.enabled,
+    this.transport = PublishTransportKind.auto,
+    this.site = const PublishSiteSettings.defaults(),
+    this.target = const PublishTargetSettings.defaults(),
+    this.excluded = const [],
+  });
+
+  const PublishSettings.disabled()
+    : enabled = false,
+      transport = PublishTransportKind.auto,
+      site = const PublishSiteSettings.defaults(),
+      target = const PublishTargetSettings.defaults(),
+      excluded = const [];
+
+  final bool enabled;
+  final PublishTransportKind transport;
+  final PublishSiteSettings site;
+  final PublishTargetSettings target;
+
+  /// Album paths relative to the library folder, as `Steam` or `Steam/Hades`.
+  /// An excluded album is neither rendered nor uploaded, and leaves the remote
+  /// on the next publish.
+  final List<String> excluded;
+
+  PublishSettings copyWith({
+    bool? enabled,
+    PublishTransportKind? transport,
+    PublishSiteSettings? site,
+    PublishTargetSettings? target,
+    List<String>? excluded,
+  }) {
+    return PublishSettings(
+      enabled: enabled ?? this.enabled,
+      transport: transport ?? this.transport,
+      site: site ?? this.site,
+      target: target ?? this.target,
+      excluded: excluded ?? this.excluded,
+    );
+  }
+
+  factory PublishSettings.fromJson(Map<String, Object?> json) {
+    final siteJson = json['site'];
+    final targetJson = json['target'];
+    final excluded = json['excluded'];
+
+    return PublishSettings(
+      enabled: json['enabled'] as bool? ?? false,
+      transport: PublishTransportKind.fromJson(json['transport']),
+      site: siteJson is Map<String, Object?>
+          ? PublishSiteSettings.fromJson(siteJson)
+          : const PublishSiteSettings.defaults(),
+      target: targetJson is Map<String, Object?>
+          ? PublishTargetSettings.fromJson(targetJson)
+          : const PublishTargetSettings.defaults(),
+      excluded: excluded is List
+          ? excluded.whereType<String>().toList(growable: false)
+          : const [],
+    );
+  }
+
+  Map<String, Object?> toJson() => {
+    'enabled': enabled,
+    'transport': transport.name,
+    'site': site.toJson(),
+    'target': target.toJson(),
+    'excluded': excluded,
+  };
+}
+
 class AppSettings {
   const AppSettings({
     required this.outputPath,
@@ -353,6 +643,7 @@ class AppSettings {
     this.playStation4 = const SourceSettings.disabled(),
     this.playStation5 = const SourceSettings.disabled(),
     this.steam = const SteamSettings.disabled(),
+    this.publish = const PublishSettings.disabled(),
     this.themeMode = AppThemeMode.system,
     this.folderGrants = const {},
   });
@@ -368,6 +659,7 @@ class AppSettings {
       playStation4 = const SourceSettings.disabled(),
       playStation5 = const SourceSettings.disabled(),
       steam = const SteamSettings.disabled(),
+      publish = const PublishSettings.disabled(),
       themeMode = AppThemeMode.system,
       folderGrants = const {};
 
@@ -381,6 +673,7 @@ class AppSettings {
   final SourceSettings playStation4;
   final SourceSettings playStation5;
   final SteamSettings steam;
+  final PublishSettings publish;
   final AppThemeMode themeMode;
   final Map<String, FolderGrant> folderGrants;
 
@@ -395,6 +688,7 @@ class AppSettings {
     SourceSettings? playStation4,
     SourceSettings? playStation5,
     SteamSettings? steam,
+    PublishSettings? publish,
     AppThemeMode? themeMode,
     Map<String, FolderGrant>? folderGrants,
   }) {
@@ -409,6 +703,7 @@ class AppSettings {
       playStation4: playStation4 ?? this.playStation4,
       playStation5: playStation5 ?? this.playStation5,
       steam: steam ?? this.steam,
+      publish: publish ?? this.publish,
       themeMode: themeMode ?? this.themeMode,
       folderGrants: folderGrants ?? this.folderGrants,
     );
@@ -424,6 +719,7 @@ class AppSettings {
     final playStation4Json = json['playStation4'];
     final playStation5Json = json['playStation5'];
     final steamJson = json['steam'];
+    final publishJson = json['publish'];
     final grantsJson = json['folderGrants'];
     final grants = <String, FolderGrant>{};
     if (grantsJson is Map) {
@@ -473,13 +769,16 @@ class AppSettings {
       steam: steamJson is Map<String, Object?>
           ? SteamSettings.fromJson(steamJson)
           : const SteamSettings.disabled(),
+      publish: publishJson is Map<String, Object?>
+          ? PublishSettings.fromJson(publishJson)
+          : const PublishSettings.disabled(),
       themeMode: AppThemeMode.fromJson(json['themeMode']),
       folderGrants: Map.unmodifiable(grants),
     );
   }
 
   Map<String, Object?> toJson() => {
-    'version': 13,
+    'version': 14,
     'outputPath': outputPath,
     'themeMode': themeMode.name,
     'battleNet': battleNet.toJson(),
@@ -491,6 +790,7 @@ class AppSettings {
     'playStation4': playStation4.toJson(),
     'playStation5': playStation5.toJson(),
     'steam': steam.toJson(),
+    'publish': publish.toJson(),
     'folderGrants': {
       for (final entry in folderGrants.entries) entry.key: entry.value.toJson(),
     },

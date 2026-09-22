@@ -14,6 +14,8 @@ import 'services/config_store.dart';
 import 'services/file_cache.dart';
 import 'services/folder_access_service.dart';
 import 'services/library_scanner.dart';
+import 'services/publish/known_hosts.dart';
+import 'services/publish/publish_service.dart';
 import 'services/source_paths.dart';
 import 'services/steam_client.dart';
 import 'services/timeline_cache.dart';
@@ -76,6 +78,17 @@ Future<void> main() async {
     folderAccess: folderAccess,
     log: log,
     sourcePaths: sourcePaths,
+    // The rendered gallery lives outside the library folder, so publishing
+    // never writes an index.html between the user's captures.
+    publishService: PublishService(
+      buildPath: p.join(supportDirectory.path, 'publish'),
+      // The host keys accepted on first use. Kept beside the settings rather
+      // than written into ~/.ssh/known_hosts, which is the user's file.
+      hostKeyStore: HostKeyStore(
+        filePath: p.join(supportDirectory.path, 'known-hosts.json'),
+      ),
+      log: log,
+    ),
     sources: [
       BattleNetSource(
         // Inside the macOS sandbox $HOME is the app container, so the real

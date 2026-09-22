@@ -2,7 +2,9 @@ import 'package:forui/forui.dart';
 import 'package:material_ui/material_ui.dart';
 
 import '../controllers/library_controller.dart';
+import '../models/app_settings.dart';
 import '../models/library.dart';
+import 'library_publish_toast.dart';
 import 'library_scan_toast.dart';
 import 'library_status_toast.dart';
 
@@ -118,6 +120,10 @@ class LibrarySidebar extends StatelessWidget {
                   ],
                 ),
               ),
+              if (controller.canPublish) ...[
+                const SizedBox(height: 8),
+                _PublishButton(controller: controller),
+              ],
               const SizedBox(height: 8),
               FButton(
                 key: const ValueKey('settings-sidebar-button'),
@@ -309,6 +315,148 @@ class _AlbumSidebarItemState extends State<_AlbumSidebarItem> {
           ),
       ],
     );
+  }
+}
+
+/// Renders the gallery and uploads it in one press. A key with a passphrase
+/// asks for it first, once per run of the app.
+class _PublishButton extends StatelessWidget {
+  const _PublishButton({required this.controller});
+
+  final LibraryController controller;
+
+  @override
+  Widget build(BuildContext context) {
+    final activity = controller.publishActivity;
+
+    // A running publish takes the button's place, so the sidebar shows what
+    // it is doing and offers the one action left: stopping it.
+    if (activity.isRunning) {
+      return IntrinsicHeight(
+        key: const ValueKey('publish-running-row'),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Expanded(child: LibraryPublishToast(activity: activity)),
+            const SizedBox(width: 8),
+            FTooltip(
+              tipBuilder: (context, _) => Text(
+                activity.isStopping
+                    ? 'Stopping the publish'
+                    : 'Stop publishing',
+              ),
+              child: FButton.icon(
+                key: const ValueKey('publish-stop-button'),
+                variant: FButtonVariant.outline,
+                semanticsLabel: 'Stop publishing',
+                onPress: activity.isStopping ? null : controller.cancelPublish,
+                child: const Icon(FLucideIcons.square),
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    return FTooltip(
+      tipBuilder: (context, _) => Text(activity.detail),
+      child: FButton(
+        key: const ValueKey('publish-sidebar-button'),
+        variant: FButtonVariant.outline,
+        mainAxisSize: MainAxisSize.max,
+        mainAxisAlignment: MainAxisAlignment.start,
+        prefix: const Icon(FLucideIcons.globe),
+        onPress: () => _publish(context),
+        child: Expanded(child: Text(activity.title)),
+      ),
+    );
+  }
+
+  Future<void> _publish(BuildContext context) async {
+    final needed = await controller.publishSecretNeeded();
+    if (needed == PublishSecretKind.none) {
+      await controller.publish();
+      return;
+    }
+    if (!context.mounted) {
+      return;
+    }
+    final secret = await _askSecret(context, needed);
+    if (secret == null) {
+      return;
+    }
+    await controller.publish(secret: secret);
+  }
+
+  Future<String?> _askSecret(BuildContext context, PublishSecretKind kind) {
+    final field = TextEditingController();
+    final target = controller.settings.publish.target;
+    final isPassword = kind == PublishSecretKind.password;
+    final title = isPassword
+        ? 'Password for ${target.username}@${target.host}'
+        : 'SSH key passphrase';
+
+    return showFDialog<String>(
+      context: context,
+      builder: (dialogContext, _, animation) => FDialog(
+        animation: animation,
+        semanticsLabel: title,
+        builder: (context, _) => Padding(
+          padding: const EdgeInsets.all(24),
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 420),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(title, style: context.theme.typography.display.sm),
+                const SizedBox(height: 8),
+                Text(
+                  isPassword
+                      ? 'This publish signs in with a password. It is kept in '
+                            'memory until Gaming Memories closes, and is '
+                            'never saved.'
+                      : 'The key this publish uses is protected. The '
+                            'passphrase is kept in memory until Gaming '
+                            'Memories closes, and is never saved.',
+                  style: context.theme.typography.body.sm.copyWith(
+                    color: context.theme.colors.mutedForeground,
+                  ),
+                ),
+                const SizedBox(height: 18),
+                FTextField.password(
+                  key: const ValueKey('publish-secret-field'),
+                  control: FTextFieldControl.managed(controller: field),
+                  label: Text(isPassword ? 'Password' : 'Passphrase'),
+                  autofocus: true,
+                  onSubmit: (value) => Navigator.of(dialogContext).pop(value),
+                ),
+                const SizedBox(height: 18),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.end,
+                  children: [
+                    FButton(
+                      variant: FButtonVariant.ghost,
+                      mainAxisSize: MainAxisSize.min,
+                      onPress: () => Navigator.of(dialogContext).pop(),
+                      child: const Text('Cancel'),
+                    ),
+                    const SizedBox(width: 10),
+                    FButton(
+                      key: const ValueKey('publish-secret-confirm'),
+                      mainAxisSize: MainAxisSize.min,
+                      onPress: () =>
+                          Navigator.of(dialogContext).pop(field.text),
+                      child: const Text('Publish'),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    ).whenComplete(field.dispose);
   }
 }
 

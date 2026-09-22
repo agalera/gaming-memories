@@ -1,8 +1,10 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:forui/forui.dart';
 import 'package:material_ui/material_ui.dart';
+import 'package:path/path.dart' as p;
 
 import '../controllers/library_controller.dart';
 import '../models/app_settings.dart';
@@ -38,6 +40,19 @@ class _SettingsPageState extends State<SettingsPage> {
   late final TextEditingController _steamIgnoredInputController;
   late final TextEditingController _steamCustomIdController;
   late final TextEditingController _steamCustomNameController;
+  late final TextEditingController _publishSiteTitleController;
+  late final TextEditingController _publishAuthorController;
+  late final TextEditingController _publishSiteUrlController;
+  late final TextEditingController _publishFooterController;
+  late final TextEditingController _publishHostController;
+  late final TextEditingController _publishPortController;
+  late final TextEditingController _publishUserController;
+  late final TextEditingController _publishRemotePathController;
+  late final TextEditingController _publishKeyPathController;
+  late final TextEditingController _publishFileModeController;
+  late final TextEditingController _publishDirectoryModeController;
+  late final TextEditingController _publishExcludedInputController;
+  late final List<String> _publishExcluded;
   late final List<String> _nintendoSwitchIgnoredFolders;
   late final List<String> _nintendoSwitch2IgnoredFolders;
   late final List<String> _steamIgnoredGames;
@@ -63,6 +78,11 @@ class _SettingsPageState extends State<SettingsPage> {
   late bool _steamUseCustomPath;
   late bool _steamOnlineGallery;
   late bool _steamDownloadCovers;
+  late bool _publishEnabled;
+  late bool _publishDeleteRemoved;
+  late PublishTransportKind _publishTransport;
+  late PublishCredentialKind _publishCredential;
+  String? _publishKeyPathError;
   String? _outputPathError;
   String? _diabloPathError;
   final Map<String, String?> _battleNetGameErrors = {};
@@ -75,6 +95,8 @@ class _SettingsPageState extends State<SettingsPage> {
   String? _playStation5PathError;
   String? _steamPathError;
   Timer? _saveTimer;
+  String? _persistedDraftSignature;
+  String? _pendingDraftSignature;
   var _draftRevision = 0;
   var _hasPendingChanges = false;
   var _suppressAutosave = false;
@@ -187,6 +209,40 @@ class _SettingsPageState extends State<SettingsPage> {
     _steamIgnoredGames = steam.ignoredGames.toList();
     _steamCustomIdController = TextEditingController();
     _steamCustomNameController = TextEditingController();
+    final publish = widget.controller.settings.publish;
+    _publishEnabled = publish.enabled;
+    _publishTransport = publish.transport;
+    _publishCredential = publish.target.credential;
+    _publishDeleteRemoved = publish.target.deleteRemoved;
+    _publishSiteTitleController = TextEditingController(
+      text: publish.site.title,
+    );
+    _publishAuthorController = TextEditingController(text: publish.site.author);
+    _publishSiteUrlController = TextEditingController(text: publish.site.url);
+    _publishFooterController = TextEditingController(
+      text: publish.site.footerText,
+    );
+    _publishHostController = TextEditingController(text: publish.target.host);
+    _publishPortController = TextEditingController(
+      text: '${publish.target.port}',
+    );
+    _publishUserController = TextEditingController(
+      text: publish.target.username,
+    );
+    _publishRemotePathController = TextEditingController(
+      text: publish.target.remotePath,
+    );
+    _publishKeyPathController = TextEditingController(
+      text: publish.target.keyPath,
+    );
+    _publishFileModeController = TextEditingController(
+      text: publish.target.fileMode,
+    );
+    _publishDirectoryModeController = TextEditingController(
+      text: publish.target.directoryMode,
+    );
+    _publishExcludedInputController = TextEditingController();
+    _publishExcluded = [...publish.excluded];
     _steamCustomGames = steam.customGames.entries
         .map((entry) => _CustomGame(entry.key, entry.value))
         .toList();
@@ -235,9 +291,22 @@ class _SettingsPageState extends State<SettingsPage> {
       _steamPathController,
       _steamUserController,
       _steamKeyController,
+      _publishSiteTitleController,
+      _publishAuthorController,
+      _publishSiteUrlController,
+      _publishFooterController,
+      _publishHostController,
+      _publishPortController,
+      _publishUserController,
+      _publishRemotePathController,
+      _publishKeyPathController,
+      _publishFileModeController,
+      _publishDirectoryModeController,
     ]) {
       controller.addListener(_onTextChanged);
     }
+    _persistedDraftSignature = _settingsSignature(_draftSettings());
+    FocusManager.instance.addListener(_onFocusChanged);
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) {
@@ -252,13 +321,27 @@ class _SettingsPageState extends State<SettingsPage> {
     }
   }
 
+  void _onFocusChanged() {
+    if (!_suppressAutosave && _hasPendingChanges) {
+      _scheduleAutosave(immediate: true);
+    }
+  }
+
   @override
   void dispose() {
+    FocusManager.instance.removeListener(_onFocusChanged);
     _saveTimer?.cancel();
     if (_hasPendingChanges) {
       final draft = _draftSettings();
       final revision = ++_draftRevision;
-      unawaited(_validateAndSave(draft, revision: revision, showErrors: false));
+      unawaited(
+        _validateAndSave(
+          draft,
+          revision: revision,
+          draftSignature: _settingsSignature(draft),
+          showErrors: false,
+        ),
+      );
     }
     _outputController.dispose();
     for (final controller in _battleNetControllers.values) {
@@ -279,6 +362,18 @@ class _SettingsPageState extends State<SettingsPage> {
     _steamIgnoredInputController.dispose();
     _steamCustomIdController.dispose();
     _steamCustomNameController.dispose();
+    _publishSiteTitleController.dispose();
+    _publishAuthorController.dispose();
+    _publishSiteUrlController.dispose();
+    _publishFooterController.dispose();
+    _publishHostController.dispose();
+    _publishPortController.dispose();
+    _publishUserController.dispose();
+    _publishRemotePathController.dispose();
+    _publishKeyPathController.dispose();
+    _publishFileModeController.dispose();
+    _publishDirectoryModeController.dispose();
+    _publishExcludedInputController.dispose();
     super.dispose();
   }
 
@@ -329,6 +424,13 @@ class _SettingsPageState extends State<SettingsPage> {
                     ),
                     child: SizedBox.shrink(),
                   ),
+                  FTabEntry(
+                    label: Text(
+                      'Publish',
+                      key: ValueKey('settings-tab-publish'),
+                    ),
+                    child: SizedBox.shrink(),
+                  ),
                 ],
               ),
               const SizedBox(height: 22),
@@ -360,7 +462,7 @@ class _SettingsPageState extends State<SettingsPage> {
                           onChange: (value) {
                             setState(() => _themeMode = value);
                             widget.controller.previewTheme(value);
-                            _scheduleAutosave();
+                            _scheduleAutosave(immediate: true);
                           },
                         ),
                       ],
@@ -412,6 +514,7 @@ class _SettingsPageState extends State<SettingsPage> {
                   ),
                 ),
               ],
+              if (_settingsTab == 3) ..._publishSections(context),
               if (_settingsTab == 2)
                 FCard(
                   key: const ValueKey('source-sort-Battle.net'),
@@ -580,7 +683,7 @@ class _SettingsPageState extends State<SettingsPage> {
                             enabled: true,
                             onChange: (value) {
                               setState(() => _hytaleDownloadCovers = value);
-                              _scheduleAutosave();
+                              _scheduleAutosave(immediate: true);
                             },
                           ),
                         ],
@@ -968,7 +1071,7 @@ class _SettingsPageState extends State<SettingsPage> {
                             enabled: true,
                             onChange: (value) {
                               setState(() => _steamDownloadCovers = value);
-                              _scheduleAutosave();
+                              _scheduleAutosave(immediate: true);
                             },
                           ),
                           const SizedBox(height: 12),
@@ -980,7 +1083,7 @@ class _SettingsPageState extends State<SettingsPage> {
                             enabled: true,
                             onChange: (value) {
                               setState(() => _steamOnlineGallery = value);
-                              _scheduleAutosave();
+                              _scheduleAutosave(immediate: true);
                             },
                           ),
                           if (_steamOnlineGallery) ...[
@@ -1122,6 +1225,496 @@ class _SettingsPageState extends State<SettingsPage> {
     );
   }
 
+  List<Widget> _publishSections(BuildContext context) {
+    return [
+      _sectionTitle(context, 'Publish'),
+      const SizedBox(height: 10),
+      FCard(
+        child: Padding(
+          padding: const EdgeInsets.all(20),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              _SwitchSetting(
+                switchKey: const ValueKey('publish-enabled'),
+                label: 'Publish the library as a website',
+                description:
+                    'Adds a Publish button to the sidebar that renders an '
+                    'HTML gallery and uploads it.',
+                value: _publishEnabled,
+                enabled: true,
+                onChange: (value) {
+                  setState(() => _publishEnabled = value);
+                  _scheduleAutosave(immediate: true);
+                },
+              ),
+              if (_publishEnabled) ...[
+                const SizedBox(height: 4),
+                const FDivider(),
+                const SizedBox(height: 4),
+                _SettingsSectionHeader(
+                  title: 'Site',
+                  description: 'What the rendered pages say about the site.',
+                  helpKey: const ValueKey('publish-site-help'),
+                  helpSemanticsLabel: 'Help with the published site',
+                  onHelp: _showPublishSiteHelp,
+                ),
+                const SizedBox(height: 12),
+                FTextField(
+                  key: const ValueKey('publish-site-title'),
+                  control: FTextFieldControl.managed(
+                    controller: _publishSiteTitleController,
+                  ),
+                  label: const Text('Site title'),
+                  hint: 'Games Screenshots',
+                ),
+                const SizedBox(height: 12),
+                FTextField(
+                  key: const ValueKey('publish-author'),
+                  control: FTextFieldControl.managed(
+                    controller: _publishAuthorController,
+                  ),
+                  label: const Text('Author'),
+                  hint: '@you',
+                  description: const Text(
+                    'Shown in the page heading and the social card text.',
+                  ),
+                ),
+                const SizedBox(height: 12),
+                FTextField(
+                  key: const ValueKey('publish-site-url'),
+                  control: FTextFieldControl.managed(
+                    controller: _publishSiteUrlController,
+                  ),
+                  label: const Text('Site address'),
+                  hint: 'https://screenshots.example.com',
+                  description: const Text(
+                    'Used for the social card links. Left empty, the pages '
+                    'carry no social card.',
+                  ),
+                ),
+                const SizedBox(height: 12),
+                FTextField(
+                  key: const ValueKey('publish-footer'),
+                  control: FTextFieldControl.managed(
+                    controller: _publishFooterController,
+                  ),
+                  label: const Text('Footer text'),
+                  hint: 'Be wary of spoilers!',
+                ),
+              ],
+            ],
+          ),
+        ),
+      ),
+      if (_publishEnabled) ...[
+        const SizedBox(height: 12),
+        FCard(
+          child: Padding(
+            padding: const EdgeInsets.all(20),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                _SettingsSectionHeader(
+                  title: 'Destination',
+                  description: 'The host the gallery is uploaded to over SSH.',
+                  helpKey: const ValueKey('publish-destination-help'),
+                  helpSemanticsLabel: 'Help with the publish destination',
+                  onHelp: _showPublishDestinationHelp,
+                ),
+                const SizedBox(height: 12),
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Expanded(
+                      flex: 3,
+                      child: FTextField(
+                        key: const ValueKey('publish-host'),
+                        control: FTextFieldControl.managed(
+                          controller: _publishHostController,
+                        ),
+                        label: const Text('Host'),
+                        hint: 'example.com',
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: FTextField(
+                        key: const ValueKey('publish-port'),
+                        control: FTextFieldControl.managed(
+                          controller: _publishPortController,
+                        ),
+                        label: const Text('Port'),
+                        hint: '22',
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 12),
+                FTextField(
+                  key: const ValueKey('publish-user'),
+                  control: FTextFieldControl.managed(
+                    controller: _publishUserController,
+                  ),
+                  label: const Text('User'),
+                  hint: 'deploy',
+                ),
+                const SizedBox(height: 12),
+                FTextField(
+                  key: const ValueKey('publish-remote-path'),
+                  control: FTextFieldControl.managed(
+                    controller: _publishRemotePathController,
+                  ),
+                  label: const Text('Remote folder'),
+                  hint: '/srv/staticsites/screenshots.example.com',
+                ),
+                const SizedBox(height: 16),
+                Text('Sign in with', style: context.theme.typography.body.sm),
+                const SizedBox(height: 8),
+                _PublishCredentialSelector(
+                  value: _publishCredential,
+                  onChange: (value) {
+                    setState(() => _publishCredential = value);
+                    _scheduleAutosave(immediate: true);
+                  },
+                ),
+                if (_publishCredential == PublishCredentialKind.manualKey) ...[
+                  const SizedBox(height: 12),
+                  _DirectoryField(
+                    fieldKey: const ValueKey('publish-key-path'),
+                    controller: _publishKeyPathController,
+                    label: 'SSH private key',
+                    hint: '~/.ssh/id_ed25519',
+                    error: _publishKeyPathError,
+                    buttonLabel: 'Choose',
+                    onBrowse: _choosePublishKey,
+                  ),
+                ],
+                const SizedBox(height: 6),
+                Text(
+                  '${switch (_publishCredential) {
+                    PublishCredentialKind.automaticKey => 'Your SSH agent and the usual keys under ~/.ssh are '
+                        'used, the same ones the ssh command would pick.',
+                    PublishCredentialKind.manualKey => 'Only this key is used.',
+                    PublishCredentialKind.password => 'The password is asked for when you publish.',
+                  }} A passphrase or password is kept in memory only, and is '
+                  'never saved.',
+                  style: context.theme.typography.body.xs.copyWith(
+                    color: context.theme.colors.mutedForeground,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+        const SizedBox(height: 12),
+        FCard(
+          child: Padding(
+            padding: const EdgeInsets.all(20),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                _SettingsSectionHeader(
+                  title: 'Transfer',
+                  description:
+                      'How the files get there and what they look like once '
+                      'they arrive.',
+                  helpKey: const ValueKey('publish-transfer-help'),
+                  helpSemanticsLabel: 'Help with the publish transfer',
+                  onHelp: _showPublishTransferHelp,
+                ),
+                const SizedBox(height: 12),
+                _PublishTransportSelector(
+                  value: _publishTransport,
+                  onChange: (value) {
+                    setState(() => _publishTransport = value);
+                    _scheduleAutosave(immediate: true);
+                  },
+                ),
+                const SizedBox(height: 16),
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Expanded(
+                      child: FTextField(
+                        key: const ValueKey('publish-file-mode'),
+                        control: FTextFieldControl.managed(
+                          controller: _publishFileModeController,
+                        ),
+                        label: const Text('File permissions'),
+                        hint: '644',
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: FTextField(
+                        key: const ValueKey('publish-directory-mode'),
+                        control: FTextFieldControl.managed(
+                          controller: _publishDirectoryModeController,
+                        ),
+                        label: const Text('Folder permissions'),
+                        hint: '755',
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 16),
+                _SwitchSetting(
+                  switchKey: const ValueKey('publish-delete-removed'),
+                  label: 'Mirror the library',
+                  description:
+                      'Remove anything on the host the gallery no longer '
+                      'holds, including albums you exclude below.',
+                  value: _publishDeleteRemoved,
+                  enabled: true,
+                  onChange: (value) {
+                    setState(() => _publishDeleteRemoved = value);
+                    _scheduleAutosave(immediate: true);
+                  },
+                ),
+              ],
+            ),
+          ),
+        ),
+        const SizedBox(height: 12),
+        FCard(
+          child: Padding(
+            padding: const EdgeInsets.all(20),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                _SettingsSectionHeader(
+                  title: 'Excluded albums',
+                  description:
+                      'Everything in the library is published except these.',
+                  helpKey: const ValueKey('publish-excluded-help'),
+                  helpSemanticsLabel: 'Help with excluded albums',
+                  onHelp: _showPublishExcludedHelp,
+                ),
+                const SizedBox(height: 12),
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.end,
+                  children: [
+                    Expanded(
+                      child: FTextField(
+                        key: const ValueKey('publish-excluded-input'),
+                        control: FTextFieldControl.managed(
+                          controller: _publishExcludedInputController,
+                        ),
+                        label: const Text('Platform or album'),
+                        hint: 'Steam/My Private Game',
+                        onSubmit: (_) => _addPublishExclusion(),
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    FButton(
+                      key: const ValueKey('publish-excluded-add'),
+                      variant: FButtonVariant.outline,
+                      mainAxisSize: MainAxisSize.min,
+                      onPress: _addPublishExclusion,
+                      prefix: const Icon(FLucideIcons.plus),
+                      child: const Text('Add'),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 10),
+                _PublishExclusionList(
+                  paths: _publishExcluded,
+                  onRemove: _removePublishExclusion,
+                ),
+              ],
+            ),
+          ),
+        ),
+      ],
+    ];
+  }
+
+  void _addPublishExclusion() {
+    final value = _publishExcludedInputController.text
+        .trim()
+        .replaceAll(r'\', '/')
+        .replaceAll(RegExp(r'^/+|/+$'), '');
+    if (value.isEmpty || _publishExcluded.contains(value)) {
+      return;
+    }
+    setState(() {
+      _publishExcluded.add(value);
+      _publishExcluded.sort();
+      _publishExcludedInputController.clear();
+    });
+    _scheduleAutosave(immediate: true);
+  }
+
+  void _removePublishExclusion(String value) {
+    setState(() => _publishExcluded.remove(value));
+    _scheduleAutosave(immediate: true);
+  }
+
+  Future<void> _choosePublishKey() async {
+    final String? path;
+    try {
+      path = await widget.controller.folderAccess.chooseFile(
+        FileChoiceRequest(
+          title: 'Choose the SSH private key to publish with',
+          // Keys live in ~/.ssh, so the chooser opens there and is told to
+          // show hidden entries; otherwise the folder cannot be reached at
+          // all.
+          initialPath: _sshDirectory(),
+          showHiddenFiles: true,
+        ),
+      );
+    } on FolderAccessException catch (error) {
+      if (mounted) {
+        setState(() => _publishKeyPathError = error.message);
+      }
+      return;
+    }
+    if (path == null || !mounted) {
+      return;
+    }
+    setState(() {
+      _publishKeyPathController.text = path!;
+      _publishKeyPathError = null;
+    });
+    _scheduleAutosave(immediate: true);
+  }
+
+  /// The user's `~/.ssh`, when it is there. Null lets the chooser open
+  /// wherever the platform would.
+  String? _sshDirectory() {
+    final home = widget.controller.sourcePaths.userHomeDirectory;
+    if (home == null || home.trim().isEmpty) {
+      return null;
+    }
+    final directory = Directory(p.join(home, '.ssh'));
+    return directory.existsSync() ? directory.path : home;
+  }
+
+  void _showPublishSiteHelp() {
+    _showHelpDialog(
+      keyPrefix: 'publish-site-help',
+      title: 'The published site',
+      summary:
+          'Gaming Memories renders one page per album, with the same layout, '
+          'filters and lightbox the gallery has on the web today.',
+      sections: const [
+        _HelpSection(
+          title: 'Where the pages go',
+          body:
+              'The pages are written to a folder of their own, so your library '
+              'is never written to. Publishing merges the two: pages from that '
+              'folder, captures and thumbnails from the library.',
+          steps: 'Nothing to do; it happens on each publish.',
+        ),
+      ],
+      footnote:
+          'The site address is only used for the social card links. Left '
+          'empty, the pages carry no social card.',
+    );
+  }
+
+  void _showPublishDestinationHelp() {
+    _showHelpDialog(
+      keyPrefix: 'publish-destination-help',
+      title: 'The publish destination',
+      summary:
+          'Gaming Memories connects over SSH and copies the gallery into the '
+          'remote folder your web server serves. It signs in one of three '
+          'ways.',
+      sections: const [
+        _HelpSection(
+          title: 'Automatic key',
+          body:
+              'Gaming Memories uses whatever this machine already has: a key '
+              'loaded into your SSH agent, and otherwise the usual identity '
+              'files under ~/.ssh. Nothing to configure, and a key held by '
+              'the agent never asks for its passphrase.',
+          steps: 'Leave it on Automatic key and publish.',
+        ),
+        _HelpSection(
+          title: 'Key file',
+          body:
+              'One key, and only that key. Useful for a deploy key kept apart '
+              'from the one you log in with. Only the path is saved, never '
+              'the key itself.',
+          steps: 'Select Choose and pick the key file.',
+        ),
+        _HelpSection(
+          title: 'Password',
+          body:
+              'For a host that has no key set up. The password is asked for '
+              'when you publish and kept in memory until the app closes; it '
+              'is never written to the settings file.',
+          steps:
+              'Publishing over a password always goes by SFTP, because rsync '
+              'cannot be given one without a terminal.',
+        ),
+      ],
+    );
+  }
+
+  void _showPublishTransferHelp() {
+    _showHelpDialog(
+      keyPrefix: 'publish-transfer-help',
+      title: 'How the files are sent',
+      summary:
+          'Automatic picks the faster uploader this machine can use safely.',
+      sections: const [
+        _HelpSection(
+          title: 'rsync or SFTP',
+          body:
+              'rsync is used when this machine has version 3 or newer and the '
+              'key needs no passphrase, because it compares the whole tree in '
+              'far fewer round trips. Otherwise the upload goes over SFTP, '
+              'which needs no external program and works on every platform.',
+          steps:
+              'Leave this on Automatic unless you want to force one of them.',
+        ),
+        _HelpSection(
+          title: 'Why openrsync is skipped',
+          body:
+              'The rsync macOS ships is openrsync. It accepts the flags a '
+              'mirrored publish needs and then ignores them, which would leave '
+              'captures you deleted on the host. Gaming Memories uses SFTP '
+              'instead rather than publish something wrong.',
+          steps: 'Install rsync 3 if you want the faster path on macOS.',
+        ),
+        _HelpSection(
+          title: 'Permissions',
+          body:
+              'The mode is applied as each file is written, so a web server '
+              'can read what has just arrived. 644 and 755 are what '
+              '"chmod -R u=rwX,go=rX" leaves behind.',
+          steps: 'Change them only if your server expects something else.',
+        ),
+      ],
+    );
+  }
+
+  void _showPublishExcludedHelp() {
+    _showHelpDialog(
+      keyPrefix: 'publish-excluded-help',
+      title: 'Excluded albums',
+      summary:
+          'Everything in the library is published except the paths listed '
+          'here.',
+      sections: const [
+        _HelpSection(
+          title: 'What a path looks like',
+          body:
+              'A path is relative to the library folder. "Steam" leaves out '
+              'the whole platform; "Steam/My Private Game" leaves out one '
+              'album.',
+          steps: 'Type the path and select Exclude.',
+        ),
+      ],
+      footnote:
+          'With mirroring on, excluding an album also removes it from the '
+          'host on the next publish.',
+    );
+  }
+
   Widget _sectionTitle(BuildContext context, String text) {
     return Text(
       text.toUpperCase(),
@@ -1205,6 +1798,7 @@ class _SettingsPageState extends State<SettingsPage> {
       _steamUseCustomPath = saved.steam.useCustomPath;
       _setFolderError(target, null);
     });
+    _persistedDraftSignature = _settingsSignature(_draftSettings());
   }
 
   Future<void> _chooseAutomaticDirectory(SettingsFolderTarget target) async {
@@ -1526,9 +2120,15 @@ class _SettingsPageState extends State<SettingsPage> {
 
   Future<void> _flushPendingChanges() async {
     _saveTimer?.cancel();
+    _saveTimer = null;
     if (_hasPendingChanges) {
+      final draft = _draftSettings();
       final revision = ++_draftRevision;
-      await _validateAndSave(_draftSettings(), revision: revision);
+      await _validateAndSave(
+        draft,
+        revision: revision,
+        draftSignature: _settingsSignature(draft),
+      );
     }
     await _saveQueue;
   }
@@ -1845,17 +2445,48 @@ class _SettingsPageState extends State<SettingsPage> {
       return;
     }
 
+    final draft = _draftSettings();
+    final signature = _settingsSignature(draft);
+    final timerIsActive = _saveTimer?.isActive ?? false;
+    if (signature == _pendingDraftSignature) {
+      if (!immediate || !timerIsActive) {
+        return;
+      }
+    } else if (signature == _persistedDraftSignature) {
+      if (_pendingDraftSignature == null) {
+        return;
+      }
+      if (timerIsActive) {
+        _saveTimer?.cancel();
+        _saveTimer = null;
+        _pendingDraftSignature = null;
+        _hasPendingChanges = false;
+        _draftRevision++;
+        return;
+      }
+    }
+
     _hasPendingChanges = true;
+    _pendingDraftSignature = signature;
     final revision = ++_draftRevision;
     _saveTimer?.cancel();
     _saveTimer = Timer(
       immediate ? Duration.zero : const Duration(milliseconds: 300),
       () {
-        final draft = _draftSettings();
-        unawaited(_validateAndSave(draft, revision: revision));
+        _saveTimer = null;
+        unawaited(
+          _validateAndSave(
+            draft,
+            revision: revision,
+            draftSignature: signature,
+          ),
+        );
       },
     );
   }
+
+  String _settingsSignature(AppSettings settings) =>
+      jsonEncode(settings.toJson());
 
   AppSettings _draftSettings() {
     return AppSettings(
@@ -1923,6 +2554,30 @@ class _SettingsPageState extends State<SettingsPage> {
           for (final game in _steamCustomGames) game.appId: game.name,
         }),
       ),
+      publish: PublishSettings(
+        enabled: _publishEnabled,
+        transport: _publishTransport,
+        site: PublishSiteSettings(
+          title: _publishSiteTitleController.text.trim(),
+          author: _publishAuthorController.text.trim(),
+          url: _publishSiteUrlController.text.trim(),
+          footerText: _publishFooterController.text.trim(),
+        ),
+        target: PublishTargetSettings(
+          host: _publishHostController.text.trim(),
+          port:
+              int.tryParse(_publishPortController.text.trim()) ??
+              PublishTargetSettings.defaultPort,
+          username: _publishUserController.text.trim(),
+          remotePath: _publishRemotePathController.text.trim(),
+          credential: _publishCredential,
+          keyPath: _publishKeyPathController.text.trim(),
+          fileMode: _publishFileModeController.text.trim(),
+          directoryMode: _publishDirectoryModeController.text.trim(),
+          deleteRemoved: _publishDeleteRemoved,
+        ),
+        excluded: List.unmodifiable(_publishExcluded),
+      ),
       folderGrants: widget.controller.settings.folderGrants,
     );
   }
@@ -1939,6 +2594,7 @@ class _SettingsPageState extends State<SettingsPage> {
   Future<void> _validateAndSave(
     AppSettings draft, {
     required int revision,
+    required String draftSignature,
     bool showErrors = true,
   }) async {
     final errors = await _validatePaths(draft);
@@ -1946,7 +2602,6 @@ class _SettingsPageState extends State<SettingsPage> {
       return;
     }
 
-    _hasPendingChanges = false;
     if (showErrors && mounted) {
       _showPathErrors(errors);
     }
@@ -2022,16 +2677,33 @@ class _SettingsPageState extends State<SettingsPage> {
         ignoredGames: draft.steam.ignoredGames,
         customGames: draft.steam.customGames,
       ),
+      // Publishing has no path this pass validates, so the draft goes
+      // through whole.
+      publish: draft.publish,
       folderGrants: saved.folderGrants,
     );
 
+    var processed = false;
     _saveQueue = _saveQueue.then((_) async {
-      await widget.controller.updateSettings(
+      if (draftSignature == _persistedDraftSignature) {
+        processed = true;
+        return;
+      }
+      final saved = await widget.controller.updateSettings(
         safeSettings,
         sourceErrors: sourceErrors,
       );
+      if (saved) {
+        _persistedDraftSignature = draftSignature;
+        processed = true;
+      }
     });
     await _saveQueue;
+    final isLatestDraft = _pendingDraftSignature == draftSignature;
+    if (isLatestDraft) {
+      _pendingDraftSignature = null;
+      _hasPendingChanges = false;
+    }
     if (mounted) {
       final saved = widget.controller.settings;
       final validationErrors = widget.controller.sourceValidationErrors;
@@ -2059,6 +2731,9 @@ class _SettingsPageState extends State<SettingsPage> {
           );
         }
       });
+      if (processed && isLatestDraft) {
+        _persistedDraftSignature = _settingsSignature(_draftSettings());
+      }
     }
   }
 
@@ -2312,7 +2987,7 @@ class _SettingsPageState extends State<SettingsPage> {
       _steamIgnoredGames.add(appId);
       _steamIgnoredInputController.clear();
     });
-    _scheduleAutosave();
+    _scheduleAutosave(immediate: true);
   }
 
   void _addNintendoSwitchIgnoredFolder() {
@@ -2325,12 +3000,12 @@ class _SettingsPageState extends State<SettingsPage> {
       _nintendoSwitchIgnoredFolders.add(folder);
       _nintendoSwitchIgnoredInputController.clear();
     });
-    _scheduleAutosave();
+    _scheduleAutosave(immediate: true);
   }
 
   void _removeNintendoSwitchIgnoredFolder(String folder) {
     setState(() => _nintendoSwitchIgnoredFolders.remove(folder));
-    _scheduleAutosave();
+    _scheduleAutosave(immediate: true);
   }
 
   void _addNintendoSwitch2IgnoredFolder() {
@@ -2343,17 +3018,17 @@ class _SettingsPageState extends State<SettingsPage> {
       _nintendoSwitch2IgnoredFolders.add(folder);
       _nintendoSwitch2IgnoredInputController.clear();
     });
-    _scheduleAutosave();
+    _scheduleAutosave(immediate: true);
   }
 
   void _removeNintendoSwitch2IgnoredFolder(String folder) {
     setState(() => _nintendoSwitch2IgnoredFolders.remove(folder));
-    _scheduleAutosave();
+    _scheduleAutosave(immediate: true);
   }
 
   void _removeIgnoredGame(String appId) {
     setState(() => _steamIgnoredGames.remove(appId));
-    _scheduleAutosave();
+    _scheduleAutosave(immediate: true);
   }
 
   void _addCustomGame() {
@@ -2374,14 +3049,14 @@ class _SettingsPageState extends State<SettingsPage> {
       _steamCustomIdController.clear();
       _steamCustomNameController.clear();
     });
-    _scheduleAutosave();
+    _scheduleAutosave(immediate: true);
   }
 
   void _removeCustomGame(String appId) {
     setState(
       () => _steamCustomGames.removeWhere((game) => game.appId == appId),
     );
-    _scheduleAutosave();
+    _scheduleAutosave(immediate: true);
   }
 }
 
@@ -2526,6 +3201,156 @@ class _SettingsSectionHeader extends StatelessWidget {
           ),
         ),
       ],
+    );
+  }
+}
+
+/// Picks the uploader, the same shape as the colour-mode selector above.
+/// Picks how the publish signs in.
+class _PublishCredentialSelector extends StatelessWidget {
+  const _PublishCredentialSelector({
+    required this.value,
+    required this.onChange,
+  });
+
+  final PublishCredentialKind value;
+  final ValueChanged<PublishCredentialKind> onChange;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        for (final kind in PublishCredentialKind.values) ...[
+          if (kind != PublishCredentialKind.automaticKey)
+            const SizedBox(width: 10),
+          Expanded(
+            child: FButton(
+              key: ValueKey('publish-credential-${kind.name}'),
+              variant: value == kind
+                  ? FButtonVariant.primary
+                  : FButtonVariant.outline,
+              onPress: () => onChange(kind),
+              prefix: Icon(switch (kind) {
+                PublishCredentialKind.automaticKey => FLucideIcons.wand,
+                PublishCredentialKind.manualKey => FLucideIcons.key,
+                PublishCredentialKind.password => FLucideIcons.asterisk,
+              }),
+              child: Flexible(
+                child: Text(
+                  switch (kind) {
+                    PublishCredentialKind.automaticKey => 'Automatic key',
+                    PublishCredentialKind.manualKey => 'Key file',
+                    PublishCredentialKind.password => 'Password',
+                  },
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+            ),
+          ),
+        ],
+      ],
+    );
+  }
+}
+
+class _PublishTransportSelector extends StatelessWidget {
+  const _PublishTransportSelector({
+    required this.value,
+    required this.onChange,
+  });
+
+  final PublishTransportKind value;
+  final ValueChanged<PublishTransportKind> onChange;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        for (final kind in PublishTransportKind.values) ...[
+          if (kind != PublishTransportKind.auto) const SizedBox(width: 10),
+          Expanded(
+            child: FButton(
+              key: ValueKey('publish-transport-${kind.name}'),
+              variant: value == kind
+                  ? FButtonVariant.primary
+                  : FButtonVariant.outline,
+              onPress: () => onChange(kind),
+              prefix: Icon(switch (kind) {
+                PublishTransportKind.auto => FLucideIcons.wand,
+                PublishTransportKind.rsync => FLucideIcons.zap,
+                PublishTransportKind.sftp => FLucideIcons.lock,
+              }),
+              child: Flexible(
+                child: Text(
+                  switch (kind) {
+                    PublishTransportKind.auto => 'Automatic',
+                    PublishTransportKind.rsync => 'rsync',
+                    PublishTransportKind.sftp => 'SFTP',
+                  },
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+            ),
+          ),
+        ],
+      ],
+    );
+  }
+}
+
+class _PublishExclusionList extends StatelessWidget {
+  const _PublishExclusionList({required this.paths, required this.onRemove});
+
+  final List<String> paths;
+  final ValueChanged<String> onRemove;
+
+  @override
+  Widget build(BuildContext context) {
+    if (paths.isEmpty) {
+      return Text(
+        'The whole library is published.',
+        style: context.theme.typography.body.sm.copyWith(
+          color: context.theme.colors.mutedForeground,
+        ),
+      );
+    }
+
+    return Container(
+      decoration: BoxDecoration(
+        border: Border.all(color: context.theme.colors.border),
+        borderRadius: BorderRadius.circular(10),
+      ),
+      child: Column(
+        children: [
+          for (var index = 0; index < paths.length; index++) ...[
+            if (index > 0)
+              Divider(height: 1, color: context.theme.colors.border),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(12, 6, 6, 6),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      paths[index],
+                      style: context.theme.typography.body.sm,
+                    ),
+                  ),
+                  FButton.icon(
+                    key: ValueKey('publish-excluded-remove-${paths[index]}'),
+                    variant: FButtonVariant.ghost,
+                    size: FButtonSizeVariant.sm,
+                    semanticsLabel: 'Stop excluding ${paths[index]}',
+                    onPress: () => onRemove(paths[index]),
+                    child: const Icon(FLucideIcons.x),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ],
+      ),
     );
   }
 }

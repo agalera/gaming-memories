@@ -4,7 +4,7 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <meta name="theme-color" content="#ffffff">
-    <meta name="description" content="Install and use Gaming Memories on Windows, macOS, and Linux.">
+    <meta name="description" content="Install Gaming Memories, connect each source, and publish your library on Windows, macOS, and Linux.">
     <title>Documentation — Gaming Memories</title>
     <link rel="icon" href="assets/favicon.png" type="image/png">
     <script src="theme-init.js"></script>
@@ -25,7 +25,7 @@
       <div class="shell">
         <p class="kicker">Documentation</p>
         <h1>Set up your library.</h1>
-        <p>Install Gaming Memories, connect each source, and keep your capture library easy to browse.</p>
+        <p>Install Gaming Memories, connect each source, and publish your library as a website.</p>
       </div>
     </div>
 
@@ -41,6 +41,8 @@
           <a href="#steam">Steam</a>
           <a href="#pc-games">PC games</a>
           <a href="#consoles">Consoles</a>
+          <b>Publish</b>
+          <a href="#publish">Publish your gallery</a>
           <b>Reference</b>
           <a href="#tools">Optional tools</a>
           <a href="#library">Library format</a>
@@ -175,17 +177,60 @@
           <p>FFprobe gives more accurate start dates for PlayStation 5 clips.</p>
         </section>
 
+        <section id="publish">
+          <div class="doc-heading"><span>08</span><div><p class="kicker">Publish</p><h2>Publish your gallery</h2></div></div>
+          <p>Gaming Memories can render your library as a static website and upload it to a host you control. Every album becomes one page, with folder tiles, a screenshot and clip filter, a sort control, and a lightbox.</p>
+          <p>Opening a capture shows the date it was taken, read from its file name where the source writes one there and from the file itself where it does not.</p>
+          <p>Every tile takes the shape of the image in it. A wide store banner, a square console cover, a 16:9 capture and a Game Boy's 10:9 one each appear whole, so nothing is cut off to fit a shape the page picked.</p>
+          <p>The pages are written to a folder of the app's own. Your library is never written to. The upload merges the two: captures and thumbnails from the library first, then the pages from that folder. A page never arrives before the media it links to, so the site stays usable during a publish.</p>
+
+          <h3>Turn it on</h3>
+          <ol class="doc-steps">
+            <li><span>1</span><div><h3>Open the Publish tab</h3><p>Select <strong>Settings</strong>, then <strong>Publish</strong>. Enable <strong>Publish the library as a website</strong>.</p></div></li>
+            <li><span>2</span><div><h3>Describe the site</h3><p>Enter the site title, author, address, and footer text. The address is used for social card links.</p></div></li>
+            <li><span>3</span><div><h3>Enter the destination</h3><p>Enter the host, port, user, and the remote folder your web server serves.</p></div></li>
+            <li><span>4</span><div><h3>Publish</h3><p>Select <strong>Publish</strong> in the sidebar, above <strong>Settings</strong>.</p></div></li>
+          </ol>
+          <p>While a publish runs, the button becomes a progress panel with a stop control. Stopping ends the file in flight. Nothing is removed from the host after a stop.</p>
+
+          <h3>Sign in</h3>
+          <div class="table-wrap"><table><thead><tr><th>Choice</th><th>What it uses</th></tr></thead><tbody>
+            <tr><td>Automatic key</td><td>What this computer already has, the same way <code>ssh</code> finds it.</td></tr>
+            <tr><td>Key file</td><td>One key you select, and only that key.</td></tr>
+            <tr><td>Password</td><td>The account password on the host.</td></tr>
+          </tbody></table></div>
+          <p>Automatic is the default and needs no setup. It reads <code>~/.ssh/config</code> for the host and uses <code>IdentityAgent</code>, <code>IdentityFile</code>, and <code>IdentitiesOnly</code>. An agent set up that way is found even though a desktop app receives no <code>SSH_AUTH_SOCK</code> value from your shell. Without those, the app uses <code>SSH_AUTH_SOCK</code> and then the usual <code>~/.ssh/id_ed25519</code>, <code>id_ecdsa</code>, <code>id_rsa</code>, and <code>id_dsa</code> files.</p>
+          <div class="doc-callout info"><b>No secret is stored</b><p>The app saves the path to a key file only. A passphrase or password is requested at publish time and kept in memory until the app closes.</p></div>
+
+          <h3>Host keys</h3>
+          <p>The first publish to a host accepts its key and remembers it. A later change is refused and nothing is uploaded. A host that <code>~/.ssh/known_hosts</code> already holds is accepted without a new record.</p>
+          <div class="doc-callout warning"><b>A refused host key</b><p>The server was rebuilt, or another machine answers for that name. Confirm the new fingerprint before you publish again.</p></div>
+
+          <h3>Transfer</h3>
+          <p><strong>Automatic</strong> uses rsync when this computer has version 3 or newer and no passphrase is required. Otherwise the upload uses SFTP, which needs no other program and works on every platform. A password always uses SFTP.</p>
+          <div class="doc-callout warning"><b>The rsync in macOS</b><p>macOS ships openrsync. It accepts the options a mirrored publish needs and then ignores them, so Gaming Memories uses SFTP instead. Install rsync 3 for the faster path.</p></div>
+          <p>File and folder permissions are applied during the upload. <code>644</code> and <code>755</code> match <code>chmod -R u=rwX,go=rX</code>.</p>
+
+          <h3>What is published</h3>
+          <p>The whole library is published, except the platforms and albums in <strong>Excluded albums</strong>. A path there is relative to the library folder, such as <code>Steam</code> or <code>Steam/My Private Game</code>.</p>
+          <p>With <strong>Mirror the library</strong> enabled, anything the gallery no longer holds is removed from the host as well.</p>
+          <p>Platform tiles use covers included with the app for Android, Game Boy, Game Boy Advance, Game Boy Color, Nintendo Switch, Nintendo Switch 2, PC, Pico-8, PlayStation 4, PlayStation 5, and Super Nintendo. A <code>cover.*</code> file in a platform folder replaces the included cover.</p>
+          <p>Each page carries a light and a dark theme and follows the reader's system setting. There is nothing to press.</p>
+          <p>The gallery also publishes <code>gaming-memories.webp</code> at its root, which is the logo the page footers show.</p>
+        </section>
+
         <section id="tools">
-          <div class="doc-heading"><span>08</span><div><p class="kicker">Reference</p><h2>Optional tools</h2></div></div>
+          <div class="doc-heading"><span>09</span><div><p class="kicker">Reference</p><h2>Optional tools</h2></div></div>
           <div class="table-wrap"><table><thead><tr><th>Tool</th><th>Purpose</th><th>Result without the tool</th></tr></thead><tbody>
             <tr><td>FFmpeg</td><td>Create video thumbnails</td><td>The app uses existing thumbnail sidecar files.</td></tr>
             <tr><td>FFprobe</td><td>Read video duration and clip start time</td><td>Videos still play, but some details can be absent.</td></tr>
             <tr><td>libmtp tools</td><td>Read Nintendo Switch and Nintendo Switch 2 media through USB on Linux</td><td>Use a copied album folder.</td></tr>
+            <tr><td>rsync 3 or newer</td><td>Upload a published gallery faster</td><td>The upload uses SFTP, which needs no other program.</td></tr>
           </tbody></table></div>
         </section>
 
         <section id="library">
-          <div class="doc-heading"><span>09</span><div><p class="kicker">Reference</p><h2>Library format</h2></div></div>
+          <div class="doc-heading"><span>10</span><div><p class="kicker">Reference</p><h2>Library format</h2></div></div>
           <p>The library uses normal folders. You can browse it without the app.</p>
           <pre><code>Gaming Memories/
 ├── PC/
@@ -200,11 +245,13 @@
         </section>
 
         <section id="troubleshoot">
-          <div class="doc-heading"><span>10</span><div><p class="kicker">Help</p><h2>Troubleshoot issues</h2></div></div>
+          <div class="doc-heading"><span>11</span><div><p class="kicker">Help</p><h2>Troubleshoot issues</h2></div></div>
           <div class="trouble-list">
             <details open><summary>The source finds no captures.<span>+</span></summary><div><p>Check these items:</p><ul><li>The source is enabled.</li><li>The selected folder exists.</li><li>The folder contains a supported file type.</li><li>macOS folder access is active.</li></ul></div></details>
             <details><summary>A video has no thumbnail.<span>+</span></summary><div><p>Install FFmpeg. Start a new scan after the installation.</p></div></details>
             <details><summary>Nintendo Switch USB access fails on Linux.<span>+</span></summary><div><p>Install the libmtp tools. Close any file manager that uses the console.</p></div></details>
+            <details><summary>A publish reports a refused host key.<span>+</span></summary><div><p>The host answers with a different key than the one recorded on the first publish. Confirm the fingerprint with the server owner. The server was rebuilt, or another machine answers for that name.</p></div></details>
+            <details><summary>A publish finds no SSH key.<span>+</span></summary><div><p>Add the key to your SSH agent, name it with <code>IdentityFile</code> in <code>~/.ssh/config</code>, or select <strong>Key file</strong> in the Publish settings.</p></div></details>
             <details><summary>A SmartScreen warning appears on Windows.<span>+</span></summary><div><p>The Windows build has no code signature. Select <strong>More info</strong>. Select <strong>Run anyway</strong>.</p></div></details>
           </div>
           <h3>Diagnostic log</h3>
@@ -213,7 +260,7 @@
         </section>
 
         <section id="source-build">
-          <div class="doc-heading"><span>11</span><div><p class="kicker">Development</p><h2>Build from source</h2></div></div>
+          <div class="doc-heading"><span>12</span><div><p class="kicker">Development</p><h2>Build from source</h2></div></div>
           <p>Install Flutter 3.47.0 or newer. Install FVM and the Flutter desktop tools for your platform.</p>
           <div class="code-block"><pre><code>git clone https://github.com/fmartingr/gaming-memories.git
 cd gaming-memories
@@ -226,7 +273,7 @@ make run</code></pre><button class="copy-button" type="button" aria-label="Copy 
 
       <aside class="docs-on-page">
         <b>On this page</b>
-        <a href="#install">Install</a><a href="#first-run">First run</a><a href="#collect">Collect</a><a href="#battle-net">Battle.net</a><a href="#steam">Steam</a><a href="#pc-games">PC games</a><a href="#consoles">Consoles</a><a href="#tools">Tools</a><a href="#troubleshoot">Help</a>
+        <a href="#install">Install</a><a href="#first-run">First run</a><a href="#collect">Collect</a><a href="#battle-net">Battle.net</a><a href="#steam">Steam</a><a href="#pc-games">PC games</a><a href="#consoles">Consoles</a><a href="#publish">Publish</a><a href="#tools">Tools</a><a href="#troubleshoot">Help</a>
       </aside>
     </div>
 

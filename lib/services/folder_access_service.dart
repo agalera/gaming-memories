@@ -54,10 +54,29 @@ class FolderAccessException implements Exception {
   String toString() => message;
 }
 
+/// What a file chooser is opened for.
+class FileChoiceRequest {
+  const FileChoiceRequest({
+    required this.title,
+    this.initialPath,
+    this.showHiddenFiles = false,
+  });
+
+  final String title;
+  final String? initialPath;
+
+  /// SSH keys live in `~/.ssh`, which a chooser hides unless asked.
+  final bool showHiddenFiles;
+}
+
 abstract interface class FolderAccessService {
   bool get requiresPersistentGrant;
 
   Future<FolderAccessLease?> choose(FolderAccessRequest request);
+
+  /// Opens a file chooser and returns the selected path, or null when it was
+  /// dismissed.
+  Future<String?> chooseFile(FileChoiceRequest request);
 
   Future<FolderAccessLease> activate(FolderGrant grant);
 
@@ -79,6 +98,36 @@ Future<String?> chooseDirectoryWithFilePicker(FolderAccessRequest request) {
     dialogTitle: request.title,
     initialDirectory: request.initialPath,
   );
+}
+
+/// Opens a file chooser for [request] and returns the selected path, or null
+/// when it was dismissed.
+typedef FileChooser = Future<String?> Function(FileChoiceRequest request);
+
+Future<String?> chooseFileWithFilePicker(FileChoiceRequest request) async {
+  final picked = await FilePicker.pickFile(
+    dialogTitle: request.title,
+    initialDirectory: request.initialPath,
+  );
+  return picked?.path;
+}
+
+// The same entitlement problem as the folder chooser, and the same answer:
+// the Runner's own panel. It can also be told to show hidden files, which
+// file_picker cannot, and without that `~/.ssh` is out of reach.
+Future<String?> chooseFileWithOpenPanel(FileChoiceRequest request) async {
+  try {
+    return await _folderAccessChannel.invokeMethod<String>('chooseFile', {
+      'title': request.title,
+      'initialPath': request.initialPath,
+      'showHiddenFiles': request.showHiddenFiles,
+    });
+  } on PlatformException catch (error) {
+    throw FolderAccessException(
+      error.code,
+      error.message ?? 'macOS could not open the file chooser.',
+    );
+  }
 }
 
 // file_picker refuses to open its macOS panel unless the app declares the App
@@ -112,15 +161,24 @@ FolderAccessService createFolderAccessService() {
     chooseDirectory: Platform.isMacOS
         ? chooseDirectoryWithOpenPanel
         : chooseDirectoryWithFilePicker,
+    chooseFilePath: Platform.isMacOS
+        ? chooseFileWithOpenPanel
+        : chooseFileWithFilePicker,
   );
 }
 
 class PathFolderAccessService implements FolderAccessService {
   const PathFolderAccessService({
     this.chooseDirectory = chooseDirectoryWithFilePicker,
+    this.chooseFilePath = chooseFileWithFilePicker,
   });
 
   final DirectoryChooser chooseDirectory;
+  final FileChooser chooseFilePath;
+
+  @override
+  Future<String?> chooseFile(FileChoiceRequest request) =>
+      chooseFilePath(request);
 
   @override
   bool get requiresPersistentGrant => false;
@@ -165,6 +223,10 @@ class MacOSFolderAccessService implements FolderAccessService {
 
   @override
   bool get requiresPersistentGrant => true;
+
+  @override
+  Future<String?> chooseFile(FileChoiceRequest request) =>
+      chooseFileWithOpenPanel(request);
 
   @override
   Future<FolderAccessLease?> choose(FolderAccessRequest request) async {

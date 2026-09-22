@@ -2094,6 +2094,11 @@ class _FakeFolderAccess implements FolderAccessService {
   bool get requiresPersistentGrant => true;
 
   @override
+  Future<String?> chooseFile(FileChoiceRequest request) async => chosenFilePath;
+
+  String? chosenFilePath;
+
+  @override
   Future<FolderAccessLease?> choose(FolderAccessRequest request) async {
     requests.add(request);
     return chosen;

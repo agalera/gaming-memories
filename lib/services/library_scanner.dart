@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:path/path.dart' as p;
 
 import '../models/library.dart';
+import 'capture_date.dart';
 import 'thumbnail_service.dart';
 import 'video_metadata_service.dart';
 
@@ -19,13 +20,6 @@ class LibraryScanner {
 
   static const _imageExtensions = {'.jpg', '.jpeg', '.png', '.webp'};
   static const _videoExtensions = {'.mp4', '.avi', '.mkv', '.webm'};
-  static final _datePattern = RegExp(
-    r'^(\d{4})-(\d{2})-(\d{2})_(\d{2})-(\d{2})-(\d{2})',
-  );
-  static final _compactDatePattern = RegExp(
-    r'^(\d{4})(\d{2})(\d{2})(\d{2})(\d{2})(\d{2})',
-  );
-
   Future<MediaLibrary> scan(String outputPath) async {
     if (outputPath.trim().isEmpty) {
       return const MediaLibrary.empty();
@@ -528,27 +522,7 @@ class LibraryScanner {
     return p.basenameWithoutExtension(path).toLowerCase() == 'cover';
   }
 
-  DateTime? _dateFromName(String path) {
-    final name = p.basename(path);
-    final match =
-        _datePattern.firstMatch(name) ?? _compactDatePattern.firstMatch(name);
-    if (match == null) {
-      return null;
-    }
-
-    try {
-      return DateTime(
-        int.parse(match.group(1)!),
-        int.parse(match.group(2)!),
-        int.parse(match.group(3)!),
-        int.parse(match.group(4)!),
-        int.parse(match.group(5)!),
-        int.parse(match.group(6)!),
-      );
-    } on FormatException {
-      return null;
-    }
-  }
+  DateTime? _dateFromName(String path) => capturedAtFromName(p.basename(path));
 }
 
 String expandUserPath(String path) {
