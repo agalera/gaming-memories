@@ -132,6 +132,7 @@
             <li>Review each detected game folder.</li>
             <li>Use a custom folder when automatic detection finds no match.</li>
           </ol>
+          <p>On Windows, Diablo IV screenshots are read from <code>Pictures\Diablo IV</code> and <code>Documents\Diablo IV\Screenshots</code>. On macOS, automatic World of Warcraft detection asks for access to its installation folder.</p>
           <p>The source converts TGA screenshots to PNG. JPG and PNG screenshots keep the date from their file name.</p>
         </section>
 
@@ -139,8 +140,10 @@
           <div class="doc-heading"><span>05</span><div><p class="kicker">Sources</p><h2>Steam</h2></div></div>
           <h3>Local screenshots</h3>
           <p>Steam can find the local <code>userdata</code> folder. You can also select that folder yourself.</p>
+          <h3>Steam Web API key</h3>
+          <p>Every Steam import needs a <a href="https://steamcommunity.com/dev/apikey">Steam Web API key</a>. Without it, albums keep their numeric app ID as a name and no online screenshot is imported.</p>
           <h3>Online gallery</h3>
-          <p>The online gallery requires a Steam Web API key and a SteamID64 value.</p>
+          <p>The online gallery also requires a SteamID64 value.</p>
           <ol>
             <li>Open the Steam source in <strong>Settings</strong>.</li>
             <li>Enable <strong>Online gallery</strong>.</li>
@@ -148,13 +151,16 @@
             <li>Enter your Steam Web API key.</li>
             <li>Save the source settings.</li>
           </ol>
+          <h3>Ignored and custom apps</h3>
+          <p>An app ID in <strong>Ignored apps</strong> gets no album, and its screenshots are never copied. Use it for tools, launchers, or games you do not want in the library.</p>
+          <p>A name in <strong>Custom apps</strong> replaces the name Steam reports for an app ID. Non-Steam shortcuts, betas, and delisted games need one for a readable album title. The name applies to existing albums on the next import.</p>
           <div class="doc-callout warning"><b>Protect your API key</b><p>Do not share the key. Gaming Memories stores it in the local settings file.</p></div>
         </section>
 
         <section id="pc-games">
           <div class="doc-heading"><span>06</span><div><p class="kicker">Sources</p><h2>PC games</h2></div></div>
           <div class="reference-grid">
-            <article><h3>Hytale</h3><p>The app checks <code>Pictures/Hytale Screenshots</code> on macOS and Linux. A custom folder works on all platforms.</p></article>
+            <article><h3>Hytale</h3><p>The app checks <code>Pictures/Hytale Screenshots</code> on macOS and Linux. A custom folder works on all platforms. The source can save the included cover in the album.</p></article>
             <article><h3>Minecraft</h3><p>The app checks common launcher folders. It also supports two common Flatpak folder layouts on Linux.</p></article>
             <article><h3>Guild Wars 2</h3><p>Select the game screenshot folder. The source uses each file date for the capture date.</p></article>
           </div>
@@ -171,10 +177,11 @@
             <li>Close any file manager that uses the console.</li>
             <li>Start a scan in Gaming Memories.</li>
           </ol>
-          <p>The source imports original <code>_s.jpg</code> and <code>_s.mp4</code> files. It ignores duplicate <code>_c</code> files.</p>
+          <p>USB collection needs the <code>mtp-folders</code>, <code>mtp-files</code>, and <code>mtp-connect</code> commands. Only one program can use the console at a time. Collect from one console at a time, because the libmtp tools answer for the first console they open.</p>
+          <p>The source imports original <code>_s.jpg</code> and <code>_s.mp4</code> files. It ignores duplicate <code>_c</code> files. You can exclude single album folders in Settings, including the folder for captures taken outside a game.</p>
           <h3>PlayStation 4 and PlayStation 5</h3>
           <p>Copy each console export to your computer. Select the export folder in the related source settings.</p>
-          <p>FFprobe gives more accurate start dates for PlayStation 5 clips.</p>
+          <p>With FFprobe, a PlayStation 5 clip is dated from its start. Without it, the clip uses the end time in its file name.</p>
         </section>
 
         <section id="publish">

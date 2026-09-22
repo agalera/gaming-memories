@@ -54,6 +54,9 @@ platform and game, or open a capture for a closer look without leaving the app.
 | **PlayStation 5** | Folder exported from the console | FFprobe recommended for clip dates |
 | **Steam** | Local screenshots and the optional online gallery | Steam Web API key; SteamID64 for online imports |
 
+Each source's setup and behavior is described in the
+[documentation](https://fmartingr.github.io/gaming-memories/docs.html).
+
 ## Download and Install
 
 Every release publishes a build for each desktop platform on the
@@ -158,47 +161,6 @@ piece of metadata or collection behavior.
 | **FFprobe** | Reading video duration and the start time of PlayStation 5 clips | Videos still play; PlayStation 5 clips use the end time in their filename |
 | **libmtp** | Collecting directly from a Nintendo Switch or Nintendo Switch 2 over USB on Linux | Import a copied album folder instead |
 
-For direct Nintendo Switch collection, install the `mtp-folders`,
-`mtp-files`, and `mtp-connect` commands. Open **Album** on the console, choose
-**Copy to a Computer**, connect it by USB, and close or eject it from any file
-manager first. Only one program can use the MTP device at a time.
-
-## Source Notes
-
-### Battle.net
-
-Battle.net discovers installed Diablo IV and World of Warcraft variants and
-imports each game into its own album. On Windows, Diablo IV screenshots are
-read from:
-
-- `Pictures\Diablo IV`
-- `Documents\Diablo IV\Screenshots`
-
-On macOS, automatic World of Warcraft discovery asks for access to its
-installation folder. JPG and PNG screenshots keep the date from their
-filename; TGA screenshots are converted to PNG for gallery compatibility.
-
-### Hytale and Minecraft
-
-Hytale is discovered automatically on macOS and Linux in
-`Pictures/Hytale Screenshots`, and its source can save the bundled cover in
-the library album.
-
-Minecraft launcher screenshots are discovered on Windows, macOS, and Linux.
-Both supported Flatpak screenshot layouts are included on Linux.
-
-### Consoles
-
-Nintendo Switch and Nintendo Switch 2 each have their own source, and both
-import original `_s.jpg` screenshots and `_s.mp4` clips while ignoring `_c`
-duplicates. Individual album folders, including the folder for captures taken
-outside a game, can be excluded in Settings. Collect from one console at a
-time: the libmtp tools answer for whichever console they open first.
-
-PlayStation 4 and PlayStation 5 use folders exported from the console. When
-FFprobe is available, the PlayStation 5 source dates a clip from its start
-rather than the end time stored in its filename.
-
 ## Publishing
 
 Gaming Memories can render the library as a static website and upload it to a
@@ -222,8 +184,8 @@ platform with neither falls back to a capture from below it. Game albums keep
 using the cover their source saved beside them.
 
 The whole library is published, minus the platforms and albums listed under
-**Excluded albums**. With mirroring on, anything the gallery no longer holds is
-removed from the host too.
+**Excluded albums**. With **Mirror the library** on, anything the gallery no
+longer holds is removed from the host too.
 
 ### Connecting
 
@@ -294,11 +256,12 @@ Run the complete formatting, analysis, and test suite with:
 make check
 ```
 
-Use `make help` to see every available development and build command.
-
 Use `make help` to see every available development and build command,
 including the `package-linux`, `package-macos`, and `package-windows` targets
-that produce the release artifacts. [docs/releasing.md](docs/releasing.md)
+that produce the release artifacts. `make gallery-preview LIBRARY=<folder>`
+renders a library as the published gallery and serves it on
+`http://127.0.0.1:8145`; set `PORT` to use another one.
+[docs/releasing.md](docs/releasing.md)
 describes how a release is cut and which secrets the workflow needs.
 
 ## License
