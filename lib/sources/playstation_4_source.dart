@@ -7,12 +7,12 @@ import '../services/folder_access_service.dart';
 import '../services/library_scanner.dart';
 import '../services/media_importer.dart';
 import 'playstation_media.dart';
-import 'screenshot_provider.dart';
+import 'screenshot_source.dart';
 
-class PlayStation4Provider
+class PlayStation4Source
     with SingleFolderRequirement
-    implements FolderBackedScreenshotProvider {
-  const PlayStation4Provider({this.importer = const MediaImporter()});
+    implements FolderBackedScreenshotSource {
+  const PlayStation4Source({this.importer = const MediaImporter()});
 
   final MediaImporter importer;
 
@@ -29,11 +29,11 @@ class PlayStation4Provider
   bool isEnabled(AppSettings settings) => settings.playStation4.enabled;
 
   @override
-  ProviderFolderRequirement? folderRequirement(AppSettings settings) {
+  SourceFolderRequirement? folderRequirement(AppSettings settings) {
     final path = settings.playStation4.sourcePath.trim();
     return path.isEmpty
         ? null
-        : ProviderFolderRequirement(
+        : SourceFolderRequirement(
             id: folderGrantId,
             path: expandUserPath(path),
             automatic: false,
@@ -79,7 +79,7 @@ class PlayStation4Provider
     }
 
     onProgress?.call(
-      const ProviderProgress(message: 'Scanning PlayStation 4 media…'),
+      const SourceProgress(message: 'Scanning PlayStation 4 media…'),
     );
     final files = await source
         .list(recursive: true, followLinks: false)
@@ -93,7 +93,7 @@ class PlayStation4Provider
     for (var index = 0; index < files.length; index++) {
       final file = files[index];
       onProgress?.call(
-        ProviderProgress(
+        SourceProgress(
           message: 'Importing PlayStation 4 media…',
           completed: index,
           total: files.length,
@@ -135,13 +135,13 @@ class PlayStation4Provider
     }
 
     onProgress?.call(
-      ProviderProgress(
+      SourceProgress(
         message: 'Processed PlayStation 4 media.',
         completed: files.length,
         total: files.length,
       ),
     );
-    return ImportResult(provider: name, imported: imported, skipped: skipped);
+    return ImportResult(source: name, imported: imported, skipped: skipped);
   }
 
   static bool _isSupported(String path) {

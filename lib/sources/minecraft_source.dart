@@ -6,19 +6,19 @@ import '../models/app_settings.dart';
 import '../services/folder_access_service.dart';
 import '../services/library_scanner.dart';
 import '../services/media_importer.dart';
-import '../services/provider_paths.dart';
-import 'screenshot_provider.dart';
+import '../services/source_paths.dart';
+import 'screenshot_source.dart';
 
-class MinecraftProvider
+class MinecraftSource
     with SingleFolderRequirement
-    implements FolderBackedScreenshotProvider {
-  const MinecraftProvider({
+    implements FolderBackedScreenshotSource {
+  const MinecraftSource({
     this.importer = const MediaImporter(),
-    this.providerPaths = const ProviderPathResolver(),
+    this.sourcePaths = const SourcePathResolver(),
   });
 
   final MediaImporter importer;
-  final ProviderPathResolver providerPaths;
+  final SourcePathResolver sourcePaths;
 
   static const id = 'minecraft';
   static const gameName = 'Minecraft';
@@ -34,26 +34,26 @@ class MinecraftProvider
   bool isEnabled(AppSettings settings) => settings.minecraft.enabled;
 
   @override
-  ProviderFolderRequirement? folderRequirement(AppSettings settings) {
-    final provider = settings.minecraft;
-    if (provider.useCustomPath) {
-      final path = provider.sourcePath.trim();
+  SourceFolderRequirement? folderRequirement(AppSettings settings) {
+    final config = settings.minecraft;
+    if (config.useCustomPath) {
+      final path = config.sourcePath.trim();
       return path.isEmpty
           ? null
-          : ProviderFolderRequirement(
+          : SourceFolderRequirement(
               id: folderGrantId,
               path: expandUserPath(path),
               automatic: false,
             );
     }
 
-    final configured = provider.sourcePath.trim();
+    final configured = config.sourcePath.trim();
     final paths = configured.isEmpty
-        ? providerPaths.minecraftScreenshots()
+        ? sourcePaths.minecraftScreenshots()
         : [expandUserPath(configured)];
     return paths.isEmpty
         ? null
-        : ProviderFolderRequirement(
+        : SourceFolderRequirement(
             id: folderGrantId,
             path: paths.first,
             automatic: true,
@@ -116,7 +116,7 @@ class MinecraftProvider
     }
 
     onProgress?.call(
-      const ProviderProgress(message: 'Scanning Minecraft screenshots…'),
+      const SourceProgress(message: 'Scanning Minecraft screenshots…'),
     );
     final files = <File>[];
     for (final source in existingSources) {
@@ -137,7 +137,7 @@ class MinecraftProvider
     var skipped = 0;
     for (var index = 0; index < files.length; index++) {
       onProgress?.call(
-        ProviderProgress(
+        SourceProgress(
           message: 'Importing Minecraft screenshots…',
           completed: index,
           total: files.length,
@@ -150,16 +150,16 @@ class MinecraftProvider
       }
     }
     onProgress?.call(
-      ProviderProgress(
+      SourceProgress(
         message: 'Processed Minecraft screenshots.',
         completed: files.length,
         total: files.length,
       ),
     );
-    return ImportResult(provider: name, imported: imported, skipped: skipped);
+    return ImportResult(source: name, imported: imported, skipped: skipped);
   }
 
-  List<Directory> _sourceDirectories(ProviderSettings settings) {
+  List<Directory> _sourceDirectories(SourceSettings settings) {
     final configured = settings.sourcePath.trim();
     if (settings.useCustomPath) {
       return configured.isEmpty
@@ -167,7 +167,7 @@ class MinecraftProvider
           : [Directory(expandUserPath(configured))];
     }
     final paths = configured.isEmpty
-        ? providerPaths.minecraftScreenshots()
+        ? sourcePaths.minecraftScreenshots()
         : [expandUserPath(configured)];
     return paths.map(Directory.new).toList(growable: false);
   }

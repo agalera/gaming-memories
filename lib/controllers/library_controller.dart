@@ -7,18 +7,18 @@ import 'package:path/path.dart' as p;
 
 import '../models/app_settings.dart';
 import '../models/library.dart';
-import '../providers/battle_net_provider.dart';
-import '../providers/screenshot_provider.dart';
 import '../services/app_log.dart';
 import '../services/battle_net_games.dart';
 import '../services/config_store.dart';
 import '../services/folder_access_service.dart';
 import '../services/library_scanner.dart';
 import '../services/library_watcher.dart';
-import '../services/provider_paths.dart';
 import '../services/screenshot_action_service.dart';
+import '../services/source_paths.dart';
 import '../services/timeline_cache.dart';
 import '../services/user_facing_error.dart';
+import '../sources/battle_net_source.dart';
+import '../sources/screenshot_source.dart';
 
 enum LibraryView { timeline, platform, album, subAlbum, settings }
 
@@ -58,11 +58,11 @@ class AutomaticFolderCandidate {
   final String name;
   final String path;
 
-  /// The grant this folder is stored under. Providers that span several
+  /// The grant this folder is stored under. Sources that span several
   /// folders give each one its own id.
   final String grantId;
 
-  /// What this folder holds, when the provider says.
+  /// What this folder holds, when the source says.
   final String? description;
 }
 
@@ -156,7 +156,7 @@ class LibraryActivity {
       kind == LibraryActivityKind.refreshing;
 }
 
-/// The provider scan action's current presentation in the sidebar.
+/// The source scan action's current presentation in the sidebar.
 class LibraryScanActivity {
   const LibraryScanActivity({
     required this.isRunning,
@@ -168,14 +168,14 @@ class LibraryScanActivity {
   const LibraryScanActivity.idle()
     : isRunning = false,
       title = 'Scan for captures',
-      detail = 'Collect from enabled providers',
+      detail = 'Collect from enabled sources',
       progress = null;
 
   final bool isRunning;
   final String title;
   final String detail;
 
-  /// The completion of the active provider's work. Null means indeterminate.
+  /// The completion of the active source's work. Null means indeterminate.
   final double? progress;
 }
 
@@ -208,11 +208,11 @@ class LibraryController extends ChangeNotifier {
   LibraryController({
     required this.configStore,
     required this.scanner,
-    required this.providers,
+    required this.sources,
     this.timelineCache = const TimelineCache.disabled(),
     this.libraryWatcher = const NativeLibraryWatcher(),
     this.folderAccess = const PathFolderAccessService(),
-    this.providerPaths = const ProviderPathResolver(),
+    this.sourcePaths = const SourcePathResolver(),
     this.screenshotActions = const NativeScreenshotActionService(),
     this.log = const SilentAppLog(),
   }) {
@@ -222,11 +222,11 @@ class LibraryController extends ChangeNotifier {
 
   final ConfigStore configStore;
   final LibraryScanner scanner;
-  final List<ScreenshotProvider> providers;
+  final List<ScreenshotSource> sources;
   final TimelineCache timelineCache;
   final LibraryWatcher libraryWatcher;
   final FolderAccessService folderAccess;
-  final ProviderPathResolver providerPaths;
+  final SourcePathResolver sourcePaths;
   final ScreenshotActionService screenshotActions;
   final AppLog log;
 
@@ -252,7 +252,7 @@ class LibraryController extends ChangeNotifier {
   double? progressValue;
   int notificationRevision = 0;
   final List<AppNotification> _notifications = [];
-  Map<String, String> _providerValidationErrors = const {};
+  Map<String, String> _sourceValidationErrors = const {};
   final Map<String, FolderAuthorization> _folderAuthorizations = {};
   FolderAccessLease? _libraryLease;
   Future<void>? _timelineRefresh;
@@ -286,7 +286,7 @@ class LibraryController extends ChangeNotifier {
   /// What the last batch of watched changes did, until it expires.
   LibraryChangeSummary? get lastLibraryChange => _lastLibraryChange;
 
-  /// What the provider scan action is doing right now.
+  /// What the source scan action is doing right now.
   LibraryScanActivity get scanActivity {
     if (!isBusy) {
       return const LibraryScanActivity.idle();
@@ -297,7 +297,7 @@ class LibraryController extends ChangeNotifier {
     return LibraryScanActivity(
       isRunning: true,
       title: percent == null ? 'Scanning…' : 'Scanning · $percent%',
-      detail: progressMessage ?? 'Checking enabled providers…',
+      detail: progressMessage ?? 'Checking enabled sources…',
       progress: progressValue,
     );
   }
@@ -363,22 +363,22 @@ class LibraryController extends ChangeNotifier {
 
   String _changeCount(int count) => count == 1 ? '1 change' : '$count changes';
 
-  /// The Battle.net provider, when it is configured. The settings page asks it
-  /// which games it found; nothing else needs to know a provider's type.
-  BattleNetProvider? get battleNetProvider =>
-      providers.whereType<BattleNetProvider>().firstOrNull;
+  /// The Battle.net source, when it is configured. The settings page asks it
+  /// which games it found; nothing else needs to know a source's type.
+  BattleNetSource? get battleNetSource =>
+      sources.whereType<BattleNetSource>().firstOrNull;
 
   BattleNetLocator get _battleNetLocator =>
-      battleNetProvider?.locator ?? const BattleNetLocator();
+      battleNetSource?.locator ?? const BattleNetLocator();
 
   /// Every Battle.net game with its resolved folder, for the settings rows.
   List<BattleNetGameFolder> battleNetGameFolders(AppSettings value) =>
-      battleNetProvider?.gameFolders(value) ?? const [];
+      battleNetSource?.gameFolders(value) ?? const [];
 
-  Map<String, String> get providerValidationErrors => _providerValidationErrors;
+  Map<String, String> get sourceValidationErrors => _sourceValidationErrors;
 
-  String? providerValidationError(String providerName) =>
-      _providerValidationErrors[providerName];
+  String? sourceValidationError(String sourceName) =>
+      _sourceValidationErrors[sourceName];
 
   bool get usesPersistentFolderAccess => folderAccess.requiresPersistentGrant;
 
@@ -402,12 +402,12 @@ class LibraryController extends ChangeNotifier {
   ) {
     final paths = switch (target) {
       SettingsFolderTarget.steamAutomatic =>
-        providerPaths.steamUserdataCandidates(),
+        sourcePaths.steamUserdataCandidates(),
       SettingsFolderTarget.hytaleAutomatic => [
-        ?providerPaths.hytaleScreenshots(),
+        ?sourcePaths.hytaleScreenshots(),
       ],
       SettingsFolderTarget.minecraftAutomatic =>
-        providerPaths.minecraftScreenshots(),
+        sourcePaths.minecraftScreenshots(),
       _ => const <String>[],
     };
     final grantId = _folderTargetGrantId(target);
@@ -644,23 +644,23 @@ class LibraryController extends ChangeNotifier {
       settings = await configStore.load();
       if (usesPersistentFolderAccess) {
         var changed = await _restoreLibraryGrant();
-        changed = await _restoreProviderGrants() || changed;
-        final validation = await _validateEnabledProviders(settings);
+        changed = await _restoreSourceGrants() || changed;
+        final validation = await _validateEnabledSources(settings);
         settings = validation.settings;
-        _providerValidationErrors = Map.unmodifiable(validation.errors);
-        changed = validation.disabledProviders.isNotEmpty || changed;
+        _sourceValidationErrors = Map.unmodifiable(validation.errors);
+        changed = validation.disabledSources.isNotEmpty || changed;
         if (changed) {
           await configStore.save(settings);
         }
-        _showProviderValidationErrors(validation.errors);
+        _showSourceValidationErrors(validation.errors);
       } else {
-        final validation = await _validateEnabledProviders(settings);
+        final validation = await _validateEnabledSources(settings);
         settings = validation.settings;
-        _providerValidationErrors = Map.unmodifiable(validation.errors);
-        if (validation.disabledProviders.isNotEmpty) {
+        _sourceValidationErrors = Map.unmodifiable(validation.errors);
+        if (validation.disabledSources.isNotEmpty) {
           await configStore.save(settings);
         }
-        _showProviderValidationErrors(validation.errors);
+        _showSourceValidationErrors(validation.errors);
       }
 
       if (!libraryNeedsAuthorization) {
@@ -752,13 +752,12 @@ class LibraryController extends ChangeNotifier {
     return false;
   }
 
-  Future<bool> _restoreProviderGrants() async {
+  Future<bool> _restoreSourceGrants() async {
     var changed = false;
-    for (final provider
-        in providers.whereType<FolderBackedScreenshotProvider>()) {
-      final requirements = provider.folderRequirements(settings);
+    for (final source in sources.whereType<FolderBackedScreenshotSource>()) {
+      final requirements = source.folderRequirements(settings);
       if (requirements.isEmpty) {
-        _folderAuthorizations[provider.folderGrantId] =
+        _folderAuthorizations[source.folderGrantId] =
             const FolderAuthorization.notRequired();
         continue;
       }
@@ -789,7 +788,7 @@ class LibraryController extends ChangeNotifier {
           if (_grantChanged(grant, lease.grant)) {
             var next = _withGrant(settings, requirement.id, lease.grant);
             if (!requirement.automatic) {
-              next = provider.withFolderPath(next, lease.grant.path);
+              next = source.withFolderPath(next, lease.grant.path);
             }
             settings = next;
             changed = true;
@@ -964,15 +963,15 @@ class LibraryController extends ChangeNotifier {
   Future<bool> updateSettings(
     AppSettings next, {
     bool showNotification = true,
-    Map<String, String> providerErrors = const {},
+    Map<String, String> sourceErrors = const {},
   }) async {
     try {
-      final validation = await _validateEnabledProviders(
+      final validation = await _validateEnabledSources(
         next,
-        knownErrors: providerErrors,
+        knownErrors: sourceErrors,
       );
       final validated = validation.settings;
-      _providerValidationErrors = Map.unmodifiable(validation.errors);
+      _sourceValidationErrors = Map.unmodifiable(validation.errors);
       final outputChanged = !_samePath(
         settings.outputPath,
         validated.outputPath,
@@ -988,10 +987,10 @@ class LibraryController extends ChangeNotifier {
       }
       _refreshAuthorizationStates();
       if (showNotification) {
-        if (validation.disabledProviders.isEmpty) {
+        if (validation.disabledSources.isEmpty) {
           _setMessage('Settings saved.');
         } else {
-          _setError(_providerValidationMessage(validation.errors));
+          _setError(_sourceValidationMessage(validation.errors));
         }
       }
       notifyListeners();
@@ -1007,55 +1006,55 @@ class LibraryController extends ChangeNotifier {
     }
   }
 
-  Future<String?> providerConfigurationError(
-    String providerName,
+  Future<String?> sourceConfigurationError(
+    String sourceName,
     AppSettings value,
   ) async {
-    for (final provider in providers) {
-      if (provider.name == providerName) {
-        return _providerConfigurationError(provider, value);
+    for (final source in sources) {
+      if (source.name == sourceName) {
+        return _sourceConfigurationError(source, value);
       }
     }
     return null;
   }
 
-  Future<_ProviderValidation> _validateEnabledProviders(
+  Future<_SourceValidation> _validateEnabledSources(
     AppSettings candidate, {
     Map<String, String> knownErrors = const {},
   }) async {
     var validated = candidate;
     final errors = <String, String>{};
-    for (final provider in providers) {
-      if (!provider.isEnabled(validated) ||
-          !_supportsProviderSettings(provider.name)) {
+    for (final source in sources) {
+      if (!source.isEnabled(validated) ||
+          !_supportsSourceSettings(source.name)) {
         continue;
       }
       final error =
-          knownErrors[provider.name] ??
-          await _providerConfigurationError(provider, validated);
+          knownErrors[source.name] ??
+          await _sourceConfigurationError(source, validated);
       if (error == null) {
         continue;
       }
-      validated = _withProviderEnabled(validated, provider.name, false);
-      errors[provider.name] = error;
+      validated = _withSourceEnabled(validated, source.name, false);
+      errors[source.name] = error;
     }
-    return _ProviderValidation(validated, errors);
+    return _SourceValidation(validated, errors);
   }
 
-  Future<String?> _providerConfigurationError(
-    ScreenshotProvider provider,
+  Future<String?> _sourceConfigurationError(
+    ScreenshotSource source,
     AppSettings candidate,
   ) async {
-    if (provider case FolderBackedScreenshotProvider folderProvider) {
-      final requirements = folderProvider.folderRequirements(candidate);
+    if (source case FolderBackedScreenshotSource folderSource) {
+      final requirements = folderSource.folderRequirements(candidate);
       if (requirements.isEmpty) {
-        if (provider.name == 'Nintendo Switch 2' && Platform.isLinux) {
+        if (source.name == 'Nintendo Switch 2' && Platform.isLinux) {
           return null;
         }
-        return 'No supported ${provider.name} folder is configured.';
+        return 'No supported ${source.name} folder is configured.';
       }
       if (usesPersistentFolderAccess) {
-        // One granted folder is enough to run: a provider that spans several
+        // One granted folder is enough to run: a source that spans several
         // folders imports whichever of them it can reach.
         final anyReady = requirements.any((requirement) {
           final authorization = folderAuthorization(requirement.id);
@@ -1063,29 +1062,29 @@ class LibraryController extends ChangeNotifier {
               _samePath(authorization.path ?? '', requirement.path);
         });
         if (!anyReady) {
-          return 'Folder access is required for ${provider.name}.';
+          return 'Folder access is required for ${source.name}.';
         }
       } else {
         final existing = <bool>[
           for (final requirement in requirements)
-            await _providerFolderExists(provider, requirement),
+            await _sourceFolderExists(source, requirement),
         ];
         if (!existing.contains(true)) {
-          return '${provider.name} folder does not exist.';
+          return '${source.name} folder does not exist.';
         }
       }
     }
-    if (provider is ProviderConfigurationValidator) {
-      return (provider as ProviderConfigurationValidator).configurationError(
+    if (source is SourceConfigurationValidator) {
+      return (source as SourceConfigurationValidator).configurationError(
         candidate,
       );
     }
     return null;
   }
 
-  Future<bool> _providerFolderExists(
-    ScreenshotProvider provider,
-    ProviderFolderRequirement requirement,
+  Future<bool> _sourceFolderExists(
+    ScreenshotSource source,
+    SourceFolderRequirement requirement,
   ) async {
     if (await Directory(requirement.path).exists()) {
       return true;
@@ -1093,10 +1092,10 @@ class LibraryController extends ChangeNotifier {
     if (!requirement.automatic) {
       return false;
     }
-    final candidates = switch (provider.name) {
-      'Hytale' => [providerPaths.hytaleScreenshots()],
-      'Minecraft' => providerPaths.minecraftScreenshots(),
-      'Steam' => providerPaths.steamUserdataCandidates(),
+    final candidates = switch (source.name) {
+      'Hytale' => [sourcePaths.hytaleScreenshots()],
+      'Minecraft' => sourcePaths.minecraftScreenshots(),
+      'Steam' => sourcePaths.steamUserdataCandidates(),
       _ => <String?>[],
     };
     for (final path in candidates.whereType<String>()) {
@@ -1107,11 +1106,11 @@ class LibraryController extends ChangeNotifier {
     return false;
   }
 
-  AppSettings _withProviderEnabled(
+  AppSettings _withSourceEnabled(
     AppSettings value,
-    String providerName,
+    String sourceName,
     bool enabled,
-  ) => switch (providerName) {
+  ) => switch (sourceName) {
     'Battle.net' => value.copyWith(
       battleNet: value.battleNet.copyWith(enabled: enabled),
     ),
@@ -1135,7 +1134,7 @@ class LibraryController extends ChangeNotifier {
     _ => value,
   };
 
-  bool _supportsProviderSettings(String providerName) => switch (providerName) {
+  bool _supportsSourceSettings(String sourceName) => switch (sourceName) {
     'Battle.net' ||
     'Guild Wars 2' ||
     'Hytale' ||
@@ -1147,13 +1146,13 @@ class LibraryController extends ChangeNotifier {
     _ => false,
   };
 
-  void _showProviderValidationErrors(Map<String, String> errors) {
+  void _showSourceValidationErrors(Map<String, String> errors) {
     if (errors.isNotEmpty) {
-      _setError(_providerValidationMessage(errors));
+      _setError(_sourceValidationMessage(errors));
     }
   }
 
-  String _providerValidationMessage(Map<String, String> errors) {
+  String _sourceValidationMessage(Map<String, String> errors) {
     if (errors.length == 1) {
       final error = errors.entries.single;
       return '${error.key} was disabled: ${error.value}';
@@ -1161,7 +1160,7 @@ class LibraryController extends ChangeNotifier {
     final details = errors.entries
         .map((error) => '${error.key}: ${error.value}')
         .join(' ');
-    return 'Invalid providers were disabled. $details';
+    return 'Invalid sources were disabled. $details';
   }
 
   Future<FolderChoiceResult> chooseFolder(
@@ -1207,9 +1206,9 @@ class LibraryController extends ChangeNotifier {
         FolderAuthorizationStatus.ready,
         path: lease.grant.path,
       );
-      final validation = await _validateEnabledProviders(next);
+      final validation = await _validateEnabledSources(next);
       next = validation.settings;
-      _providerValidationErrors = Map.unmodifiable(validation.errors);
+      _sourceValidationErrors = Map.unmodifiable(validation.errors);
       await configStore.save(next);
 
       final oldLibraryLease = _libraryLease;
@@ -1226,10 +1225,10 @@ class LibraryController extends ChangeNotifier {
         await _loadLibrarySnapshot();
         unawaited(_refreshTimeline(showResult: false));
       }
-      if (validation.disabledProviders.isEmpty) {
+      if (validation.disabledSources.isEmpty) {
         _setMessage('Settings saved.');
       } else {
-        _setError(_providerValidationMessage(validation.errors));
+        _setError(_sourceValidationMessage(validation.errors));
       }
       notifyListeners();
       return FolderChoiceResult.success(specification.selectedPath(settings));
@@ -1282,7 +1281,7 @@ class LibraryController extends ChangeNotifier {
         }
         return _FolderSpecification(
           request: FolderAccessRequest(
-            id: BattleNetProvider.grantIdForGame(game.id),
+            id: BattleNetSource.grantIdForGame(game.id),
             title: 'Choose the ${game.name} screenshot folder',
             access: FolderGrantAccess.readOnly,
             initialPath:
@@ -1303,7 +1302,7 @@ class LibraryController extends ChangeNotifier {
         }
         return _FolderSpecification(
           request: FolderAccessRequest(
-            id: BattleNetProvider.grantIdForGame(game.id),
+            id: BattleNetSource.grantIdForGame(game.id),
             title: 'Allow access to ${game.name} screenshots',
             access: FolderGrantAccess.readOnly,
             initialPath: candidate,
@@ -1597,16 +1596,16 @@ class LibraryController extends ChangeNotifier {
     }
     await _run(() async {
       final results = <ImportResult>[];
-      final enabledProviders = providers
-          .where((provider) => provider.isEnabled(settings))
+      final enabledSources = sources
+          .where((source) => source.isEnabled(settings))
           .toList(growable: false);
-      for (final provider in enabledProviders) {
-        final usesLibraryFolder = provider is FolderBackedScreenshotProvider;
+      for (final source in enabledSources) {
+        final usesLibraryFolder = source is FolderBackedScreenshotSource;
         if (usesLibraryFolder && settings.outputPath.trim().isEmpty) {
           results.add(
             ImportResult.warning(
-              provider.name,
-              '${provider.name} was skipped because no library folder is selected.',
+              source.name,
+              '${source.name} was skipped because no library folder is selected.',
             ),
           );
           continue;
@@ -1614,15 +1613,15 @@ class LibraryController extends ChangeNotifier {
         if (usesLibraryFolder && libraryNeedsAuthorization) {
           results.add(
             ImportResult.warning(
-              provider.name,
-              '${provider.name} was skipped because the library folder needs access.',
+              source.name,
+              '${source.name} was skipped because the library folder needs access.',
             ),
           );
           continue;
         }
 
-        _setProgress('Preparing ${provider.name}…');
-        results.add(await _collectProviderSafely(provider));
+        _setProgress('Preparing ${source.name}…');
+        results.add(await _collectSourceSafely(source));
       }
       final imported = results.fold(0, (sum, result) => sum + result.imported);
       final skipped = results.fold(0, (sum, result) => sum + result.skipped);
@@ -1631,7 +1630,7 @@ class LibraryController extends ChangeNotifier {
           .whereType<String>()
           .toList(growable: false);
       if (results.isEmpty) {
-        _setMessage('Enable a provider in Settings first.');
+        _setMessage('Enable a source in Settings first.');
       } else if (imported == 0 && warnings.isEmpty) {
         _setMessage('No new media. $skipped already in the library.');
       } else if (imported > 0) {
@@ -2602,28 +2601,26 @@ class LibraryController extends ChangeNotifier {
     return parentKey == childKey || p.isWithin(parentKey, childKey);
   }
 
-  Future<ImportResult> _collectProviderSafely(
-    ScreenshotProvider provider,
-  ) async {
+  Future<ImportResult> _collectSourceSafely(ScreenshotSource source) async {
     try {
-      return await _collectProvider(provider);
+      return await _collectSource(source);
     } catch (exception, stackTrace) {
-      _logProviderFailure(provider, exception, stackTrace);
+      _logSourceFailure(source, exception, stackTrace);
       return ImportResult.warning(
-        provider.name,
-        describeFailure(exception, action: 'import from ${provider.name}'),
+        source.name,
+        describeFailure(exception, action: 'import from ${source.name}'),
       );
     }
   }
 
-  void _logProviderFailure(
-    ScreenshotProvider provider,
+  void _logSourceFailure(
+    ScreenshotSource source,
     Object exception,
     StackTrace stackTrace,
   ) {
     log.error(
-      'Provider "${provider.name}" failed.',
-      category: 'provider',
+      'Source "${source.name}" failed.',
+      category: 'source',
       error: exception,
       stackTrace: stackTrace,
     );
@@ -2641,41 +2638,38 @@ class LibraryController extends ChangeNotifier {
     );
   }
 
-  Future<ImportResult> _collectProvider(ScreenshotProvider provider) async {
+  Future<ImportResult> _collectSource(ScreenshotSource source) async {
     if (!usesPersistentFolderAccess ||
-        provider is! FolderBackedScreenshotProvider) {
-      return provider.collect(settings, onProgress: _providerProgress);
+        source is! FolderBackedScreenshotSource) {
+      return source.collect(settings, onProgress: _sourceProgress);
     }
 
-    final requirements = provider.folderRequirements(settings);
+    final requirements = source.folderRequirements(settings);
     if (requirements.isEmpty) {
-      return provider.collect(settings, onProgress: _providerProgress);
+      return source.collect(settings, onProgress: _sourceProgress);
     }
 
     final leases = <FolderAccessLease>[];
     try {
       for (final requirement in requirements) {
-        final lease = await _activateRequirement(provider, requirement);
+        final lease = await _activateRequirement(source, requirement);
         if (lease != null) {
           leases.add(lease);
         }
       }
       if (leases.isEmpty) {
         return ImportResult.warning(
-          provider.name,
-          '${provider.name} was skipped because its screenshot folders need access. Open Settings and allow access.',
+          source.name,
+          '${source.name} was skipped because its screenshot folders need access. Open Settings and allow access.',
         );
       }
       // The primary requirement carries the custom root, which is the only
-      // path a provider stores. Automatic requirements span several folders
+      // path a source stores. Automatic requirements span several folders
       // and must not be written back.
       final runtimeSettings = requirements.first.automatic
           ? settings
-          : provider.withFolderPath(settings, leases.first.grant.path);
-      return await provider.collect(
-        runtimeSettings,
-        onProgress: _providerProgress,
-      );
+          : source.withFolderPath(settings, leases.first.grant.path);
+      return await source.collect(runtimeSettings, onProgress: _sourceProgress);
     } finally {
       for (final lease in leases) {
         await folderAccess.release(lease);
@@ -2686,10 +2680,10 @@ class LibraryController extends ChangeNotifier {
   /// Activates one required folder, recording its authorization state.
   ///
   /// Returns null when the folder is not usable, leaving the caller to decide
-  /// whether the provider can still run on the folders that are.
+  /// whether the source can still run on the folders that are.
   Future<FolderAccessLease?> _activateRequirement(
-    FolderBackedScreenshotProvider provider,
-    ProviderFolderRequirement requirement,
+    FolderBackedScreenshotSource source,
+    SourceFolderRequirement requirement,
   ) async {
     final grant = settings.folderGrants[requirement.id];
     if (grant == null ||
@@ -2718,18 +2712,18 @@ class LibraryController extends ChangeNotifier {
       if (_grantChanged(grant, lease.grant)) {
         var next = _withGrant(settings, requirement.id, lease.grant);
         if (!requirement.automatic) {
-          next = provider.withFolderPath(next, lease.grant.path);
+          next = source.withFolderPath(next, lease.grant.path);
         }
         await configStore.save(next);
         settings = next;
       }
       return lease;
     } on FolderAccessException catch (exception, stackTrace) {
-      _logProviderFailure(provider, exception, stackTrace);
+      _logSourceFailure(source, exception, stackTrace);
       _folderAuthorizations[requirement.id] =
           FolderAuthorization.needsAuthorization(path: grant.path);
     } on FileSystemException catch (exception, stackTrace) {
-      _logProviderFailure(provider, exception, stackTrace);
+      _logSourceFailure(source, exception, stackTrace);
       _folderAuthorizations[requirement.id] = FolderAuthorization(
         FolderAuthorizationStatus.unavailable,
         path: grant.path,
@@ -2741,7 +2735,7 @@ class LibraryController extends ChangeNotifier {
     return null;
   }
 
-  void _providerProgress(ProviderProgress progress) {
+  void _sourceProgress(SourceProgress progress) {
     _setProgress(progress.message, value: progress.value);
   }
 
@@ -2789,11 +2783,10 @@ class LibraryController extends ChangeNotifier {
           FolderAuthorization.needsAuthorization(path: outputPath);
     }
 
-    for (final provider
-        in providers.whereType<FolderBackedScreenshotProvider>()) {
-      final requirements = provider.folderRequirements(settings);
+    for (final source in sources.whereType<FolderBackedScreenshotSource>()) {
+      final requirements = source.folderRequirements(settings);
       if (requirements.isEmpty) {
-        _folderAuthorizations[provider.folderGrantId] =
+        _folderAuthorizations[source.folderGrantId] =
             const FolderAuthorization.notRequired();
         continue;
       }
@@ -2964,13 +2957,13 @@ class _QueuedLibraryChange {
 
 enum _MediaMutation { none, added, updated }
 
-class _ProviderValidation {
-  const _ProviderValidation(this.settings, this.errors);
+class _SourceValidation {
+  const _SourceValidation(this.settings, this.errors);
 
   final AppSettings settings;
   final Map<String, String> errors;
 
-  List<String> get disabledProviders => errors.keys.toList(growable: false);
+  List<String> get disabledSources => errors.keys.toList(growable: false);
 }
 
 class _LibraryDirectoryLocation {

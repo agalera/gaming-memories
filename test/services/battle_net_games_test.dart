@@ -143,7 +143,7 @@ void main() {
       );
 
       expect(folder.exists, isFalse);
-      // The user chose it, so the provider still asks for access to it and
+      // The user chose it, so the source still asks for access to it and
       // reports the real problem rather than silently skipping the game.
       expect(folder.isUsable, isTrue);
     });

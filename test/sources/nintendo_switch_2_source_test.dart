@@ -2,8 +2,8 @@ import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:gaming_memories/models/app_settings.dart';
-import 'package:gaming_memories/providers/nintendo_switch_2_provider.dart';
 import 'package:gaming_memories/services/mtp_client.dart';
+import 'package:gaming_memories/sources/nintendo_switch_2_source.dart';
 import 'package:path/path.dart' as p;
 
 void main() {
@@ -50,7 +50,7 @@ void main() {
       await write('Mario Kart World', 'notes.txt', 'notes');
       await write('Otra carpeta', '2025060720031900_s.jpg', 'ignored');
 
-      final result = await const NintendoSwitch2Provider().collect(settings());
+      final result = await const NintendoSwitch2Source().collect(settings());
 
       final album = p.join(
         output.path,
@@ -79,7 +79,7 @@ void main() {
     await write('MARIO KART WORLD', '2025060720031600_s.jpg', 'ignored');
     await write('Zelda', '2025060720031700_s.jpg', 'imported');
 
-    final result = await const NintendoSwitch2Provider().collect(
+    final result = await const NintendoSwitch2Source().collect(
       settings(ignoredFolders: const ['mario kart world']),
     );
 
@@ -133,13 +133,13 @@ void main() {
         ),
       ],
     );
-    final provider = NintendoSwitch2Provider(
+    final source = NintendoSwitch2Source(
       mtpClient: mtp,
       usbDeviceFinder: const _FakeUsbDeviceFinder(found: true),
       operatingSystem: 'linux',
     );
 
-    final result = await provider.collect(settings(useCustomPath: false));
+    final result = await source.collect(settings(useCustomPath: false));
 
     expect(result.imported, 1);
     expect(result.skipped, 1);
@@ -159,7 +159,7 @@ void main() {
 
   test('warns when no console is sharing its album', () async {
     final mtp = _FakeMtpClient();
-    final result = await NintendoSwitch2Provider(
+    final result = await NintendoSwitch2Source(
       mtpClient: mtp,
       usbDeviceFinder: const _FakeUsbDeviceFinder(found: false),
       operatingSystem: 'linux',
@@ -170,7 +170,7 @@ void main() {
   });
 
   test('explains that direct USB collection is Linux-only', () async {
-    final result = await const NintendoSwitch2Provider(operatingSystem: 'macos')
+    final result = await const NintendoSwitch2Source(operatingSystem: 'macos')
         .collect(settings(useCustomPath: false));
 
     expect(result.warning, contains('available on Linux'));
@@ -183,7 +183,7 @@ void main() {
         'Missing libmtp tools.',
       ),
     );
-    final result = await NintendoSwitch2Provider(
+    final result = await NintendoSwitch2Source(
       mtpClient: mtp,
       usbDeviceFinder: const _FakeUsbDeviceFinder(found: true),
       operatingSystem: 'linux',
@@ -199,7 +199,7 @@ void main() {
         'Another program is using the MTP device.',
       ),
     );
-    final result = await NintendoSwitch2Provider(
+    final result = await NintendoSwitch2Source(
       mtpClient: mtp,
       usbDeviceFinder: const _FakeUsbDeviceFinder(found: true),
       operatingSystem: 'linux',

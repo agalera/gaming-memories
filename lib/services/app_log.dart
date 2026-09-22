@@ -91,7 +91,7 @@ class SilentAppLog implements AppLog {
 
 /// The log for code that cannot be handed one.
 ///
-/// The providers are `const` value objects constructed inside `const` provider
+/// The sources are `const` value objects constructed inside `const` source
 /// lists, so there is nowhere to inject a log. Everything else takes one as a
 /// constructor argument. Set once at startup; stays silent in tests.
 AppLog diagnosticLog = const SilentAppLog();

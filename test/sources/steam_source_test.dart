@@ -2,8 +2,8 @@ import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:gaming_memories/models/app_settings.dart';
-import 'package:gaming_memories/providers/steam_provider.dart';
 import 'package:gaming_memories/services/steam_client.dart';
+import 'package:gaming_memories/sources/steam_source.dart';
 import 'package:path/path.dart' as p;
 
 void main() {
@@ -69,7 +69,7 @@ void main() {
     await addLocalScreenshot('10', 'local');
     api.names['10'] = 'Test Game';
 
-    final result = await SteamProvider(api: api).collect(settings());
+    final result = await SteamSource(api: api).collect(settings());
 
     expect(result.imported, 1);
     expect(
@@ -84,7 +84,7 @@ void main() {
       'Steam credentials are invalid.',
     );
 
-    final error = await SteamProvider(api: api)
+    final error = await SteamSource(api: api)
         .configurationError(settings(onlineGallery: true));
 
     expect(error, 'Steam credentials are invalid.');
@@ -93,7 +93,7 @@ void main() {
   test('requires an API key for local Steam imports', () async {
     final value = settings();
 
-    final error = await SteamProvider(api: api).configurationError(
+    final error = await SteamSource(api: api).configurationError(
       value.copyWith(steam: value.steam.copyWith(apiKey: '')),
     );
 
@@ -104,7 +104,7 @@ void main() {
   test('rejects an invalid API key format', () async {
     final value = settings();
 
-    final error = await SteamProvider(api: api).configurationError(
+    final error = await SteamSource(api: api).configurationError(
       value.copyWith(steam: value.steam.copyWith(apiKey: 'invalid')),
     );
 
@@ -115,7 +115,7 @@ void main() {
   test('requires a SteamID64 for online gallery imports', () async {
     final value = settings(onlineGallery: true);
 
-    final error = await SteamProvider(api: api).configurationError(
+    final error = await SteamSource(api: api).configurationError(
       value.copyWith(steam: value.steam.copyWith(userId: '')),
     );
 
@@ -126,7 +126,7 @@ void main() {
   test('rejects an invalid SteamID64 format', () async {
     final value = settings(onlineGallery: true);
 
-    final error = await SteamProvider(api: api).configurationError(
+    final error = await SteamSource(api: api).configurationError(
       value.copyWith(steam: value.steam.copyWith(userId: '1234')),
     );
 
@@ -137,7 +137,7 @@ void main() {
   test('ignores the user ID when online gallery imports are off', () async {
     final value = settings();
 
-    final error = await SteamProvider(api: api).configurationError(
+    final error = await SteamSource(api: api).configurationError(
       value.copyWith(steam: value.steam.copyWith(userId: 'not-used')),
     );
 
@@ -148,7 +148,7 @@ void main() {
   test('validates Steam authentication for local imports', () async {
     final value = settings();
 
-    final error = await SteamProvider(api: api).configurationError(
+    final error = await SteamSource(api: api).configurationError(
       value.copyWith(steam: value.steam.copyWith(userId: '')),
     );
 
@@ -167,7 +167,7 @@ void main() {
       ),
     );
 
-    final result = await SteamProvider(api: api).collect(automatic);
+    final result = await SteamSource(api: api).collect(automatic);
 
     expect(result.imported, 1);
   });
@@ -176,7 +176,7 @@ void main() {
     await addLocalScreenshot('10', 'ignored');
     await addLocalScreenshot('20', 'custom');
 
-    final result = await SteamProvider(
+    final result = await SteamSource(
       api: api,
     ).collect(settings(ignoredGames: [' 10 '], customGames: {'20': 'My/Game'}));
 
@@ -201,7 +201,7 @@ void main() {
     api.downloads['https://example.test/image'] = [1, 2, 3];
     api.covers['30'] = [4, 5, 6];
 
-    final result = await SteamProvider(api: api)
+    final result = await SteamSource(api: api)
         .collect(settings(onlineGallery: true, downloadCovers: true));
 
     final album = p.join(output.path, 'PC', 'Online Game');
@@ -222,7 +222,7 @@ void main() {
         .writeAsString('screenshot');
     await File(p.join(original.path, 'cover.jpg')).writeAsString('cover');
 
-    await SteamProvider(api: api)
+    await SteamSource(api: api)
         .collect(settings(customGames: {'40': 'Custom Game'}));
 
     final renamed = Directory(p.join(output.path, 'PC', 'Custom Game'));
@@ -246,7 +246,7 @@ void main() {
     await File(p.join(custom.path, 'shared.jpg')).writeAsString('new');
     await File(p.join(custom.path, 'cover.jpg')).writeAsString('new cover');
 
-    await SteamProvider(api: api)
+    await SteamSource(api: api)
         .collect(settings(customGames: {'50': 'Custom Name'}));
 
     final files = custom

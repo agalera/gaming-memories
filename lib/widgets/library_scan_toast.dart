@@ -3,7 +3,7 @@ import 'package:material_ui/material_ui.dart';
 
 import '../controllers/library_controller.dart';
 
-/// The provider scan's idle prompt and live progress surface.
+/// The source scan's idle prompt and live progress surface.
 class LibraryScanToast extends StatelessWidget {
   const LibraryScanToast({required this.activity, super.key});
 

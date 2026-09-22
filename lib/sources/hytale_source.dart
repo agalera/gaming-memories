@@ -8,22 +8,22 @@ import '../models/app_settings.dart';
 import '../services/folder_access_service.dart';
 import '../services/library_scanner.dart';
 import '../services/media_importer.dart';
-import '../services/provider_paths.dart';
-import 'screenshot_provider.dart';
+import '../services/source_paths.dart';
+import 'screenshot_source.dart';
 
 typedef HytaleCoverLoader = Future<List<int>> Function();
 
-class HytaleProvider
+class HytaleSource
     with SingleFolderRequirement
-    implements FolderBackedScreenshotProvider {
-  HytaleProvider({
+    implements FolderBackedScreenshotSource {
+  HytaleSource({
     this.importer = const MediaImporter(),
-    this.providerPaths = const ProviderPathResolver(),
+    this.sourcePaths = const SourcePathResolver(),
     HytaleCoverLoader? coverLoader,
   }) : _coverLoader = coverLoader ?? _loadBundledCover;
 
   final MediaImporter importer;
-  final ProviderPathResolver providerPaths;
+  final SourcePathResolver sourcePaths;
   final HytaleCoverLoader _coverLoader;
 
   static const id = 'hytale';
@@ -42,26 +42,26 @@ class HytaleProvider
   bool isEnabled(AppSettings settings) => settings.hytale.enabled;
 
   @override
-  ProviderFolderRequirement? folderRequirement(AppSettings settings) {
-    final provider = settings.hytale;
-    if (provider.useCustomPath) {
-      final path = provider.sourcePath.trim();
+  SourceFolderRequirement? folderRequirement(AppSettings settings) {
+    final config = settings.hytale;
+    if (config.useCustomPath) {
+      final path = config.sourcePath.trim();
       return path.isEmpty
           ? null
-          : ProviderFolderRequirement(
+          : SourceFolderRequirement(
               id: folderGrantId,
               path: expandUserPath(path),
               automatic: false,
             );
     }
 
-    final configured = provider.sourcePath.trim();
+    final configured = config.sourcePath.trim();
     final path = configured.isEmpty
-        ? providerPaths.hytaleScreenshots()
+        ? sourcePaths.hytaleScreenshots()
         : expandUserPath(configured);
     return path == null
         ? null
-        : ProviderFolderRequirement(
+        : SourceFolderRequirement(
             id: folderGrantId,
             path: path,
             automatic: true,
@@ -120,7 +120,7 @@ class HytaleProvider
     }
 
     onProgress?.call(
-      const ProviderProgress(message: 'Scanning Hytale screenshots…'),
+      const SourceProgress(message: 'Scanning Hytale screenshots…'),
     );
     final files = await source
         .list(followLinks: false)
@@ -133,7 +133,7 @@ class HytaleProvider
     var skipped = 0;
     for (var index = 0; index < files.length; index++) {
       onProgress?.call(
-        ProviderProgress(
+        SourceProgress(
           message: 'Importing Hytale screenshots…',
           completed: index,
           total: files.length,
@@ -148,28 +148,28 @@ class HytaleProvider
 
     await _writeCoverIfEnabled(settings.hytale, destination);
     onProgress?.call(
-      ProviderProgress(
+      SourceProgress(
         message: 'Processed Hytale screenshots.',
         completed: files.length,
         total: files.length,
       ),
     );
-    return ImportResult(provider: name, imported: imported, skipped: skipped);
+    return ImportResult(source: name, imported: imported, skipped: skipped);
   }
 
-  Directory? _sourceDirectory(ProviderSettings settings) {
+  Directory? _sourceDirectory(SourceSettings settings) {
     final configured = settings.sourcePath.trim();
     if (settings.useCustomPath) {
       return configured.isEmpty ? null : Directory(expandUserPath(configured));
     }
     final automatic = configured.isEmpty
-        ? providerPaths.hytaleScreenshots()
+        ? sourcePaths.hytaleScreenshots()
         : expandUserPath(configured);
     return automatic == null ? null : Directory(automatic);
   }
 
   Future<void> _writeCoverIfEnabled(
-    ProviderSettings settings,
+    SourceSettings settings,
     Directory destination,
   ) async {
     if (!settings.downloadCovers) {

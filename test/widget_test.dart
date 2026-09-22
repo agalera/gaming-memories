@@ -7,17 +7,17 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:forui/forui.dart';
 import 'package:gaming_memories/app.dart';
 import 'package:gaming_memories/controllers/library_controller.dart';
-import 'package:gaming_memories/providers/battle_net_provider.dart';
-import 'package:gaming_memories/services/battle_net_games.dart';
 import 'package:gaming_memories/models/app_settings.dart';
 import 'package:gaming_memories/models/library.dart';
-import 'package:gaming_memories/providers/playstation_4_provider.dart';
-import 'package:gaming_memories/providers/screenshot_provider.dart';
+import 'package:gaming_memories/services/battle_net_games.dart';
 import 'package:gaming_memories/services/config_store.dart';
 import 'package:gaming_memories/services/folder_access_service.dart';
 import 'package:gaming_memories/services/library_scanner.dart';
-import 'package:gaming_memories/services/provider_paths.dart';
 import 'package:gaming_memories/services/screenshot_action_service.dart';
+import 'package:gaming_memories/services/source_paths.dart';
+import 'package:gaming_memories/sources/battle_net_source.dart';
+import 'package:gaming_memories/sources/playstation_4_source.dart';
+import 'package:gaming_memories/sources/screenshot_source.dart';
 import 'package:image/image.dart' as image_lib;
 import 'package:path/path.dart' as p;
 
@@ -29,7 +29,7 @@ void main() {
         LibraryController(
             configStore: const ConfigStore(filePath: 'unused'),
             scanner: const LibraryScanner(),
-            providers: const [],
+            sources: const [],
           )
           ..isInitializing = false
           ..isAlbumTreeLoading = true;
@@ -60,7 +60,7 @@ void main() {
         LibraryController(
             configStore: const ConfigStore(filePath: 'unused'),
             scanner: scanner,
-            providers: const [],
+            sources: const [],
           )
           ..isInitializing = false
           ..settings = const AppSettings(outputPath: '/library')
@@ -103,7 +103,7 @@ void main() {
         filePath: p.join(directory.path, 'settings.json'),
       ),
       scanner: const LibraryScanner(),
-      providers: const [],
+      sources: const [],
     );
     await tester.runAsync(controller.initialize);
 
@@ -171,10 +171,7 @@ void main() {
       findsOneWidget,
     );
     expect(find.byKey(const ValueKey('settings-tab-library')), findsOneWidget);
-    expect(
-      find.byKey(const ValueKey('settings-tab-providers')),
-      findsOneWidget,
-    );
+    expect(find.byKey(const ValueKey('settings-tab-sources')), findsOneWidget);
     expect(find.text('Battle.net'), findsNothing);
     expect(find.byKey(const ValueKey('battle-net-custom-path')), findsNothing);
 
@@ -182,12 +179,12 @@ void main() {
     expect(find.text('Media library'), findsOneWidget);
     expect(find.text('Color mode'), findsNothing);
 
-    await _openSettingsTab(tester, 'providers');
+    await _openSettingsTab(tester, 'sources');
     expect(find.text('Battle.net'), findsOneWidget);
     expect(find.text('Guild Wars 2'), findsOneWidget);
     expect(find.text('Nintendo Switch 2'), findsOneWidget);
     expect(find.byKey(const ValueKey('battle-net-custom-path')), findsNothing);
-    final providerNames = [
+    final sourceNames = [
       'Battle.net',
       'Guild Wars 2',
       'Hytale',
@@ -197,10 +194,10 @@ void main() {
       'PlayStation 5',
       'Steam',
     ];
-    final providerOffsets = providerNames
+    final sourceOffsets = sourceNames
         .map((name) => tester.getTopLeft(find.text(name)).dy)
         .toList(growable: false);
-    expect(providerOffsets, orderedEquals([...providerOffsets]..sort()));
+    expect(sourceOffsets, orderedEquals([...sourceOffsets]..sort()));
 
     await _openSettingsTab(tester, 'battle-net');
 
@@ -243,7 +240,7 @@ void main() {
         filePath: p.join(directory.path, 'settings.json'),
       ),
       scanner: const LibraryScanner(),
-      providers: const [],
+      sources: const [],
     );
     await tester.runAsync(controller.initialize);
     final cover = File(p.join(directory.path, 'cover.png'));
@@ -419,7 +416,7 @@ void main() {
         LibraryController(
             configStore: const ConfigStore(filePath: 'unused'),
             scanner: const LibraryScanner(),
-            providers: const [],
+            sources: const [],
           )
           ..isInitializing = false
           ..settings = const AppSettings(outputPath: '/library')
@@ -503,7 +500,7 @@ void main() {
     final controller = LibraryController(
       configStore: const ConfigStore(filePath: 'unused'),
       scanner: const LibraryScanner(),
-      providers: const [],
+      sources: const [],
     )..isInitializing = false;
     controller.library = MediaLibrary(
       albums: [
@@ -567,14 +564,14 @@ void main() {
     await tester.pump(const Duration(milliseconds: 200));
   });
 
-  testWidgets('shows provider progress in the sidebar scan toast', (
+  testWidgets('shows source progress in the sidebar scan toast', (
     tester,
   ) async {
     final controller =
         LibraryController(
             configStore: const ConfigStore(filePath: 'unused'),
             scanner: const LibraryScanner(),
-            providers: const [],
+            sources: const [],
           )
           ..isInitializing = false
           ..isBusy = true
@@ -613,7 +610,7 @@ void main() {
 
     expect(scanProgress, findsNothing);
     expect(find.text('Scan for captures'), findsOneWidget);
-    expect(find.text('Collect from enabled providers'), findsOneWidget);
+    expect(find.text('Collect from enabled sources'), findsOneWidget);
     expect(find.text('Refreshing…'), findsOneWidget);
     expect(find.text('Refreshing the timeline cache…'), findsNothing);
     expect(
@@ -695,7 +692,7 @@ void main() {
     final controller = LibraryController(
       configStore: const ConfigStore(filePath: 'unused'),
       scanner: const LibraryScanner(),
-      providers: const [],
+      sources: const [],
       screenshotActions: actions,
     )..isInitializing = false;
 
@@ -736,15 +733,15 @@ void main() {
     await tester.pump(const Duration(milliseconds: 200));
   });
 
-  testWidgets('shows each provider warning as an amber timed toast', (
+  testWidgets('shows each source warning as an amber timed toast', (
     tester,
   ) async {
     final controller = LibraryController(
       configStore: const ConfigStore(filePath: 'unused'),
       scanner: const LibraryScanner(),
-      providers: const [
-        _WarningProvider('First provider'),
-        _WarningProvider('Second provider'),
+      sources: const [
+        _WarningSource('First source'),
+        _WarningSource('Second source'),
       ],
     )..isInitializing = false;
 
@@ -755,9 +752,8 @@ void main() {
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 100));
 
-    const firstWarning = 'First provider was skipped because it was not found.';
-    const secondWarning =
-        'Second provider was skipped because it was not found.';
+    const firstWarning = 'First source was skipped because it was not found.';
+    const secondWarning = 'Second source was skipped because it was not found.';
     final firstToast = find.byKey(const ValueKey('notification-toast-1'));
     final secondToast = find.byKey(const ValueKey('notification-toast-2'));
     expect(firstToast, findsOneWidget);
@@ -829,7 +825,7 @@ void main() {
     final controller = LibraryController(
       configStore: const ConfigStore(filePath: 'unused'),
       scanner: const LibraryScanner(),
-      providers: const [],
+      sources: const [],
       screenshotActions: actions,
     )..isInitializing = false;
     controller.library = MediaLibrary(
@@ -1009,7 +1005,7 @@ void main() {
     final controller = LibraryController(
       configStore: const ConfigStore(filePath: 'unused'),
       scanner: const LibraryScanner(),
-      providers: const [],
+      sources: const [],
     )..isInitializing = false;
     controller.library = MediaLibrary(
       albums: [GameAlbum(platform: 'PC', game: 'Game', media: media)],
@@ -1091,7 +1087,7 @@ void main() {
     final controller = LibraryController(
       configStore: const ConfigStore(filePath: 'unused'),
       scanner: const LibraryScanner(),
-      providers: const [],
+      sources: const [],
     )..isInitializing = false;
     controller.library = MediaLibrary(
       albums: [GameAlbum(platform: 'PC', game: 'Game', media: media)],
@@ -1155,7 +1151,7 @@ void main() {
     final controller = LibraryController(
       configStore: const ConfigStore(filePath: 'unused'),
       scanner: const LibraryScanner(),
-      providers: const [],
+      sources: const [],
     )..isInitializing = false;
     controller.library = MediaLibrary(
       albums: [GameAlbum(platform: 'PC', game: 'Game', media: media)],
@@ -1243,7 +1239,7 @@ void main() {
     final controller = LibraryController(
       configStore: const ConfigStore(filePath: 'unused'),
       scanner: const LibraryScanner(),
-      providers: const [],
+      sources: const [],
       screenshotActions: actions,
     )..isInitializing = false;
     controller.library = MediaLibrary(
@@ -1284,7 +1280,7 @@ void main() {
         LibraryController(
             configStore: _MemoryConfigStore(),
             scanner: const LibraryScanner(),
-            providers: const [],
+            sources: const [],
           )
           ..isInitializing = false
           ..view = LibraryView.settings
@@ -1329,7 +1325,7 @@ void main() {
         LibraryController(
             configStore: store,
             scanner: const LibraryScanner(),
-            providers: const [],
+            sources: const [],
           )
           ..isInitializing = false
           ..view = LibraryView.settings
@@ -1473,7 +1469,7 @@ void main() {
         LibraryController(
             configStore: store,
             scanner: const LibraryScanner(),
-            providers: const [_WidgetSteamProvider()],
+            sources: const [_WidgetSteamSource()],
           )
           ..isInitializing = false
           ..view = LibraryView.settings
@@ -1555,8 +1551,8 @@ void main() {
         LibraryController(
             configStore: store,
             scanner: const LibraryScanner(),
-            providers: const [
-              BattleNetProvider(
+            sources: const [
+              BattleNetSource(
                 locator: BattleNetLocator(
                   operatingSystem: 'macos',
                   userHomeDirectory: '/gaming-memories-missing-home',
@@ -1641,8 +1637,8 @@ void main() {
         LibraryController(
             configStore: store,
             scanner: const LibraryScanner(),
-            providers: const [
-              BattleNetProvider(
+            sources: const [
+              BattleNetSource(
                 locator: BattleNetLocator(
                   operatingSystem: 'macos',
                   userHomeDirectory: '/gaming-memories-missing-home',
@@ -1693,8 +1689,8 @@ void main() {
         LibraryController(
             configStore: _MemoryConfigStore(),
             scanner: const LibraryScanner(),
-            providers: const [
-              BattleNetProvider(
+            sources: const [
+              BattleNetSource(
                 locator: BattleNetLocator(
                   operatingSystem: 'macos',
                   userHomeDirectory: '/gaming-memories-missing-home',
@@ -1710,7 +1706,7 @@ void main() {
             battleNet: BattleNetSettings(
               enabled: true,
               games: {
-                'diablo_iii': ProviderSettings(
+                'diablo_iii': SourceSettings(
                   enabled: true,
                   useCustomPath: true,
                   sourcePath: '/definitely/missing/gaming-memories',
@@ -1736,7 +1732,7 @@ void main() {
     await tester.pump(const Duration(milliseconds: 200));
   });
 
-  testWidgets('disables an active provider after an invalid folder edit', (
+  testWidgets('disables an active source after an invalid folder edit', (
     tester,
   ) async {
     final directory = Directory.systemTemp.createTempSync('gaming-memories-');
@@ -1748,13 +1744,13 @@ void main() {
         LibraryController(
             configStore: store,
             scanner: const LibraryScanner(),
-            providers: const [PlayStation4Provider()],
+            sources: const [PlayStation4Source()],
           )
           ..isInitializing = false
           ..view = LibraryView.settings
           ..settings = AppSettings(
             outputPath: '',
-            playStation4: ProviderSettings(
+            playStation4: SourceSettings(
               enabled: true,
               useCustomPath: true,
               sourcePath: validSource.path,
@@ -1797,15 +1793,15 @@ void main() {
     await tester.pump(const Duration(milliseconds: 200));
   });
 
-  testWidgets('keeps a provider disabled when its folder is invalid', (
+  testWidgets('keeps a source disabled when its folder is invalid', (
     tester,
   ) async {
     final controller =
         LibraryController(
             configStore: _MemoryConfigStore(),
             scanner: const LibraryScanner(),
-            providers: const [
-              BattleNetProvider(
+            sources: const [
+              BattleNetSource(
                 locator: BattleNetLocator(
                   operatingSystem: 'macos',
                   userHomeDirectory: '/gaming-memories-missing-home',
@@ -1821,7 +1817,7 @@ void main() {
             battleNet: BattleNetSettings(
               enabled: false,
               games: {
-                'diablo_iii': ProviderSettings(
+                'diablo_iii': SourceSettings(
                   enabled: true,
                   useCustomPath: true,
                   sourcePath: '/definitely/missing/gaming-memories',
@@ -1853,7 +1849,7 @@ void main() {
     await tester.pump(const Duration(milliseconds: 200));
   });
 
-  testWidgets('shows and autosaves Hytale provider settings', (tester) async {
+  testWidgets('shows and autosaves Hytale source settings', (tester) async {
     final directory = Directory.systemTemp.createTempSync('gaming-memories-');
     final source = Directory(p.join(directory.path, 'Hytale Screenshots'))
       ..createSync();
@@ -1863,13 +1859,13 @@ void main() {
         LibraryController(
             configStore: store,
             scanner: const LibraryScanner(),
-            providers: const [],
+            sources: const [],
           )
           ..isInitializing = false
           ..view = LibraryView.settings
           ..settings = AppSettings(
             outputPath: '',
-            hytale: ProviderSettings(
+            hytale: SourceSettings(
               enabled: true,
               useCustomPath: true,
               sourcePath: source.path,
@@ -1897,9 +1893,7 @@ void main() {
     await tester.pump(const Duration(milliseconds: 200));
   });
 
-  testWidgets('shows and autosaves Minecraft provider settings', (
-    tester,
-  ) async {
+  testWidgets('shows and autosaves Minecraft source settings', (tester) async {
     final directory = Directory.systemTemp.createTempSync('gaming-memories-');
     final source = Directory(p.join(directory.path, 'minecraft-screenshots'))
       ..createSync();
@@ -1909,13 +1903,13 @@ void main() {
         LibraryController(
             configStore: store,
             scanner: const LibraryScanner(),
-            providers: const [],
+            sources: const [],
           )
           ..isInitializing = false
           ..view = LibraryView.settings
           ..settings = AppSettings(
             outputPath: '',
-            minecraft: ProviderSettings(
+            minecraft: SourceSettings(
               enabled: true,
               useCustomPath: true,
               sourcePath: source.path,
@@ -1951,7 +1945,7 @@ void main() {
         LibraryController(
             configStore: store,
             scanner: const LibraryScanner(),
-            providers: const [],
+            sources: const [],
           )
           ..isInitializing = false
           ..view = LibraryView.settings
@@ -2000,7 +1994,7 @@ void main() {
         LibraryController(
             configStore: _MemoryConfigStore(),
             scanner: const LibraryScanner(),
-            providers: const [],
+            sources: const [],
             folderAccess: const _PersistentFolderAccess(),
           )
           ..isInitializing = false
@@ -2035,9 +2029,9 @@ void main() {
         LibraryController(
             configStore: _MemoryConfigStore(),
             scanner: const LibraryScanner(),
-            providers: const [],
+            sources: const [],
             folderAccess: access,
-            providerPaths: const _WidgetProviderPathResolver([
+            sourcePaths: const _WidgetSourcePathResolver([
               '/Steam One/userdata',
               '/Steam Two/userdata',
             ]),
@@ -2089,15 +2083,15 @@ void main() {
 }
 
 Future<void> _openSettingsTab(WidgetTester tester, String name) async {
-  const directTabs = {'appearance', 'library', 'providers'};
-  final tabName = directTabs.contains(name) ? name : 'providers';
+  const directTabs = {'appearance', 'library', 'sources'};
+  final tabName = directTabs.contains(name) ? name : 'sources';
   final tab = find.byKey(ValueKey('settings-tab-$tabName'));
   await tester.ensureVisible(tab);
   await tester.pumpAndSettle();
   await tester.tap(tab);
   await tester.pumpAndSettle();
   if (!directTabs.contains(name)) {
-    final card = find.byKey(ValueKey('provider-card-$name'));
+    final card = find.byKey(ValueKey('source-card-$name'));
     await tester.ensureVisible(card);
     await tester.tap(card);
     await tester.pumpAndSettle();
@@ -2138,7 +2132,7 @@ class _LibraryActivityController extends LibraryController {
     : super(
         configStore: const ConfigStore(filePath: 'unused'),
         scanner: const LibraryScanner(),
-        providers: const [],
+        sources: const [],
       );
 
   final LibraryActivity activity;
@@ -2147,9 +2141,9 @@ class _LibraryActivityController extends LibraryController {
   LibraryActivity get libraryActivity => activity;
 }
 
-class _WidgetSteamProvider
-    implements ScreenshotProvider, ProviderConfigurationValidator {
-  const _WidgetSteamProvider();
+class _WidgetSteamSource
+    implements ScreenshotSource, SourceConfigurationValidator {
+  const _WidgetSteamSource();
 
   @override
   String get name => 'Steam';
@@ -2196,8 +2190,8 @@ class _MemoryScreenshotActions implements ScreenshotActionService {
   }
 }
 
-class _WarningProvider implements ScreenshotProvider {
-  const _WarningProvider(this.name);
+class _WarningSource implements ScreenshotSource {
+  const _WarningSource(this.name);
 
   @override
   final String name;
@@ -2262,8 +2256,8 @@ class _RecordingPersistentFolderAccess implements FolderAccessService {
   Future<void> dispose() async {}
 }
 
-class _WidgetProviderPathResolver extends ProviderPathResolver {
-  const _WidgetProviderPathResolver(this.paths);
+class _WidgetSourcePathResolver extends SourcePathResolver {
+  const _WidgetSourcePathResolver(this.paths);
 
   final List<String> paths;
 

@@ -28,8 +28,8 @@ void main() {
     final log = createLog();
 
     log.error(
-      'Provider "Steam" failed.',
-      category: 'provider',
+      'Source "Steam" failed.',
+      category: 'source',
       error: const FileSystemException('listing failed', '/tmp/x'),
       stackTrace: StackTrace.fromString('#0 first\n#1 second'),
     );
@@ -37,8 +37,8 @@ void main() {
 
     final contents = await File(logPath).readAsString();
     expect(contents, contains('ERROR'));
-    expect(contents, contains('[provider]'));
-    expect(contents, contains('Provider "Steam" failed.'));
+    expect(contents, contains('[source]'));
+    expect(contents, contains('Source "Steam" failed.'));
     expect(contents, contains('FileSystemException'));
     expect(contents, contains('#0 first'));
     expect(contents, contains('#1 second'));

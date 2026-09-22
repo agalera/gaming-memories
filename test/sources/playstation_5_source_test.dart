@@ -2,8 +2,8 @@ import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:gaming_memories/models/app_settings.dart';
-import 'package:gaming_memories/providers/playstation_5_provider.dart';
 import 'package:gaming_memories/services/video_metadata_service.dart';
+import 'package:gaming_memories/sources/playstation_5_source.dart';
 import 'package:path/path.dart' as p;
 
 void main() {
@@ -25,7 +25,7 @@ void main() {
   AppSettings settings({bool enabled = true, String? sourcePath}) {
     return AppSettings(
       outputPath: output.path,
-      playStation5: ProviderSettings(
+      playStation5: SourceSettings(
         enabled: enabled,
         useCustomPath: true,
         sourcePath: sourcePath ?? source.path,
@@ -46,7 +46,7 @@ void main() {
     await File(p.join(game.path, 'notes.mp4')).writeAsString('ignored');
     durationReader.durations[clip.path] = const Duration(seconds: 30);
 
-    final result = await PlayStation5Provider(durationReader: durationReader)
+    final result = await PlayStation5Source(durationReader: durationReader)
         .collect(settings());
 
     final album = p.join(output.path, 'PlayStation 5', 'Astro Bot');
@@ -70,7 +70,7 @@ void main() {
     await File(p.join(game.path, 'Returnal_20260920112233_1.jpg'))
         .writeAsString('different screenshot');
 
-    final result = await PlayStation5Provider(durationReader: durationReader)
+    final result = await PlayStation5Source(durationReader: durationReader)
         .collect(settings());
 
     final album = Directory(p.join(output.path, 'PlayStation 5', 'Returnal'));
@@ -102,7 +102,7 @@ void main() {
     await File(p.join(game.path, 'Ratchet_20260920112233.webm'))
         .writeAsString('clip');
 
-    final result = await PlayStation5Provider(durationReader: durationReader)
+    final result = await PlayStation5Source(durationReader: durationReader)
         .collect(settings());
 
     expect(result.imported, 1);

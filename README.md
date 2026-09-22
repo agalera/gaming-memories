@@ -40,7 +40,7 @@ platform and game, or open a capture for a closer look without leaving the app.
 
 ## Supported Sources
 
-| Provider | Collection source | Extra setup |
+| Source | Collected from | Extra setup |
 | --- | --- | --- |
 | **Battle.net** | Installed Diablo IV and World of Warcraft capture folders | None |
 | **Guild Wars 2** | Game screenshot folder | None |
@@ -141,7 +141,7 @@ desktop platform:
 
 1. Open **Settings** from the sidebar.
 2. Choose the folder where Gaming Memories should keep its library.
-3. Enable and configure the providers you use.
+3. Enable and configure the sources you use.
 4. Select the collect action in the page header to import your media.
 
 ## Optional Tools
@@ -160,7 +160,7 @@ For direct Nintendo Switch 2 collection, install the `mtp-folders`,
 **Copy to a Computer**, connect it by USB, and close or eject it from any file
 manager first. Only one program can use the MTP device at a time.
 
-## Provider Notes
+## Source Notes
 
 ### Battle.net
 
@@ -178,7 +178,7 @@ filename; TGA screenshots are converted to PNG for gallery compatibility.
 ### Hytale and Minecraft
 
 Hytale is discovered automatically on macOS and Linux in
-`Pictures/Hytale Screenshots`, and its provider can save the bundled cover in
+`Pictures/Hytale Screenshots`, and its source can save the bundled cover in
 the library album.
 
 Minecraft launcher screenshots are discovered on Windows, macOS, and Linux.
@@ -191,7 +191,7 @@ while ignoring `_c` duplicates. Individual album folders, including the folder
 for captures taken outside a game, can be excluded in Settings.
 
 PlayStation 4 and PlayStation 5 use folders exported from the console. When
-FFprobe is available, the PlayStation 5 provider dates a clip from its start
+FFprobe is available, the PlayStation 5 source dates a clip from its start
 rather than the end time stored in its filename.
 
 ## Development

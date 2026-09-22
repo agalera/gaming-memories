@@ -66,15 +66,15 @@ enum AppThemeMode {
   }
 }
 
-class ProviderSettings {
-  const ProviderSettings({
+class SourceSettings {
+  const SourceSettings({
     required this.enabled,
     required this.useCustomPath,
     required this.sourcePath,
     this.downloadCovers = false,
   });
 
-  const ProviderSettings.disabled()
+  const SourceSettings.disabled()
     : enabled = false,
       useCustomPath = false,
       sourcePath = '',
@@ -85,13 +85,13 @@ class ProviderSettings {
   final String sourcePath;
   final bool downloadCovers;
 
-  ProviderSettings copyWith({
+  SourceSettings copyWith({
     bool? enabled,
     bool? useCustomPath,
     String? sourcePath,
     bool? downloadCovers,
   }) {
-    return ProviderSettings(
+    return SourceSettings(
       enabled: enabled ?? this.enabled,
       useCustomPath: useCustomPath ?? this.useCustomPath,
       sourcePath: sourcePath ?? this.sourcePath,
@@ -99,12 +99,12 @@ class ProviderSettings {
     );
   }
 
-  factory ProviderSettings.fromJson(Map<String, Object?> json) {
+  factory SourceSettings.fromJson(Map<String, Object?> json) {
     final storedPath = json['sourcePath'] as String? ?? '';
     final hasLegacyCustomPath =
         storedPath.trim().isNotEmpty && storedPath.trim() != 'auto';
 
-    return ProviderSettings(
+    return SourceSettings(
       enabled: json['enabled'] as bool? ?? false,
       useCustomPath: json['useCustomPath'] as bool? ?? hasLegacyCustomPath,
       sourcePath: hasLegacyCustomPath ? storedPath : '',
@@ -276,7 +276,7 @@ class NintendoSwitch2Settings {
   };
 }
 
-/// Battle.net is one provider over several games, so it carries a master
+/// Battle.net is one source over several games, so it carries a master
 /// switch plus a setting per game, keyed by [BattleNetGame.id].
 class BattleNetSettings {
   const BattleNetSettings({required this.enabled, this.games = const {}});
@@ -284,22 +284,18 @@ class BattleNetSettings {
   const BattleNetSettings.disabled() : enabled = false, games = const {};
 
   final bool enabled;
-  final Map<String, ProviderSettings> games;
+  final Map<String, SourceSettings> games;
 
-  /// A game with nothing stored is on: the provider should work as soon as
+  /// A game with nothing stored is on: the source should work as soon as
   /// the user enables Battle.net, and a game whose folder is not there is
   /// skipped anyway.
-  ProviderSettings game(String id) =>
+  SourceSettings game(String id) =>
       games[id] ??
-      const ProviderSettings(
-        enabled: true,
-        useCustomPath: false,
-        sourcePath: '',
-      );
+      const SourceSettings(enabled: true, useCustomPath: false, sourcePath: '');
 
   BattleNetSettings copyWith({
     bool? enabled,
-    Map<String, ProviderSettings>? games,
+    Map<String, SourceSettings>? games,
   }) {
     return BattleNetSettings(
       enabled: enabled ?? this.enabled,
@@ -307,18 +303,18 @@ class BattleNetSettings {
     );
   }
 
-  BattleNetSettings withGame(String id, ProviderSettings value) {
+  BattleNetSettings withGame(String id, SourceSettings value) {
     return copyWith(games: Map.unmodifiable({...games, id: value}));
   }
 
   factory BattleNetSettings.fromJson(Map<String, Object?> json) {
     final gamesJson = json['games'];
-    final games = <String, ProviderSettings>{};
+    final games = <String, SourceSettings>{};
     if (gamesJson is Map) {
       for (final entry in gamesJson.entries) {
         final value = entry.value;
         if (value is Map) {
-          games[entry.key.toString()] = ProviderSettings.fromJson(
+          games[entry.key.toString()] = SourceSettings.fromJson(
             value.map((key, value) => MapEntry(key.toString(), value)),
           );
         }
@@ -330,7 +326,7 @@ class BattleNetSettings {
     );
   }
 
-  /// Reads a settings file from before the provider was split per game. Only
+  /// Reads a settings file from before the source was split per game. Only
   /// the master switch survives: the old path pointed at one games root, and
   /// there is no way to tell which game it was for.
   factory BattleNetSettings.fromLegacyJson(Map<String, Object?> json) {
@@ -349,12 +345,12 @@ class AppSettings {
   const AppSettings({
     required this.outputPath,
     this.battleNet = const BattleNetSettings.disabled(),
-    this.guildWars2 = const ProviderSettings.disabled(),
-    this.hytale = const ProviderSettings.disabled(),
-    this.minecraft = const ProviderSettings.disabled(),
+    this.guildWars2 = const SourceSettings.disabled(),
+    this.hytale = const SourceSettings.disabled(),
+    this.minecraft = const SourceSettings.disabled(),
     this.nintendoSwitch2 = const NintendoSwitch2Settings.disabled(),
-    this.playStation4 = const ProviderSettings.disabled(),
-    this.playStation5 = const ProviderSettings.disabled(),
+    this.playStation4 = const SourceSettings.disabled(),
+    this.playStation5 = const SourceSettings.disabled(),
     this.steam = const SteamSettings.disabled(),
     this.themeMode = AppThemeMode.system,
     this.folderGrants = const {},
@@ -363,24 +359,24 @@ class AppSettings {
   const AppSettings.defaults()
     : outputPath = '',
       battleNet = const BattleNetSettings.disabled(),
-      guildWars2 = const ProviderSettings.disabled(),
-      hytale = const ProviderSettings.disabled(),
-      minecraft = const ProviderSettings.disabled(),
+      guildWars2 = const SourceSettings.disabled(),
+      hytale = const SourceSettings.disabled(),
+      minecraft = const SourceSettings.disabled(),
       nintendoSwitch2 = const NintendoSwitch2Settings.disabled(),
-      playStation4 = const ProviderSettings.disabled(),
-      playStation5 = const ProviderSettings.disabled(),
+      playStation4 = const SourceSettings.disabled(),
+      playStation5 = const SourceSettings.disabled(),
       steam = const SteamSettings.disabled(),
       themeMode = AppThemeMode.system,
       folderGrants = const {};
 
   final String outputPath;
   final BattleNetSettings battleNet;
-  final ProviderSettings guildWars2;
-  final ProviderSettings hytale;
-  final ProviderSettings minecraft;
+  final SourceSettings guildWars2;
+  final SourceSettings hytale;
+  final SourceSettings minecraft;
   final NintendoSwitch2Settings nintendoSwitch2;
-  final ProviderSettings playStation4;
-  final ProviderSettings playStation5;
+  final SourceSettings playStation4;
+  final SourceSettings playStation5;
   final SteamSettings steam;
   final AppThemeMode themeMode;
   final Map<String, FolderGrant> folderGrants;
@@ -388,12 +384,12 @@ class AppSettings {
   AppSettings copyWith({
     String? outputPath,
     BattleNetSettings? battleNet,
-    ProviderSettings? guildWars2,
-    ProviderSettings? hytale,
-    ProviderSettings? minecraft,
+    SourceSettings? guildWars2,
+    SourceSettings? hytale,
+    SourceSettings? minecraft,
     NintendoSwitch2Settings? nintendoSwitch2,
-    ProviderSettings? playStation4,
-    ProviderSettings? playStation5,
+    SourceSettings? playStation4,
+    SourceSettings? playStation5,
     SteamSettings? steam,
     AppThemeMode? themeMode,
     Map<String, FolderGrant>? folderGrants,
@@ -434,10 +430,10 @@ class AppSettings {
         }
       }
     }
-    final legacyBattleNetGrant = grants.remove('provider.diabloIV');
+    final legacyBattleNetGrant = grants.remove('source.diabloIV');
     if (legacyBattleNetGrant != null &&
-        !grants.containsKey('provider.battleNet')) {
-      grants['provider.battleNet'] = legacyBattleNetGrant;
+        !grants.containsKey('source.battleNet')) {
+      grants['source.battleNet'] = legacyBattleNetGrant;
     }
 
     return AppSettings(
@@ -448,23 +444,23 @@ class AppSettings {
           ? BattleNetSettings.fromJson(battleNetJson)
           : BattleNetSettings.fromLegacyJson(battleNetJson),
       guildWars2: guildWars2Json is Map<String, Object?>
-          ? ProviderSettings.fromJson(guildWars2Json)
-          : const ProviderSettings.disabled(),
+          ? SourceSettings.fromJson(guildWars2Json)
+          : const SourceSettings.disabled(),
       hytale: hytaleJson is Map<String, Object?>
-          ? ProviderSettings.fromJson(hytaleJson)
-          : const ProviderSettings.disabled(),
+          ? SourceSettings.fromJson(hytaleJson)
+          : const SourceSettings.disabled(),
       minecraft: minecraftJson is Map<String, Object?>
-          ? ProviderSettings.fromJson(minecraftJson)
-          : const ProviderSettings.disabled(),
+          ? SourceSettings.fromJson(minecraftJson)
+          : const SourceSettings.disabled(),
       nintendoSwitch2: nintendoSwitch2Json is Map<String, Object?>
           ? NintendoSwitch2Settings.fromJson(nintendoSwitch2Json)
           : const NintendoSwitch2Settings.disabled(),
       playStation4: playStation4Json is Map<String, Object?>
-          ? ProviderSettings.fromJson(playStation4Json)
-          : const ProviderSettings.disabled(),
+          ? SourceSettings.fromJson(playStation4Json)
+          : const SourceSettings.disabled(),
       playStation5: playStation5Json is Map<String, Object?>
-          ? ProviderSettings.fromJson(playStation5Json)
-          : const ProviderSettings.disabled(),
+          ? SourceSettings.fromJson(playStation5Json)
+          : const SourceSettings.disabled(),
       steam: steamJson is Map<String, Object?>
           ? SteamSettings.fromJson(steamJson)
           : const SteamSettings.disabled(),

@@ -5,11 +5,11 @@ import 'package:forui/forui.dart';
 import 'package:material_ui/material_ui.dart';
 
 import '../controllers/library_controller.dart';
-import '../providers/battle_net_provider.dart';
-import '../services/battle_net_games.dart';
 import '../models/app_settings.dart';
+import '../services/battle_net_games.dart';
 import '../services/folder_access_service.dart';
 import '../services/library_scanner.dart';
+import '../sources/battle_net_source.dart';
 
 class SettingsPage extends StatefulWidget {
   const SettingsPage({required this.controller, super.key});
@@ -73,8 +73,8 @@ class _SettingsPageState extends State<SettingsPage> {
   var _hasPendingChanges = false;
   var _suppressAutosave = false;
   var _settingsTab = 0;
-  _SettingsProvider? _expandedProvider;
-  final _providerActivationErrors = <_SettingsProvider, String>{};
+  _SettingsSource? _expandedSource;
+  final _sourceActivationErrors = <_SettingsSource, String>{};
   Future<void> _saveQueue = Future.value();
 
   /// Rebuilds the per-game editing state from saved settings. Each game keeps
@@ -119,7 +119,7 @@ class _SettingsPageState extends State<SettingsPage> {
     });
     if (!value || !widget.controller.usesPersistentFolderAccess) {
       // Off macOS the field is simply typed into, as it is for every other
-      // provider. On macOS picking the folder is also how the grant is made,
+      // source. On macOS picking the folder is also how the grant is made,
       // so the dialog opens straight away.
       _scheduleAutosave(immediate: true);
       return;
@@ -196,16 +196,16 @@ class _SettingsPageState extends State<SettingsPage> {
     _steamOnlineGallery = steam.onlineGallery;
     _steamDownloadCovers = steam.downloadCovers;
     _themeMode = widget.controller.settings.themeMode;
-    for (final provider in _SettingsProvider.values) {
-      final error = widget.controller.providerValidationError(
-        _providerName(provider),
+    for (final source in _SettingsSource.values) {
+      final error = widget.controller.sourceValidationError(
+        _sourceName(source),
       );
       if (error != null) {
-        _providerActivationErrors[provider] = error;
+        _sourceActivationErrors[source] = error;
       }
     }
-    if (_providerActivationErrors.isNotEmpty) {
-      _expandedProvider = _providerActivationErrors.keys.first;
+    if (_sourceActivationErrors.isNotEmpty) {
+      _expandedSource = _sourceActivationErrors.keys.first;
     }
 
     for (final controller in [
@@ -274,11 +274,11 @@ class _SettingsPageState extends State<SettingsPage> {
         child: ConstrainedBox(
           constraints: const BoxConstraints(maxWidth: 760),
           child: _SettingsSections(
-            sortProviders: _settingsTab == 2,
+            sortSources: _settingsTab == 2,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(
-                'Library and provider setup',
+                'Library and source setup',
                 style: context.theme.typography.body.sm.copyWith(
                   color: context.theme.colors.mutedForeground,
                 ),
@@ -307,8 +307,8 @@ class _SettingsPageState extends State<SettingsPage> {
                   ),
                   FTabEntry(
                     label: Text(
-                      'Providers',
-                      key: ValueKey('settings-tab-providers'),
+                      'Sources',
+                      key: ValueKey('settings-tab-sources'),
                     ),
                     child: SizedBox.shrink(),
                   ),
@@ -397,34 +397,29 @@ class _SettingsPageState extends State<SettingsPage> {
               ],
               if (_settingsTab == 2)
                 FCard(
-                  key: const ValueKey('provider-sort-Battle.net'),
+                  key: const ValueKey('source-sort-Battle.net'),
                   child: Padding(
                     padding: const EdgeInsets.all(20),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        _ProviderHeader(
-                          headerKey: const ValueKey('provider-card-battle-net'),
+                        _SourceHeader(
+                          headerKey: const ValueKey('source-card-battle-net'),
                           switchKey: const ValueKey('battle-net-enabled'),
                           name: 'Battle.net',
                           description: 'PC · Installed Blizzard games',
                           expanded:
-                              _expandedProvider == _SettingsProvider.battleNet,
+                              _expandedSource == _SettingsSource.battleNet,
                           enabled: _diabloEnabled,
                           error:
-                              _providerActivationErrors[_SettingsProvider
+                              _sourceActivationErrors[_SettingsSource
                                   .battleNet],
-                          onTap: () =>
-                              _toggleProvider(_SettingsProvider.battleNet),
+                          onTap: () => _toggleSource(_SettingsSource.battleNet),
                           onEnabled: (value) => unawaited(
-                            _setProviderEnabled(
-                              _SettingsProvider.battleNet,
-                              value,
-                            ),
+                            _setSourceEnabled(_SettingsSource.battleNet, value),
                           ),
                         ),
-                        if (_expandedProvider ==
-                            _SettingsProvider.battleNet) ...[
+                        if (_expandedSource == _SettingsSource.battleNet) ...[
                           const SizedBox(height: 18),
                           Text(
                             _diabloPathError ?? 'Each game is checked for in its default screenshot folder. Turn off a game to skip it, or point it somewhere else.',
@@ -453,14 +448,10 @@ class _SettingsPageState extends State<SettingsPage> {
                               usesPersistentFolderAccess:
                                   widget.controller.usesPersistentFolderAccess,
                               access: widget.controller.folderAuthorization(
-                                BattleNetProvider.grantIdForGame(
-                                  folder.game.id,
-                                ),
+                                BattleNetSource.grantIdForGame(folder.game.id),
                               ),
                               folderButtonLabel: _folderButtonLabel(
-                                BattleNetProvider.grantIdForGame(
-                                  folder.game.id,
-                                ),
+                                BattleNetSource.grantIdForGame(folder.game.id),
                               ),
                               onEnabled: (value) =>
                                   _setBattleNetGameEnabled(folder.game, value),
@@ -491,33 +482,27 @@ class _SettingsPageState extends State<SettingsPage> {
               if (_settingsTab == 2) const SizedBox(height: 12),
               if (_settingsTab == 2)
                 FCard(
-                  key: const ValueKey('provider-sort-Hytale'),
+                  key: const ValueKey('source-sort-Hytale'),
                   child: Padding(
                     padding: const EdgeInsets.all(20),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        _ProviderHeader(
-                          headerKey: const ValueKey('provider-card-hytale'),
+                        _SourceHeader(
+                          headerKey: const ValueKey('source-card-hytale'),
                           switchKey: const ValueKey('hytale-enabled'),
                           name: 'Hytale',
                           description: 'PC · Screenshots',
-                          expanded:
-                              _expandedProvider == _SettingsProvider.hytale,
+                          expanded: _expandedSource == _SettingsSource.hytale,
                           enabled: _hytaleEnabled,
                           error:
-                              _providerActivationErrors[_SettingsProvider
-                                  .hytale],
-                          onTap: () =>
-                              _toggleProvider(_SettingsProvider.hytale),
+                              _sourceActivationErrors[_SettingsSource.hytale],
+                          onTap: () => _toggleSource(_SettingsSource.hytale),
                           onEnabled: (value) => unawaited(
-                            _setProviderEnabled(
-                              _SettingsProvider.hytale,
-                              value,
-                            ),
+                            _setSourceEnabled(_SettingsSource.hytale, value),
                           ),
                         ),
-                        if (_expandedProvider == _SettingsProvider.hytale) ...[
+                        if (_expandedSource == _SettingsSource.hytale) ...[
                           const SizedBox(height: 18),
                           FCheckbox(
                             key: const ValueKey('hytale-custom-path'),
@@ -528,7 +513,7 @@ class _SettingsPageState extends State<SettingsPage> {
                             value: _hytaleUseCustomPath,
                             enabled: true,
                             onChange: (value) => unawaited(
-                              _setCustomPath(_SettingsProvider.hytale, value),
+                              _setCustomPath(_SettingsSource.hytale, value),
                             ),
                           ),
                           if (_hytaleUseCustomPath) ...[
@@ -557,7 +542,7 @@ class _SettingsPageState extends State<SettingsPage> {
                               buttonKey: const ValueKey(
                                 'hytale-automatic-folder-access',
                               ),
-                              providerName: 'Hytale',
+                              sourceName: 'Hytale',
                               automaticDescription: 'Hytale screenshots are stored in “Pictures/Hytale Screenshots”. The macOS dialog will open that folder; click Allow Access to grant access.',
                               status: widget.controller.folderAuthorization(
                                 FolderGrantIds.hytale,
@@ -588,25 +573,25 @@ class _SettingsPageState extends State<SettingsPage> {
                 ),
               if (_settingsTab == 2) const SizedBox(height: 12),
               if (_settingsTab == 2)
-                _PlayStationProviderCard(
-                  headerKey: const ValueKey('provider-card-playstation-4'),
+                _PlayStationSourceCard(
+                  headerKey: const ValueKey('source-card-playstation-4'),
                   name: 'PlayStation 4',
                   description: 'Screenshots and 30-second clips',
                   fieldKey: const ValueKey('playstation-4-path-field'),
                   switchKey: const ValueKey('playstation-4-enabled'),
                   controller: _playStation4Controller,
-                  expanded: _expandedProvider == _SettingsProvider.playStation4,
+                  expanded: _expandedSource == _SettingsSource.playStation4,
                   enabled: _playStation4Enabled,
                   activationError:
-                      _providerActivationErrors[_SettingsProvider.playStation4],
+                      _sourceActivationErrors[_SettingsSource.playStation4],
                   error: _playStation4PathError,
                   readOnly: widget.controller.usesPersistentFolderAccess,
                   buttonLabel: _playStation4Enabled
                       ? _folderButtonLabel(FolderGrantIds.playStation4)
                       : 'Select Folder',
-                  onTap: () => _toggleProvider(_SettingsProvider.playStation4),
+                  onTap: () => _toggleSource(_SettingsSource.playStation4),
                   onEnabled: (value) => unawaited(
-                    _setProviderEnabled(_SettingsProvider.playStation4, value),
+                    _setSourceEnabled(_SettingsSource.playStation4, value),
                   ),
                   onBrowse: () => _chooseDirectory(
                     SettingsFolderTarget.playStation4Custom,
@@ -615,26 +600,26 @@ class _SettingsPageState extends State<SettingsPage> {
                 ),
               if (_settingsTab == 2) const SizedBox(height: 12),
               if (_settingsTab == 2)
-                _PlayStationProviderCard(
-                  headerKey: const ValueKey('provider-card-playstation-5'),
+                _PlayStationSourceCard(
+                  headerKey: const ValueKey('source-card-playstation-5'),
                   name: 'PlayStation 5',
                   description: 'Screenshots and 30-second clips',
                   fieldKey: const ValueKey('playstation-5-path-field'),
                   switchKey: const ValueKey('playstation-5-enabled'),
                   controller: _playStation5Controller,
-                  expanded: _expandedProvider == _SettingsProvider.playStation5,
+                  expanded: _expandedSource == _SettingsSource.playStation5,
                   enabled: _playStation5Enabled,
                   activationError:
-                      _providerActivationErrors[_SettingsProvider.playStation5],
+                      _sourceActivationErrors[_SettingsSource.playStation5],
                   error: _playStation5PathError,
                   readOnly: widget.controller.usesPersistentFolderAccess,
                   buttonLabel: _playStation5Enabled
                       ? _folderButtonLabel(FolderGrantIds.playStation5)
                       : 'Select Folder',
                   requirement: 'FFprobe is optional. Without it, clips use the end time in their filename.',
-                  onTap: () => _toggleProvider(_SettingsProvider.playStation5),
+                  onTap: () => _toggleSource(_SettingsSource.playStation5),
                   onEnabled: (value) => unawaited(
-                    _setProviderEnabled(_SettingsProvider.playStation5, value),
+                    _setSourceEnabled(_SettingsSource.playStation5, value),
                   ),
                   onBrowse: () => _chooseDirectory(
                     SettingsFolderTarget.playStation5Custom,
@@ -644,15 +629,15 @@ class _SettingsPageState extends State<SettingsPage> {
               if (_settingsTab == 2) const SizedBox(height: 12),
               if (_settingsTab == 2)
                 FCard(
-                  key: const ValueKey('provider-sort-Nintendo Switch 2'),
+                  key: const ValueKey('source-sort-Nintendo Switch 2'),
                   child: Padding(
                     padding: const EdgeInsets.all(20),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        _ProviderHeader(
+                        _SourceHeader(
                           headerKey: const ValueKey(
-                            'provider-card-nintendo-switch-2',
+                            'source-card-nintendo-switch-2',
                           ),
                           switchKey: const ValueKey(
                             'nintendo-switch-2-enabled',
@@ -660,24 +645,23 @@ class _SettingsPageState extends State<SettingsPage> {
                           name: 'Nintendo Switch 2',
                           description: 'Console · Screenshots and clips',
                           expanded:
-                              _expandedProvider ==
-                              _SettingsProvider.nintendoSwitch2,
+                              _expandedSource ==
+                              _SettingsSource.nintendoSwitch2,
                           enabled: _nintendoSwitch2Enabled,
                           error:
-                              _providerActivationErrors[_SettingsProvider
+                              _sourceActivationErrors[_SettingsSource
                                   .nintendoSwitch2],
-                          onTap: () => _toggleProvider(
-                            _SettingsProvider.nintendoSwitch2,
-                          ),
+                          onTap: () =>
+                              _toggleSource(_SettingsSource.nintendoSwitch2),
                           onEnabled: (value) => unawaited(
-                            _setProviderEnabled(
-                              _SettingsProvider.nintendoSwitch2,
+                            _setSourceEnabled(
+                              _SettingsSource.nintendoSwitch2,
                               value,
                             ),
                           ),
                         ),
-                        if (_expandedProvider ==
-                            _SettingsProvider.nintendoSwitch2) ...[
+                        if (_expandedSource ==
+                            _SettingsSource.nintendoSwitch2) ...[
                           const SizedBox(height: 18),
                           FCheckbox(
                             key: const ValueKey(
@@ -691,7 +675,7 @@ class _SettingsPageState extends State<SettingsPage> {
                             enabled: true,
                             onChange: (value) => unawaited(
                               _setCustomPath(
-                                _SettingsProvider.nintendoSwitch2,
+                                _SettingsSource.nintendoSwitch2,
                                 value,
                               ),
                             ),
@@ -778,34 +762,29 @@ class _SettingsPageState extends State<SettingsPage> {
               if (_settingsTab == 2) const SizedBox(height: 12),
               if (_settingsTab == 2)
                 FCard(
-                  key: const ValueKey('provider-sort-Minecraft'),
+                  key: const ValueKey('source-sort-Minecraft'),
                   child: Padding(
                     padding: const EdgeInsets.all(20),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        _ProviderHeader(
-                          headerKey: const ValueKey('provider-card-minecraft'),
+                        _SourceHeader(
+                          headerKey: const ValueKey('source-card-minecraft'),
                           switchKey: const ValueKey('minecraft-enabled'),
                           name: 'Minecraft',
                           description: 'PC · Launcher and Flatpak screenshots',
                           expanded:
-                              _expandedProvider == _SettingsProvider.minecraft,
+                              _expandedSource == _SettingsSource.minecraft,
                           enabled: _minecraftEnabled,
                           error:
-                              _providerActivationErrors[_SettingsProvider
+                              _sourceActivationErrors[_SettingsSource
                                   .minecraft],
-                          onTap: () =>
-                              _toggleProvider(_SettingsProvider.minecraft),
+                          onTap: () => _toggleSource(_SettingsSource.minecraft),
                           onEnabled: (value) => unawaited(
-                            _setProviderEnabled(
-                              _SettingsProvider.minecraft,
-                              value,
-                            ),
+                            _setSourceEnabled(_SettingsSource.minecraft, value),
                           ),
                         ),
-                        if (_expandedProvider ==
-                            _SettingsProvider.minecraft) ...[
+                        if (_expandedSource == _SettingsSource.minecraft) ...[
                           const SizedBox(height: 18),
                           FCheckbox(
                             key: const ValueKey('minecraft-custom-path'),
@@ -816,10 +795,7 @@ class _SettingsPageState extends State<SettingsPage> {
                             value: _minecraftUseCustomPath,
                             enabled: true,
                             onChange: (value) => unawaited(
-                              _setCustomPath(
-                                _SettingsProvider.minecraft,
-                                value,
-                              ),
+                              _setCustomPath(_SettingsSource.minecraft, value),
                             ),
                           ),
                           if (_minecraftUseCustomPath) ...[
@@ -848,7 +824,7 @@ class _SettingsPageState extends State<SettingsPage> {
                               buttonKey: const ValueKey(
                                 'minecraft-automatic-folder-access',
                               ),
-                              providerName: 'Minecraft',
+                              sourceName: 'Minecraft',
                               automaticDescription: 'Minecraft screenshots are stored in the launcher screenshots folder. The macOS dialog will open it; click Allow Access to grant access.',
                               status: widget.controller.folderAuthorization(
                                 FolderGrantIds.minecraft,
@@ -867,36 +843,33 @@ class _SettingsPageState extends State<SettingsPage> {
               if (_settingsTab == 2) const SizedBox(height: 12),
               if (_settingsTab == 2)
                 FCard(
-                  key: const ValueKey('provider-sort-Guild Wars 2'),
+                  key: const ValueKey('source-sort-Guild Wars 2'),
                   child: Padding(
                     padding: const EdgeInsets.all(20),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        _ProviderHeader(
-                          headerKey: const ValueKey(
-                            'provider-card-guild-wars-2',
-                          ),
+                        _SourceHeader(
+                          headerKey: const ValueKey('source-card-guild-wars-2'),
                           switchKey: const ValueKey('guild-wars-2-enabled'),
                           name: 'Guild Wars 2',
                           description: 'PC · Screenshots',
                           expanded:
-                              _expandedProvider == _SettingsProvider.guildWars2,
+                              _expandedSource == _SettingsSource.guildWars2,
                           enabled: _guildWars2Enabled,
                           error:
-                              _providerActivationErrors[_SettingsProvider
+                              _sourceActivationErrors[_SettingsSource
                                   .guildWars2],
                           onTap: () =>
-                              _toggleProvider(_SettingsProvider.guildWars2),
+                              _toggleSource(_SettingsSource.guildWars2),
                           onEnabled: (value) => unawaited(
-                            _setProviderEnabled(
-                              _SettingsProvider.guildWars2,
+                            _setSourceEnabled(
+                              _SettingsSource.guildWars2,
                               value,
                             ),
                           ),
                         ),
-                        if (_expandedProvider ==
-                            _SettingsProvider.guildWars2) ...[
+                        if (_expandedSource == _SettingsSource.guildWars2) ...[
                           const SizedBox(height: 18),
                           FCheckbox(
                             key: const ValueKey('guild-wars-2-custom-path'),
@@ -907,10 +880,7 @@ class _SettingsPageState extends State<SettingsPage> {
                             value: _guildWars2UseCustomPath,
                             enabled: true,
                             onChange: (value) => unawaited(
-                              _setCustomPath(
-                                _SettingsProvider.guildWars2,
-                                value,
-                              ),
+                              _setCustomPath(_SettingsSource.guildWars2, value),
                             ),
                           ),
                           if (!_guildWars2UseCustomPath &&
@@ -947,29 +917,26 @@ class _SettingsPageState extends State<SettingsPage> {
               if (_settingsTab == 2) const SizedBox(height: 12),
               if (_settingsTab == 2)
                 FCard(
-                  key: const ValueKey('provider-sort-Steam'),
+                  key: const ValueKey('source-sort-Steam'),
                   child: Padding(
                     padding: const EdgeInsets.all(20),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        _ProviderHeader(
-                          headerKey: const ValueKey('provider-card-steam'),
+                        _SourceHeader(
+                          headerKey: const ValueKey('source-card-steam'),
                           switchKey: const ValueKey('steam-enabled'),
                           name: 'Steam',
                           description: 'PC · Local and online screenshots',
-                          expanded:
-                              _expandedProvider == _SettingsProvider.steam,
+                          expanded: _expandedSource == _SettingsSource.steam,
                           enabled: _steamEnabled,
-                          error:
-                              _providerActivationErrors[_SettingsProvider
-                                  .steam],
-                          onTap: () => _toggleProvider(_SettingsProvider.steam),
+                          error: _sourceActivationErrors[_SettingsSource.steam],
+                          onTap: () => _toggleSource(_SettingsSource.steam),
                           onEnabled: (value) => unawaited(
-                            _setProviderEnabled(_SettingsProvider.steam, value),
+                            _setSourceEnabled(_SettingsSource.steam, value),
                           ),
                         ),
-                        if (_expandedProvider == _SettingsProvider.steam) ...[
+                        if (_expandedSource == _SettingsSource.steam) ...[
                           const SizedBox(height: 18),
                           _SettingsSectionHeader(
                             title: 'Steam Web API key',
@@ -1000,7 +967,7 @@ class _SettingsPageState extends State<SettingsPage> {
                             value: _steamUseCustomPath,
                             enabled: true,
                             onChange: (value) => unawaited(
-                              _setCustomPath(_SettingsProvider.steam, value),
+                              _setCustomPath(_SettingsSource.steam, value),
                             ),
                           ),
                           if (_steamUseCustomPath) ...[
@@ -1029,7 +996,7 @@ class _SettingsPageState extends State<SettingsPage> {
                               buttonKey: const ValueKey(
                                 'steam-automatic-folder-access',
                               ),
-                              providerName: 'Steam',
+                              sourceName: 'Steam',
                               automaticDescription: 'Steam screenshots are stored in its “userdata” folder. The macOS dialog will open Steam; click Allow Access to grant access to that folder.',
                               status: widget.controller.folderAuthorization(
                                 FolderGrantIds.steam,
@@ -1213,9 +1180,9 @@ class _SettingsPageState extends State<SettingsPage> {
     );
   }
 
-  void _toggleProvider(_SettingsProvider provider) {
+  void _toggleSource(_SettingsSource source) {
     setState(() {
-      _expandedProvider = _expandedProvider == provider ? null : provider;
+      _expandedSource = _expandedSource == source ? null : source;
     });
   }
 
@@ -1224,8 +1191,8 @@ class _SettingsPageState extends State<SettingsPage> {
     String? initialPath,
     String? gameId,
   }) async {
-    final provider = _providerForFolderTarget(target);
-    final wasEnabled = provider == null ? null : _providerEnabled(provider);
+    final source = _sourceForFolderTarget(target);
+    final wasEnabled = source == null ? null : _sourceEnabled(source);
     await _flushPendingChanges();
     if (!mounted) {
       return;
@@ -1244,13 +1211,9 @@ class _SettingsPageState extends State<SettingsPage> {
       return;
     }
 
-    if (provider != null && wasEnabled == false) {
+    if (source != null && wasEnabled == false) {
       await widget.controller.updateSettings(
-        _settingsWithProviderEnabled(
-          widget.controller.settings,
-          provider,
-          false,
-        ),
+        _settingsWithSourceEnabled(widget.controller.settings, source, false),
         showNotification: false,
       );
       if (!mounted) {
@@ -1295,7 +1258,7 @@ class _SettingsPageState extends State<SettingsPage> {
         setState(
           () => _setFolderError(
             target,
-            'No supported ${_automaticProviderName(target)} folder was found on this platform.',
+            'No supported ${_automaticSourceName(target)} folder was found on this platform.',
           ),
         );
       }
@@ -1315,12 +1278,12 @@ class _SettingsPageState extends State<SettingsPage> {
     SettingsFolderTarget target,
     List<AutomaticFolderCandidate> candidates,
   ) {
-    final providerName = _automaticProviderName(target);
+    final sourceName = _automaticSourceName(target);
     return showFDialog<AutomaticFolderCandidate>(
       context: context,
       builder: (dialogContext, _, animation) => FDialog(
         animation: animation,
-        semanticsLabel: 'Choose a $providerName folder',
+        semanticsLabel: 'Choose a $sourceName folder',
         builder: (context, _) => Padding(
           padding: const EdgeInsets.all(24),
           child: ConstrainedBox(
@@ -1330,12 +1293,12 @@ class _SettingsPageState extends State<SettingsPage> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  'Choose a $providerName folder',
+                  'Choose a $sourceName folder',
                   style: context.theme.typography.display.sm,
                 ),
                 const SizedBox(height: 8),
                 Text(
-                  'More than one supported $providerName folder is available. Choose the one used by your installation. macOS will then ask you to confirm that exact folder.',
+                  'More than one supported $sourceName folder is available. Choose the one used by your installation. macOS will then ask you to confirm that exact folder.',
                   style: context.theme.typography.body.sm.copyWith(
                     color: context.theme.colors.mutedForeground,
                   ),
@@ -1382,81 +1345,73 @@ class _SettingsPageState extends State<SettingsPage> {
     );
   }
 
-  Future<void> _setProviderEnabled(
-    _SettingsProvider provider,
-    bool value,
-  ) async {
+  Future<void> _setSourceEnabled(_SettingsSource source, bool value) async {
     if (!value) {
       setState(() {
-        _setProviderEnabledValue(provider, false);
-        _providerActivationErrors.remove(provider);
+        _setSourceEnabledValue(source, false);
+        _sourceActivationErrors.remove(source);
       });
       _scheduleAutosave(immediate: true);
       return;
     }
 
     setState(() {
-      _expandedProvider = provider;
-      _providerActivationErrors.remove(provider);
+      _expandedSource = source;
+      _sourceActivationErrors.remove(source);
     });
 
     if (!widget.controller.usesPersistentFolderAccess) {
-      await _enableProviderIfValid(provider);
+      await _enableSourceIfValid(source);
       return;
     }
 
-    final target = switch ((provider, _usesCustomPath(provider))) {
+    final target = switch ((source, _usesCustomPath(source))) {
       // Battle.net folders are chosen per game, from the game's own row.
-      (_SettingsProvider.battleNet, _) => null,
-      (_SettingsProvider.guildWars2, true) =>
+      (_SettingsSource.battleNet, _) => null,
+      (_SettingsSource.guildWars2, true) =>
         SettingsFolderTarget.guildWars2Custom,
-      (_SettingsProvider.hytale, true) => SettingsFolderTarget.hytaleCustom,
-      (_SettingsProvider.hytale, false) => SettingsFolderTarget.hytaleAutomatic,
-      (_SettingsProvider.minecraft, true) =>
-        SettingsFolderTarget.minecraftCustom,
-      (_SettingsProvider.minecraft, false) =>
+      (_SettingsSource.hytale, true) => SettingsFolderTarget.hytaleCustom,
+      (_SettingsSource.hytale, false) => SettingsFolderTarget.hytaleAutomatic,
+      (_SettingsSource.minecraft, true) => SettingsFolderTarget.minecraftCustom,
+      (_SettingsSource.minecraft, false) =>
         SettingsFolderTarget.minecraftAutomatic,
-      (_SettingsProvider.nintendoSwitch2, true) =>
+      (_SettingsSource.nintendoSwitch2, true) =>
         SettingsFolderTarget.nintendoSwitch2Custom,
-      (_SettingsProvider.playStation4, true) =>
+      (_SettingsSource.playStation4, true) =>
         SettingsFolderTarget.playStation4Custom,
-      (_SettingsProvider.playStation5, true) =>
+      (_SettingsSource.playStation5, true) =>
         SettingsFolderTarget.playStation5Custom,
-      (_SettingsProvider.steam, true) => SettingsFolderTarget.steamCustom,
-      (_SettingsProvider.steam, false) => SettingsFolderTarget.steamAutomatic,
+      (_SettingsSource.steam, true) => SettingsFolderTarget.steamCustom,
+      (_SettingsSource.steam, false) => SettingsFolderTarget.steamAutomatic,
       _ => null,
     };
-    if (target == null || _providerAccessReady(provider)) {
-      await _enableProviderIfValid(provider);
+    if (target == null || _sourceAccessReady(source)) {
+      await _enableSourceIfValid(source);
       return;
     }
 
     if (_isAutomaticTarget(target)) {
       await _chooseAutomaticDirectory(target);
     } else {
-      await _chooseDirectory(target, initialPath: _providerPath(provider));
+      await _chooseDirectory(target, initialPath: _sourcePath(source));
     }
-    if (mounted && _providerAccessReady(provider)) {
-      await _enableProviderIfValid(provider);
+    if (mounted && _sourceAccessReady(source)) {
+      await _enableSourceIfValid(source);
     }
   }
 
-  Future<void> _enableProviderIfValid(_SettingsProvider provider) async {
-    final draft = _settingsWithProviderEnabled(
-      _draftSettings(),
-      provider,
-      true,
-    );
+  Future<void> _enableSourceIfValid(_SettingsSource source) async {
+    final draft = _settingsWithSourceEnabled(_draftSettings(), source, true);
 
     final pathErrors = await _validatePaths(draft);
     if (!mounted) {
       return;
     }
     _showPathErrors(pathErrors);
-    final pathError = pathErrors.forProvider(provider);
+    final pathError = pathErrors.forSource(source);
     final configurationError = pathError == null
-        ? await widget.controller.providerConfigurationError(
-            _providerName(provider),
+        ? await widget.controller.sourceConfigurationError(
+            _sourceName(source),
             draft,
           )
         : null;
@@ -1466,99 +1421,99 @@ class _SettingsPageState extends State<SettingsPage> {
     final error = pathError ?? configurationError;
     if (error != null) {
       setState(() {
-        _setProviderEnabledValue(provider, false);
-        _expandedProvider = provider;
-        _providerActivationErrors[provider] = error;
+        _setSourceEnabledValue(source, false);
+        _expandedSource = source;
+        _sourceActivationErrors[source] = error;
       });
       _scheduleAutosave(immediate: true);
       return;
     }
 
     setState(() {
-      _setProviderEnabledValue(provider, true);
-      _providerActivationErrors.remove(provider);
+      _setSourceEnabledValue(source, true);
+      _sourceActivationErrors.remove(source);
     });
     _scheduleAutosave(immediate: true);
   }
 
-  bool _providerEnabled(_SettingsProvider provider) => switch (provider) {
-    _SettingsProvider.battleNet => _diabloEnabled,
-    _SettingsProvider.guildWars2 => _guildWars2Enabled,
-    _SettingsProvider.hytale => _hytaleEnabled,
-    _SettingsProvider.minecraft => _minecraftEnabled,
-    _SettingsProvider.nintendoSwitch2 => _nintendoSwitch2Enabled,
-    _SettingsProvider.playStation4 => _playStation4Enabled,
-    _SettingsProvider.playStation5 => _playStation5Enabled,
-    _SettingsProvider.steam => _steamEnabled,
+  bool _sourceEnabled(_SettingsSource source) => switch (source) {
+    _SettingsSource.battleNet => _diabloEnabled,
+    _SettingsSource.guildWars2 => _guildWars2Enabled,
+    _SettingsSource.hytale => _hytaleEnabled,
+    _SettingsSource.minecraft => _minecraftEnabled,
+    _SettingsSource.nintendoSwitch2 => _nintendoSwitch2Enabled,
+    _SettingsSource.playStation4 => _playStation4Enabled,
+    _SettingsSource.playStation5 => _playStation5Enabled,
+    _SettingsSource.steam => _steamEnabled,
   };
 
-  String _providerName(_SettingsProvider provider) => switch (provider) {
-    _SettingsProvider.battleNet => 'Battle.net',
-    _SettingsProvider.guildWars2 => 'Guild Wars 2',
-    _SettingsProvider.hytale => 'Hytale',
-    _SettingsProvider.minecraft => 'Minecraft',
-    _SettingsProvider.nintendoSwitch2 => 'Nintendo Switch 2',
-    _SettingsProvider.playStation4 => 'PlayStation 4',
-    _SettingsProvider.playStation5 => 'PlayStation 5',
-    _SettingsProvider.steam => 'Steam',
+  String _sourceName(_SettingsSource source) => switch (source) {
+    _SettingsSource.battleNet => 'Battle.net',
+    _SettingsSource.guildWars2 => 'Guild Wars 2',
+    _SettingsSource.hytale => 'Hytale',
+    _SettingsSource.minecraft => 'Minecraft',
+    _SettingsSource.nintendoSwitch2 => 'Nintendo Switch 2',
+    _SettingsSource.playStation4 => 'PlayStation 4',
+    _SettingsSource.playStation5 => 'PlayStation 5',
+    _SettingsSource.steam => 'Steam',
   };
 
-  _SettingsProvider? _providerForFolderTarget(
-    SettingsFolderTarget target,
-  ) => switch (target) {
-    SettingsFolderTarget.library => null,
-    SettingsFolderTarget.battleNetGameCustom ||
-    SettingsFolderTarget.battleNetGameAutomatic => _SettingsProvider.battleNet,
-    SettingsFolderTarget.guildWars2Custom => _SettingsProvider.guildWars2,
-    SettingsFolderTarget.hytaleCustom ||
-    SettingsFolderTarget.hytaleAutomatic => _SettingsProvider.hytale,
-    SettingsFolderTarget.minecraftCustom ||
-    SettingsFolderTarget.minecraftAutomatic => _SettingsProvider.minecraft,
-    SettingsFolderTarget.nintendoSwitch2Custom =>
-      _SettingsProvider.nintendoSwitch2,
-    SettingsFolderTarget.playStation4Custom => _SettingsProvider.playStation4,
-    SettingsFolderTarget.playStation5Custom => _SettingsProvider.playStation5,
-    SettingsFolderTarget.steamCustom ||
-    SettingsFolderTarget.steamAutomatic => _SettingsProvider.steam,
-  };
+  _SettingsSource? _sourceForFolderTarget(SettingsFolderTarget target) =>
+      switch (target) {
+        SettingsFolderTarget.library => null,
+        SettingsFolderTarget.battleNetGameCustom ||
+        SettingsFolderTarget.battleNetGameAutomatic =>
+          _SettingsSource.battleNet,
+        SettingsFolderTarget.guildWars2Custom => _SettingsSource.guildWars2,
+        SettingsFolderTarget.hytaleCustom ||
+        SettingsFolderTarget.hytaleAutomatic => _SettingsSource.hytale,
+        SettingsFolderTarget.minecraftCustom ||
+        SettingsFolderTarget.minecraftAutomatic => _SettingsSource.minecraft,
+        SettingsFolderTarget.nintendoSwitch2Custom =>
+          _SettingsSource.nintendoSwitch2,
+        SettingsFolderTarget.playStation4Custom => _SettingsSource.playStation4,
+        SettingsFolderTarget.playStation5Custom => _SettingsSource.playStation5,
+        SettingsFolderTarget.steamCustom ||
+        SettingsFolderTarget.steamAutomatic => _SettingsSource.steam,
+      };
 
-  AppSettings _settingsWithProviderEnabled(
+  AppSettings _settingsWithSourceEnabled(
     AppSettings settings,
-    _SettingsProvider provider,
+    _SettingsSource source,
     bool enabled,
-  ) => switch (provider) {
-    _SettingsProvider.battleNet => settings.copyWith(
+  ) => switch (source) {
+    _SettingsSource.battleNet => settings.copyWith(
       battleNet: settings.battleNet.copyWith(enabled: enabled),
     ),
-    _SettingsProvider.guildWars2 => settings.copyWith(
+    _SettingsSource.guildWars2 => settings.copyWith(
       guildWars2: settings.guildWars2.copyWith(enabled: enabled),
     ),
-    _SettingsProvider.hytale => settings.copyWith(
+    _SettingsSource.hytale => settings.copyWith(
       hytale: settings.hytale.copyWith(enabled: enabled),
     ),
-    _SettingsProvider.minecraft => settings.copyWith(
+    _SettingsSource.minecraft => settings.copyWith(
       minecraft: settings.minecraft.copyWith(enabled: enabled),
     ),
-    _SettingsProvider.nintendoSwitch2 => settings.copyWith(
+    _SettingsSource.nintendoSwitch2 => settings.copyWith(
       nintendoSwitch2: settings.nintendoSwitch2.copyWith(enabled: enabled),
     ),
-    _SettingsProvider.playStation4 => settings.copyWith(
+    _SettingsSource.playStation4 => settings.copyWith(
       playStation4: settings.playStation4.copyWith(enabled: enabled),
     ),
-    _SettingsProvider.playStation5 => settings.copyWith(
+    _SettingsSource.playStation5 => settings.copyWith(
       playStation5: settings.playStation5.copyWith(enabled: enabled),
     ),
-    _SettingsProvider.steam => settings.copyWith(
+    _SettingsSource.steam => settings.copyWith(
       steam: settings.steam.copyWith(enabled: enabled),
     ),
   };
 
-  Future<void> _setCustomPath(_SettingsProvider provider, bool value) async {
+  Future<void> _setCustomPath(_SettingsSource source, bool value) async {
     if (!widget.controller.usesPersistentFolderAccess) {
       setState(() {
-        _setUseCustomPathValue(provider, value);
+        _setUseCustomPathValue(source, value);
         if (!value) {
-          _setProviderPathError(provider, null);
+          _setSourcePathError(source, null);
         }
       });
       _scheduleAutosave(immediate: true);
@@ -1566,40 +1521,39 @@ class _SettingsPageState extends State<SettingsPage> {
     }
 
     final target = value
-        ? switch (provider) {
-            _SettingsProvider.battleNet => null,
-            _SettingsProvider.guildWars2 =>
-              SettingsFolderTarget.guildWars2Custom,
-            _SettingsProvider.hytale => SettingsFolderTarget.hytaleCustom,
-            _SettingsProvider.minecraft => SettingsFolderTarget.minecraftCustom,
-            _SettingsProvider.nintendoSwitch2 =>
+        ? switch (source) {
+            _SettingsSource.battleNet => null,
+            _SettingsSource.guildWars2 => SettingsFolderTarget.guildWars2Custom,
+            _SettingsSource.hytale => SettingsFolderTarget.hytaleCustom,
+            _SettingsSource.minecraft => SettingsFolderTarget.minecraftCustom,
+            _SettingsSource.nintendoSwitch2 =>
               SettingsFolderTarget.nintendoSwitch2Custom,
-            _SettingsProvider.playStation4 =>
+            _SettingsSource.playStation4 =>
               SettingsFolderTarget.playStation4Custom,
-            _SettingsProvider.playStation5 =>
+            _SettingsSource.playStation5 =>
               SettingsFolderTarget.playStation5Custom,
-            _SettingsProvider.steam => SettingsFolderTarget.steamCustom,
+            _SettingsSource.steam => SettingsFolderTarget.steamCustom,
           }
-        : switch (provider) {
-            _SettingsProvider.battleNet => null,
-            _SettingsProvider.hytale => SettingsFolderTarget.hytaleAutomatic,
-            _SettingsProvider.minecraft =>
+        : switch (source) {
+            _SettingsSource.battleNet => null,
+            _SettingsSource.hytale => SettingsFolderTarget.hytaleAutomatic,
+            _SettingsSource.minecraft =>
               SettingsFolderTarget.minecraftAutomatic,
-            _SettingsProvider.steam => SettingsFolderTarget.steamAutomatic,
+            _SettingsSource.steam => SettingsFolderTarget.steamAutomatic,
             _ => null,
           };
     if (target != null) {
       if (_isAutomaticTarget(target)) {
         await _chooseAutomaticDirectory(target);
       } else {
-        await _chooseDirectory(target, initialPath: _providerPath(provider));
+        await _chooseDirectory(target, initialPath: _sourcePath(source));
       }
       return;
     }
 
     setState(() {
-      _setUseCustomPathValue(provider, false);
-      _setProviderPathError(provider, null);
+      _setUseCustomPathValue(source, false);
+      _setSourcePathError(source, null);
     });
     _scheduleAutosave(immediate: true);
   }
@@ -1613,121 +1567,121 @@ class _SettingsPageState extends State<SettingsPage> {
     await _saveQueue;
   }
 
-  bool _usesCustomPath(_SettingsProvider provider) => switch (provider) {
-    _SettingsProvider.battleNet => false,
-    _SettingsProvider.guildWars2 => _guildWars2UseCustomPath,
-    _SettingsProvider.hytale => _hytaleUseCustomPath,
-    _SettingsProvider.minecraft => _minecraftUseCustomPath,
-    _SettingsProvider.nintendoSwitch2 => _nintendoSwitch2UseCustomPath,
-    _SettingsProvider.playStation4 => true,
-    _SettingsProvider.playStation5 => true,
-    _SettingsProvider.steam => _steamUseCustomPath,
+  bool _usesCustomPath(_SettingsSource source) => switch (source) {
+    _SettingsSource.battleNet => false,
+    _SettingsSource.guildWars2 => _guildWars2UseCustomPath,
+    _SettingsSource.hytale => _hytaleUseCustomPath,
+    _SettingsSource.minecraft => _minecraftUseCustomPath,
+    _SettingsSource.nintendoSwitch2 => _nintendoSwitch2UseCustomPath,
+    _SettingsSource.playStation4 => true,
+    _SettingsSource.playStation5 => true,
+    _SettingsSource.steam => _steamUseCustomPath,
   };
 
-  String _providerPath(_SettingsProvider provider) => switch (provider) {
-    _SettingsProvider.battleNet => '',
-    _SettingsProvider.guildWars2 => _guildWars2Controller.text,
-    _SettingsProvider.hytale => _hytaleController.text,
-    _SettingsProvider.minecraft => _minecraftController.text,
-    _SettingsProvider.nintendoSwitch2 => _nintendoSwitch2Controller.text,
-    _SettingsProvider.playStation4 => _playStation4Controller.text,
-    _SettingsProvider.playStation5 => _playStation5Controller.text,
-    _SettingsProvider.steam => _steamPathController.text,
+  String _sourcePath(_SettingsSource source) => switch (source) {
+    _SettingsSource.battleNet => '',
+    _SettingsSource.guildWars2 => _guildWars2Controller.text,
+    _SettingsSource.hytale => _hytaleController.text,
+    _SettingsSource.minecraft => _minecraftController.text,
+    _SettingsSource.nintendoSwitch2 => _nintendoSwitch2Controller.text,
+    _SettingsSource.playStation4 => _playStation4Controller.text,
+    _SettingsSource.playStation5 => _playStation5Controller.text,
+    _SettingsSource.steam => _steamPathController.text,
   };
 
-  bool _providerAccessReady(_SettingsProvider provider) {
-    final id = switch (provider) {
-      _SettingsProvider.battleNet => FolderGrantIds.battleNet,
-      _SettingsProvider.guildWars2 => FolderGrantIds.guildWars2,
-      _SettingsProvider.hytale => FolderGrantIds.hytale,
-      _SettingsProvider.minecraft => FolderGrantIds.minecraft,
-      _SettingsProvider.nintendoSwitch2 => FolderGrantIds.nintendoSwitch2,
-      _SettingsProvider.playStation4 => FolderGrantIds.playStation4,
-      _SettingsProvider.playStation5 => FolderGrantIds.playStation5,
-      _SettingsProvider.steam => FolderGrantIds.steam,
+  bool _sourceAccessReady(_SettingsSource source) {
+    final id = switch (source) {
+      _SettingsSource.battleNet => FolderGrantIds.battleNet,
+      _SettingsSource.guildWars2 => FolderGrantIds.guildWars2,
+      _SettingsSource.hytale => FolderGrantIds.hytale,
+      _SettingsSource.minecraft => FolderGrantIds.minecraft,
+      _SettingsSource.nintendoSwitch2 => FolderGrantIds.nintendoSwitch2,
+      _SettingsSource.playStation4 => FolderGrantIds.playStation4,
+      _SettingsSource.playStation5 => FolderGrantIds.playStation5,
+      _SettingsSource.steam => FolderGrantIds.steam,
     };
     return widget.controller.folderAuthorization(id).isReady;
   }
 
-  void _setProviderEnabledValue(_SettingsProvider provider, bool value) {
-    switch (provider) {
-      case _SettingsProvider.battleNet:
+  void _setSourceEnabledValue(_SettingsSource source, bool value) {
+    switch (source) {
+      case _SettingsSource.battleNet:
         _diabloEnabled = value;
         break;
-      case _SettingsProvider.guildWars2:
+      case _SettingsSource.guildWars2:
         _guildWars2Enabled = value;
         break;
-      case _SettingsProvider.hytale:
+      case _SettingsSource.hytale:
         _hytaleEnabled = value;
         break;
-      case _SettingsProvider.minecraft:
+      case _SettingsSource.minecraft:
         _minecraftEnabled = value;
         break;
-      case _SettingsProvider.nintendoSwitch2:
+      case _SettingsSource.nintendoSwitch2:
         _nintendoSwitch2Enabled = value;
         break;
-      case _SettingsProvider.playStation4:
+      case _SettingsSource.playStation4:
         _playStation4Enabled = value;
         break;
-      case _SettingsProvider.playStation5:
+      case _SettingsSource.playStation5:
         _playStation5Enabled = value;
         break;
-      case _SettingsProvider.steam:
+      case _SettingsSource.steam:
         _steamEnabled = value;
         break;
     }
   }
 
-  void _setUseCustomPathValue(_SettingsProvider provider, bool value) {
-    switch (provider) {
-      case _SettingsProvider.battleNet:
-        // Battle.net has no provider-level custom folder; each game has one.
+  void _setUseCustomPathValue(_SettingsSource source, bool value) {
+    switch (source) {
+      case _SettingsSource.battleNet:
+        // Battle.net has no source-level custom folder; each game has one.
         break;
-      case _SettingsProvider.guildWars2:
+      case _SettingsSource.guildWars2:
         _guildWars2UseCustomPath = value;
         break;
-      case _SettingsProvider.hytale:
+      case _SettingsSource.hytale:
         _hytaleUseCustomPath = value;
         break;
-      case _SettingsProvider.minecraft:
+      case _SettingsSource.minecraft:
         _minecraftUseCustomPath = value;
         break;
-      case _SettingsProvider.nintendoSwitch2:
+      case _SettingsSource.nintendoSwitch2:
         _nintendoSwitch2UseCustomPath = value;
         break;
-      case _SettingsProvider.playStation4:
-      case _SettingsProvider.playStation5:
+      case _SettingsSource.playStation4:
+      case _SettingsSource.playStation5:
         break;
-      case _SettingsProvider.steam:
+      case _SettingsSource.steam:
         _steamUseCustomPath = value;
         break;
     }
   }
 
-  void _setProviderPathError(_SettingsProvider provider, String? value) {
-    switch (provider) {
-      case _SettingsProvider.battleNet:
+  void _setSourcePathError(_SettingsSource source, String? value) {
+    switch (source) {
+      case _SettingsSource.battleNet:
         _diabloPathError = value;
         break;
-      case _SettingsProvider.guildWars2:
+      case _SettingsSource.guildWars2:
         _guildWars2PathError = value;
         break;
-      case _SettingsProvider.hytale:
+      case _SettingsSource.hytale:
         _hytalePathError = value;
         break;
-      case _SettingsProvider.minecraft:
+      case _SettingsSource.minecraft:
         _minecraftPathError = value;
         break;
-      case _SettingsProvider.nintendoSwitch2:
+      case _SettingsSource.nintendoSwitch2:
         _nintendoSwitch2PathError = value;
         break;
-      case _SettingsProvider.playStation4:
+      case _SettingsSource.playStation4:
         _playStation4PathError = value;
         break;
-      case _SettingsProvider.playStation5:
+      case _SettingsSource.playStation5:
         _playStation5PathError = value;
         break;
-      case _SettingsProvider.steam:
+      case _SettingsSource.steam:
         _steamPathError = value;
         break;
     }
@@ -1786,7 +1740,7 @@ class _SettingsPageState extends State<SettingsPage> {
         target == SettingsFolderTarget.steamAutomatic;
   }
 
-  String _automaticProviderName(SettingsFolderTarget target) {
+  String _automaticSourceName(SettingsFolderTarget target) {
     return switch (target) {
       SettingsFolderTarget.battleNetGameAutomatic => 'Battle.net',
       SettingsFolderTarget.hytaleAutomatic => 'Hytale',
@@ -1930,25 +1884,25 @@ class _SettingsPageState extends State<SettingsPage> {
         enabled: _diabloEnabled,
         games: {
           for (final game in battleNetGames)
-            game.id: ProviderSettings(
+            game.id: SourceSettings(
               enabled: _battleNetGameOn(game.id),
               useCustomPath: _battleNetGameCustom(game.id),
               sourcePath: _battleNetControllerFor(game.id).text.trim(),
             ),
         },
       ),
-      guildWars2: ProviderSettings(
+      guildWars2: SourceSettings(
         enabled: _guildWars2Enabled,
         useCustomPath: _guildWars2UseCustomPath,
         sourcePath: _guildWars2Controller.text.trim(),
       ),
-      hytale: ProviderSettings(
+      hytale: SourceSettings(
         enabled: _hytaleEnabled,
         useCustomPath: _hytaleUseCustomPath,
         sourcePath: _hytaleController.text.trim(),
         downloadCovers: _hytaleDownloadCovers,
       ),
-      minecraft: ProviderSettings(
+      minecraft: SourceSettings(
         enabled: _minecraftEnabled,
         useCustomPath: _minecraftUseCustomPath,
         sourcePath: _minecraftController.text.trim(),
@@ -1959,12 +1913,12 @@ class _SettingsPageState extends State<SettingsPage> {
         sourcePath: _nintendoSwitch2Controller.text.trim(),
         ignoredFolders: List.unmodifiable(_nintendoSwitch2IgnoredFolders),
       ),
-      playStation4: ProviderSettings(
+      playStation4: SourceSettings(
         enabled: _playStation4Enabled,
         useCustomPath: true,
         sourcePath: _playStation4Controller.text.trim(),
       ),
-      playStation5: ProviderSettings(
+      playStation5: SourceSettings(
         enabled: _playStation5Enabled,
         useCustomPath: true,
         sourcePath: _playStation5Controller.text.trim(),
@@ -2011,7 +1965,7 @@ class _SettingsPageState extends State<SettingsPage> {
     }
 
     final saved = widget.controller.settings;
-    final providerErrors = <String, String>{
+    final sourceErrors = <String, String>{
       if (draft.battleNet.enabled && errors.battleNet != null)
         'Battle.net': errors.battleNet!,
       if (draft.guildWars2.enabled && errors.guildWars2 != null)
@@ -2079,13 +2033,13 @@ class _SettingsPageState extends State<SettingsPage> {
     _saveQueue = _saveQueue.then((_) async {
       await widget.controller.updateSettings(
         safeSettings,
-        providerErrors: providerErrors,
+        sourceErrors: sourceErrors,
       );
     });
     await _saveQueue;
     if (mounted) {
       final saved = widget.controller.settings;
-      final validationErrors = widget.controller.providerValidationErrors;
+      final validationErrors = widget.controller.sourceValidationErrors;
       setState(() {
         _diabloEnabled = saved.battleNet.enabled;
         _guildWars2Enabled = saved.guildWars2.enabled;
@@ -2095,17 +2049,17 @@ class _SettingsPageState extends State<SettingsPage> {
         _playStation4Enabled = saved.playStation4.enabled;
         _playStation5Enabled = saved.playStation5.enabled;
         _steamEnabled = saved.steam.enabled;
-        for (final provider in _SettingsProvider.values) {
-          final error = validationErrors[_providerName(provider)];
+        for (final source in _SettingsSource.values) {
+          final error = validationErrors[_sourceName(source)];
           if (error != null) {
-            _providerActivationErrors[provider] = error;
-          } else if (_providerEnabled(provider)) {
-            _providerActivationErrors.remove(provider);
+            _sourceActivationErrors[source] = error;
+          } else if (_sourceEnabled(source)) {
+            _sourceActivationErrors.remove(source);
           }
         }
         if (validationErrors.isNotEmpty) {
-          _expandedProvider = _SettingsProvider.values.firstWhere(
-            (provider) => validationErrors.containsKey(_providerName(provider)),
+          _expandedSource = _SettingsSource.values.firstWhere(
+            (source) => validationErrors.containsKey(_sourceName(source)),
           );
         }
       });
@@ -2236,7 +2190,7 @@ class _SettingsPageState extends State<SettingsPage> {
   }
 
   /// Keeps the draft, except for the games whose own folder failed to
-  /// validate. Reverting the whole provider would throw away edits to games
+  /// validate. Reverting the whole source would throw away edits to games
   /// that are perfectly fine — turning one off, for instance.
   BattleNetSettings _safeBattleNet(
     BattleNetSettings draft,
@@ -2258,7 +2212,7 @@ class _SettingsPageState extends State<SettingsPage> {
   /// Validates every Battle.net game and records each game's own error, so a
   /// misconfigured game says so on its own row.
   ///
-  /// The provider-level error is deliberately quiet about games that are
+  /// The source-level error is deliberately quiet about games that are
   /// simply not installed: a game nobody owns is skipped, not broken.
   Future<String?> _battleNetError(AppSettings draft) async {
     _battleNetGameErrors.clear();
@@ -2277,7 +2231,7 @@ class _SettingsPageState extends State<SettingsPage> {
         final error = await _directoryError(
           game.sourcePath,
           label: '${folder.game.name} screenshot folder',
-          grantId: BattleNetProvider.grantIdForGame(folder.game.id),
+          grantId: BattleNetSource.grantIdForGame(folder.game.id),
         );
         if (error != null) {
           _battleNetGameErrors[folder.game.id] = error;
@@ -2291,7 +2245,7 @@ class _SettingsPageState extends State<SettingsPage> {
       }
       if (widget.controller.usesPersistentFolderAccess) {
         final error = _folderAuthorizationError(
-          BattleNetProvider.grantIdForGame(folder.game.id),
+          BattleNetSource.grantIdForGame(folder.game.id),
           label: '${folder.game.name} screenshot folder',
           needsAuthorizationMessage:
               'Click Allow Access to let Gaming Memories read ${folder.game.name} screenshots.',
@@ -2431,19 +2385,19 @@ class _PathErrors {
   final String? playStation5;
   final String? steam;
 
-  String? forProvider(_SettingsProvider provider) => switch (provider) {
-    _SettingsProvider.battleNet => battleNet,
-    _SettingsProvider.guildWars2 => guildWars2,
-    _SettingsProvider.hytale => hytale,
-    _SettingsProvider.minecraft => minecraft,
-    _SettingsProvider.nintendoSwitch2 => nintendoSwitch2,
-    _SettingsProvider.playStation4 => playStation4,
-    _SettingsProvider.playStation5 => playStation5,
-    _SettingsProvider.steam => steam,
+  String? forSource(_SettingsSource source) => switch (source) {
+    _SettingsSource.battleNet => battleNet,
+    _SettingsSource.guildWars2 => guildWars2,
+    _SettingsSource.hytale => hytale,
+    _SettingsSource.minecraft => minecraft,
+    _SettingsSource.nintendoSwitch2 => nintendoSwitch2,
+    _SettingsSource.playStation4 => playStation4,
+    _SettingsSource.playStation5 => playStation5,
+    _SettingsSource.steam => steam,
   };
 }
 
-enum _SettingsProvider {
+enum _SettingsSource {
   battleNet,
   guildWars2,
   hytale,
@@ -2787,56 +2741,56 @@ class _CustomGamesList extends StatelessWidget {
 
 class _SettingsSections extends StatelessWidget {
   const _SettingsSections({
-    required this.sortProviders,
+    required this.sortSources,
     required this.crossAxisAlignment,
     required this.children,
   });
 
-  final bool sortProviders;
+  final bool sortSources;
   final CrossAxisAlignment crossAxisAlignment;
   final List<Widget> children;
 
   @override
   Widget build(BuildContext context) {
-    if (!sortProviders) {
+    if (!sortSources) {
       return Column(crossAxisAlignment: crossAxisAlignment, children: children);
     }
 
-    final providers =
+    final sources =
         children
-            .map((child) => (name: _providerName(child), child: child))
+            .map((child) => (name: _sourceName(child), child: child))
             .where((entry) => entry.name != null)
             .toList(growable: false)
           ..sort(
             (left, right) =>
                 left.name!.toLowerCase().compareTo(right.name!.toLowerCase()),
           );
-    if (providers.isEmpty) {
+    if (sources.isEmpty) {
       return Column(crossAxisAlignment: crossAxisAlignment, children: children);
     }
 
-    final firstProvider = children.indexWhere(
-      (child) => _providerName(child) != null,
+    final firstSource = children.indexWhere(
+      (child) => _sourceName(child) != null,
     );
     return Column(
       crossAxisAlignment: crossAxisAlignment,
       children: [
-        ...children.take(firstProvider),
-        for (var index = 0; index < providers.length; index++) ...[
+        ...children.take(firstSource),
+        for (var index = 0; index < sources.length; index++) ...[
           if (index > 0) const SizedBox(height: 12),
-          providers[index].child,
+          sources[index].child,
         ],
       ],
     );
   }
 
-  String? _providerName(Widget child) {
-    if (child case _PlayStationProviderCard card) {
+  String? _sourceName(Widget child) {
+    if (child case _PlayStationSourceCard card) {
       return card.name;
     }
     final key = child.key;
     if (key case ValueKey<String> valueKey) {
-      const prefix = 'provider-sort-';
+      const prefix = 'source-sort-';
       if (valueKey.value.startsWith(prefix)) {
         return valueKey.value.substring(prefix.length);
       }
@@ -2845,8 +2799,8 @@ class _SettingsSections extends StatelessWidget {
   }
 }
 
-class _PlayStationProviderCard extends StatelessWidget {
-  const _PlayStationProviderCard({
+class _PlayStationSourceCard extends StatelessWidget {
+  const _PlayStationSourceCard({
     required this.headerKey,
     required this.name,
     required this.description,
@@ -2890,7 +2844,7 @@ class _PlayStationProviderCard extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            _ProviderHeader(
+            _SourceHeader(
               headerKey: headerKey,
               switchKey: switchKey,
               name: name,
@@ -2930,8 +2884,8 @@ class _PlayStationProviderCard extends StatelessWidget {
   }
 }
 
-class _ProviderHeader extends StatelessWidget {
-  const _ProviderHeader({
+class _SourceHeader extends StatelessWidget {
+  const _SourceHeader({
     required this.headerKey,
     required this.name,
     required this.description,
@@ -3257,7 +3211,7 @@ class _BattleNetGameRow extends StatelessWidget {
                     buttonKey: ValueKey(
                       'battle-net-game-${folder.game.id}-access',
                     ),
-                    providerName: folder.game.name,
+                    sourceName: folder.game.name,
                     automaticDescription:
                         'Click Allow Access to let Gaming Memories read “${folder.path}”.',
                     status: access,
@@ -3294,7 +3248,7 @@ class _BattleNetGameRow extends StatelessWidget {
 class _FolderAccessRow extends StatelessWidget {
   const _FolderAccessRow({
     required this.buttonKey,
-    required this.providerName,
+    required this.sourceName,
     required this.automaticDescription,
     required this.status,
     required this.onAllow,
@@ -3302,7 +3256,7 @@ class _FolderAccessRow extends StatelessWidget {
   });
 
   final Key buttonKey;
-  final String providerName;
+  final String sourceName;
   final String automaticDescription;
   final FolderAuthorization status;
   final VoidCallback onAllow;
@@ -3315,9 +3269,9 @@ class _FolderAccessRow extends StatelessWidget {
     final message =
         error ??
         (ready
-            ? 'Access allowed to the automatically discovered $providerName folder.'
+            ? 'Access allowed to the automatically discovered $sourceName folder.'
             : unavailable
-            ? 'The $providerName folder is unavailable. Choose it again.'
+            ? 'The $sourceName folder is unavailable. Choose it again.'
             : automaticDescription);
     return Row(
       crossAxisAlignment: CrossAxisAlignment.center,

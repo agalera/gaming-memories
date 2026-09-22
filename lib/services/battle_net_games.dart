@@ -35,7 +35,7 @@ class BattleNetScreenshotPath {
   }
 }
 
-/// A game this provider imports.
+/// A game this source imports.
 ///
 /// Games are found by looking for their screenshot folder, not by asking
 /// Battle.net what is installed. Reading Battle.net's `product.db` needs a
@@ -240,7 +240,7 @@ class BattleNetGameFolder {
 
   final bool isCustom;
 
-  /// Whether the provider should ask for access to it. A game nobody has
+  /// Whether the source should ask for access to it. A game nobody has
   /// installed never asks.
   bool get isUsable => path != null && (exists || isCustom);
 }

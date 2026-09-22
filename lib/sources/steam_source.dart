@@ -7,22 +7,22 @@ import '../models/app_settings.dart';
 import '../services/library_scanner.dart';
 import '../services/media_importer.dart';
 import '../services/folder_access_service.dart';
-import '../services/provider_paths.dart';
+import '../services/source_paths.dart';
 import '../services/steam_client.dart';
-import 'screenshot_provider.dart';
+import 'screenshot_source.dart';
 
-class SteamProvider
+class SteamSource
     with SingleFolderRequirement
-    implements FolderBackedScreenshotProvider, ProviderConfigurationValidator {
-  const SteamProvider({
+    implements FolderBackedScreenshotSource, SourceConfigurationValidator {
+  const SteamSource({
     required this.api,
     this.importer = const MediaImporter(),
-    this.providerPaths = const ProviderPathResolver(),
+    this.sourcePaths = const SourcePathResolver(),
   });
 
   final SteamApi api;
   final MediaImporter importer;
-  final ProviderPathResolver providerPaths;
+  final SourcePathResolver sourcePaths;
 
   @override
   String get name => 'Steam';
@@ -63,13 +63,13 @@ class SteamProvider
   }
 
   @override
-  ProviderFolderRequirement? folderRequirement(AppSettings settings) {
+  SourceFolderRequirement? folderRequirement(AppSettings settings) {
     final steam = settings.steam;
     if (steam.useCustomPath) {
       final path = steam.userdataPath.trim();
       return path.isEmpty
           ? null
-          : ProviderFolderRequirement(
+          : SourceFolderRequirement(
               id: folderGrantId,
               path: expandUserPath(path),
               automatic: false,
@@ -77,11 +77,11 @@ class SteamProvider
     }
     final configured = steam.userdataPath.trim();
     final path = configured.isEmpty
-        ? providerPaths.steamUserdata()
+        ? sourcePaths.steamUserdata()
         : expandUserPath(configured);
     return path == null
         ? null
-        : ProviderFolderRequirement(
+        : SourceFolderRequirement(
             id: folderGrantId,
             path: path,
             automatic: true,
@@ -124,7 +124,7 @@ class SteamProvider
     );
 
     onProgress?.call(
-      const ProviderProgress(message: 'Scanning local Steam screenshots…'),
+      const SourceProgress(message: 'Scanning local Steam screenshots…'),
     );
     final local = await _localScreenshots(settings.steam);
     final localTotal = local.entries
@@ -141,7 +141,7 @@ class SteamProvider
       final destination = _destination(settings.outputPath, gameName);
       for (final source in entry.value) {
         onProgress?.call(
-          ProviderProgress(
+          SourceProgress(
             message: 'Importing local Steam screenshots…',
             completed: localCompleted,
             total: localTotal,
@@ -157,7 +157,7 @@ class SteamProvider
     }
     if (localTotal > 0) {
       onProgress?.call(
-        ProviderProgress(
+        SourceProgress(
           message: 'Processed local Steam screenshots.',
           completed: localTotal,
           total: localTotal,
@@ -167,7 +167,7 @@ class SteamProvider
 
     if (settings.steam.onlineGallery) {
       onProgress?.call(
-        const ProviderProgress(message: 'Reading the Steam online gallery…'),
+        const SourceProgress(message: 'Reading the Steam online gallery…'),
       );
       final screenshots = await api.publishedScreenshots(
         settings.steam.userId.trim(),
@@ -176,7 +176,7 @@ class SteamProvider
       for (var index = 0; index < screenshots.length; index++) {
         final screenshot = screenshots[index];
         onProgress?.call(
-          ProviderProgress(
+          SourceProgress(
             message: 'Importing online Steam screenshots…',
             completed: index,
             total: screenshots.length,
@@ -214,7 +214,7 @@ class SteamProvider
       }
       if (screenshots.isNotEmpty) {
         onProgress?.call(
-          ProviderProgress(
+          SourceProgress(
             message: 'Processed online Steam screenshots.',
             completed: screenshots.length,
             total: screenshots.length,
@@ -228,7 +228,7 @@ class SteamProvider
       for (var index = 0; index < entries.length; index++) {
         final entry = entries[index];
         onProgress?.call(
-          ProviderProgress(
+          SourceProgress(
             message: 'Downloading Steam game covers…',
             completed: index,
             total: entries.length,
@@ -250,7 +250,7 @@ class SteamProvider
       }
       if (entries.isNotEmpty) {
         onProgress?.call(
-          ProviderProgress(
+          SourceProgress(
             message: 'Processed Steam game covers.',
             completed: entries.length,
             total: entries.length,
@@ -260,10 +260,10 @@ class SteamProvider
     }
 
     onProgress?.call(
-      const ProviderProgress(message: 'Steam collection is complete.'),
+      const SourceProgress(message: 'Steam collection is complete.'),
     );
 
-    return ImportResult(provider: name, imported: imported, skipped: skipped);
+    return ImportResult(source: name, imported: imported, skipped: skipped);
   }
 
   Future<Map<String, List<File>>> _localScreenshots(
@@ -326,7 +326,7 @@ class SteamProvider
     for (var index = 0; index < entries.length; index++) {
       final entry = entries[index];
       onProgress?.call(
-        ProviderProgress(
+        SourceProgress(
           message: 'Applying custom Steam game names…',
           completed: index,
           total: entries.length,
@@ -362,7 +362,7 @@ class SteamProvider
 
     if (entries.isNotEmpty) {
       onProgress?.call(
-        ProviderProgress(
+        SourceProgress(
           message: 'Applied custom Steam game names.',
           completed: entries.length,
           total: entries.length,
@@ -475,7 +475,7 @@ class SteamProvider
     }
 
     final automatic = configured.isEmpty
-        ? providerPaths.steamUserdata()
+        ? sourcePaths.steamUserdata()
         : expandUserPath(configured);
     return automatic == null ? null : Directory(automatic);
   }

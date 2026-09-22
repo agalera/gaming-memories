@@ -9,15 +9,15 @@ import '../services/battle_net_games.dart';
 import '../services/folder_access_service.dart';
 import '../services/library_scanner.dart';
 import '../services/media_importer.dart';
-import 'screenshot_provider.dart';
+import 'screenshot_source.dart';
 
-/// One provider over several Blizzard games.
+/// One source over several Blizzard games.
 ///
 /// Nothing here reads Battle.net's own configuration. Each game is found by
 /// looking for its screenshot folder, which needs no folder grant, and each
 /// game carries its own switch, its own grant and its own custom folder.
-class BattleNetProvider implements FolderBackedScreenshotProvider {
-  const BattleNetProvider({
+class BattleNetSource implements FolderBackedScreenshotSource {
+  const BattleNetSource({
     this.importer = const MediaImporter(),
     this.locator = const BattleNetLocator(),
   });
@@ -26,7 +26,7 @@ class BattleNetProvider implements FolderBackedScreenshotProvider {
   final BattleNetLocator locator;
 
   static const id = 'battle_net';
-  static const providerName = 'Battle.net';
+  static const sourceName = 'Battle.net';
   static const platform = 'PC';
 
   /// The grant a game's folder is stored under.
@@ -34,7 +34,7 @@ class BattleNetProvider implements FolderBackedScreenshotProvider {
       '${FolderGrantIds.battleNet}.$gameId';
 
   @override
-  String get name => providerName;
+  String get name => sourceName;
 
   @override
   String get folderGrantId => FolderGrantIds.battleNet;
@@ -69,16 +69,16 @@ class BattleNetProvider implements FolderBackedScreenshotProvider {
   }
 
   @override
-  ProviderFolderRequirement? folderRequirement(AppSettings settings) {
+  SourceFolderRequirement? folderRequirement(AppSettings settings) {
     final requirements = folderRequirements(settings);
     return requirements.isEmpty ? null : requirements.first;
   }
 
   @override
-  List<ProviderFolderRequirement> folderRequirements(AppSettings settings) {
+  List<SourceFolderRequirement> folderRequirements(AppSettings settings) {
     return [
       for (final folder in _activeFolders(settings))
-        ProviderFolderRequirement(
+        SourceFolderRequirement(
           id: grantIdForGame(folder.game.id),
           path: folder.path!,
           automatic: !folder.isCustom,
@@ -90,7 +90,7 @@ class BattleNetProvider implements FolderBackedScreenshotProvider {
 
   @override
   AppSettings withFolderPath(AppSettings settings, String path) {
-    // Each game owns its folder, so there is nothing for the provider as a
+    // Each game owns its folder, so there is nothing for the source as a
     // whole to store. Folder choices are written per game by the settings
     // page instead.
     return settings;
@@ -112,13 +112,13 @@ class BattleNetProvider implements FolderBackedScreenshotProvider {
     final folders = _activeFolders(settings);
     if (folders.isEmpty) {
       return const ImportResult.warning(
-        providerName,
+        sourceName,
         'Battle.net was skipped because none of its games were found. Turn on a game in Settings, or point it at a custom folder.',
       );
     }
 
     onProgress?.call(
-      const ProviderProgress(message: 'Looking for Battle.net screenshots…'),
+      const SourceProgress(message: 'Looking for Battle.net screenshots…'),
     );
 
     final media = <_BattleNetMedia>[];
@@ -132,7 +132,7 @@ class BattleNetProvider implements FolderBackedScreenshotProvider {
     for (var index = 0; index < media.length; index++) {
       final item = media[index];
       onProgress?.call(
-        ProviderProgress(
+        SourceProgress(
           message: 'Importing ${item.folder.game.name} screenshots…',
           completed: index,
           total: media.length,
@@ -153,13 +153,13 @@ class BattleNetProvider implements FolderBackedScreenshotProvider {
     }
 
     onProgress?.call(
-      ProviderProgress(
+      SourceProgress(
         message: 'Processed Battle.net screenshots.',
         completed: media.length,
         total: media.length,
       ),
     );
-    return ImportResult(provider: name, imported: imported, skipped: skipped);
+    return ImportResult(source: name, imported: imported, skipped: skipped);
   }
 
   /// Lists one game's folder, leaving the other games alone if it cannot be
@@ -177,7 +177,7 @@ class BattleNetProvider implements FolderBackedScreenshotProvider {
     } on FileSystemException catch (exception) {
       diagnosticLog.warning(
         'Battle.net could not read the ${folder.game.name} folder "${folder.path}".',
-        category: 'provider',
+        category: 'source',
         error: exception,
       );
       return const [];
@@ -194,7 +194,7 @@ class BattleNetProvider implements FolderBackedScreenshotProvider {
       if (capturedAt == null) {
         diagnosticLog.warning(
           'Battle.net skipped "${file.path}": its ${game.name} filename has no valid capture date.',
-          category: 'provider',
+          category: 'source',
         );
         return null;
       }
@@ -230,7 +230,7 @@ class BattleNetProvider implements FolderBackedScreenshotProvider {
     } on Object catch (exception) {
       diagnosticLog.warning(
         'Battle.net skipped "${file.path}": its TGA image could not be converted.',
-        category: 'provider',
+        category: 'source',
         error: exception,
       );
       return null;

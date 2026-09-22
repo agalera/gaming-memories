@@ -5,8 +5,8 @@ import 'package:path/path.dart' as p;
 
 import 'library_scanner.dart';
 
-class ProviderPathResolver {
-  const ProviderPathResolver({
+class SourcePathResolver {
+  const SourcePathResolver({
     this.userHomeDirectory,
     this.allowEnvironmentHome = true,
   });
@@ -15,28 +15,28 @@ class ProviderPathResolver {
   final bool allowEnvironmentHome;
 
   List<String> steamUserdataCandidates() {
-    return ProviderPaths.steamUserdataCandidates(
+    return SourcePaths.steamUserdataCandidates(
       userHomeDirectory: userHomeDirectory,
       allowEnvironmentHome: allowEnvironmentHome,
     );
   }
 
   String? steamUserdata() {
-    return ProviderPaths.steamUserdata(
+    return SourcePaths.steamUserdata(
       userHomeDirectory: userHomeDirectory,
       allowEnvironmentHome: allowEnvironmentHome,
     );
   }
 
   String? hytaleScreenshots() {
-    return ProviderPaths.hytaleScreenshots(
+    return SourcePaths.hytaleScreenshots(
       userHomeDirectory: userHomeDirectory,
       allowEnvironmentHome: allowEnvironmentHome,
     );
   }
 
   List<String> minecraftScreenshots() {
-    return ProviderPaths.minecraftScreenshots(
+    return SourcePaths.minecraftScreenshots(
       userHomeDirectory: userHomeDirectory,
       allowEnvironmentHome: allowEnvironmentHome,
     );
@@ -60,7 +60,7 @@ Future<String?> platformUserHomeDirectory() async {
   }
 }
 
-abstract final class ProviderPaths {
+abstract final class SourcePaths {
   static String? guildWars2Screenshots() {
     if (!Platform.isWindows) {
       return null;

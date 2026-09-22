@@ -2,8 +2,8 @@ import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:gaming_memories/models/app_settings.dart';
-import 'package:gaming_memories/providers/minecraft_provider.dart';
-import 'package:gaming_memories/services/provider_paths.dart';
+import 'package:gaming_memories/services/source_paths.dart';
+import 'package:gaming_memories/sources/minecraft_source.dart';
 import 'package:path/path.dart' as p;
 
 void main() {
@@ -29,7 +29,7 @@ void main() {
   }) {
     return AppSettings(
       outputPath: output.path,
-      minecraft: ProviderSettings(
+      minecraft: SourceSettings(
         enabled: enabled,
         useCustomPath: useCustomPath,
         sourcePath: sourcePath ?? source.path,
@@ -49,7 +49,7 @@ void main() {
     final nested = Directory(p.join(source.path, 'nested'))..createSync();
     await File(p.join(nested.path, 'nested.png')).writeAsString('ignored');
 
-    final result = await const MinecraftProvider().collect(settings());
+    final result = await const MinecraftSource().collect(settings());
 
     final album = p.join(output.path, 'PC', 'Minecraft');
     expect(result.imported, 2);
@@ -68,8 +68,8 @@ void main() {
     await launcherShot.setLastModified(DateTime(2026, 9, 3, 4, 5, 6));
     await flatpakShot.setLastModified(DateTime(2026, 9, 4, 7, 8, 9));
 
-    final result = await MinecraftProvider(
-      providerPaths: _TestMinecraftPaths([launcher.path, flatpak.path]),
+    final result = await MinecraftSource(
+      sourcePaths: _TestMinecraftPaths([launcher.path, flatpak.path]),
     ).collect(settings(useCustomPath: false, sourcePath: ''));
 
     final album = p.join(output.path, 'PC', 'Minecraft');
@@ -79,8 +79,8 @@ void main() {
   });
 
   test('warns when automatic discovery finds no installation', () async {
-    final result = await MinecraftProvider(
-      providerPaths: _TestMinecraftPaths([
+    final result = await MinecraftSource(
+      sourcePaths: _TestMinecraftPaths([
         p.join(source.path, 'missing-launcher'),
         p.join(source.path, 'missing-flatpak'),
       ]),
@@ -95,7 +95,7 @@ void main() {
   });
 
   test('does not inspect folders while disabled', () async {
-    final result = await const MinecraftProvider().collect(
+    final result = await const MinecraftSource().collect(
       settings(enabled: false, sourcePath: p.join(source.path, 'missing')),
     );
 
@@ -105,7 +105,7 @@ void main() {
   });
 }
 
-class _TestMinecraftPaths extends ProviderPathResolver {
+class _TestMinecraftPaths extends SourcePathResolver {
   const _TestMinecraftPaths(this.paths);
 
   final List<String> paths;

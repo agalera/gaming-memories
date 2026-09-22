@@ -1,9 +1,9 @@
 import '../models/app_settings.dart';
 
-typedef ProgressCallback = void Function(ProviderProgress progress);
+typedef ProgressCallback = void Function(SourceProgress progress);
 
-class ProviderProgress {
-  const ProviderProgress({required this.message, this.completed, this.total});
+class SourceProgress {
+  const SourceProgress({required this.message, this.completed, this.total});
 
   final String message;
   final int? completed;
@@ -21,29 +21,29 @@ class ProviderProgress {
 
 class ImportResult {
   const ImportResult({
-    required this.provider,
+    required this.source,
     required this.imported,
     required this.skipped,
     this.warning,
   });
 
-  const ImportResult.empty(this.provider)
+  const ImportResult.empty(this.source)
     : imported = 0,
       skipped = 0,
       warning = null;
 
-  const ImportResult.warning(this.provider, this.warning)
+  const ImportResult.warning(this.source, this.warning)
     : imported = 0,
       skipped = 0;
 
-  final String provider;
+  final String source;
   final int imported;
   final int skipped;
   final String? warning;
 }
 
-class ProviderFolderRequirement {
-  const ProviderFolderRequirement({
+class SourceFolderRequirement {
+  const SourceFolderRequirement({
     required this.id,
     required this.path,
     required this.automatic,
@@ -54,13 +54,13 @@ class ProviderFolderRequirement {
   final String path;
   final bool automatic;
 
-  /// What this folder holds, for the settings row. Providers that need several
+  /// What this folder holds, for the settings row. Sources that need several
   /// folders set it, because one sentence cannot describe folders that differ
   /// in kind.
   final String? description;
 }
 
-abstract interface class ScreenshotProvider {
+abstract interface class ScreenshotSource {
   String get name;
 
   bool isEnabled(AppSettings settings);
@@ -71,30 +71,30 @@ abstract interface class ScreenshotProvider {
   });
 }
 
-abstract interface class ProviderConfigurationValidator {
+abstract interface class SourceConfigurationValidator {
   Future<String?> configurationError(AppSettings settings);
 }
 
-abstract interface class FolderBackedScreenshotProvider
-    implements ScreenshotProvider {
+abstract interface class FolderBackedScreenshotSource
+    implements ScreenshotSource {
   String get folderGrantId;
 
-  /// The provider's primary folder, used wherever a single folder has to stand
-  /// for the provider. Providers that need several folders return the first of
+  /// The source's primary folder, used wherever a single folder has to stand
+  /// for the source. Sources that need several folders return the first of
   /// [folderRequirements] here.
-  ProviderFolderRequirement? folderRequirement(AppSettings settings);
+  SourceFolderRequirement? folderRequirement(AppSettings settings);
 
-  /// Every folder the provider needs access to.
-  List<ProviderFolderRequirement> folderRequirements(AppSettings settings);
+  /// Every folder the source needs access to.
+  List<SourceFolderRequirement> folderRequirements(AppSettings settings);
 
   AppSettings withFolderPath(AppSettings settings, String path);
 }
 
-/// Implements [FolderBackedScreenshotProvider.folderRequirements] for the
-/// providers whose screenshots all live under one folder.
-mixin SingleFolderRequirement implements FolderBackedScreenshotProvider {
+/// Implements [FolderBackedScreenshotSource.folderRequirements] for the
+/// sources whose screenshots all live under one folder.
+mixin SingleFolderRequirement implements FolderBackedScreenshotSource {
   @override
-  List<ProviderFolderRequirement> folderRequirements(AppSettings settings) {
+  List<SourceFolderRequirement> folderRequirements(AppSettings settings) {
     final requirement = folderRequirement(settings);
     return requirement == null ? const [] : [requirement];
   }

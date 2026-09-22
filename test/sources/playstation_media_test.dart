@@ -1,6 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:gaming_memories/providers/playstation_media.dart';
 import 'package:gaming_memories/services/media_importer.dart';
+import 'package:gaming_memories/sources/playstation_media.dart';
 
 void main() {
   final cases = <({String name, String? date, bool duplicate})>[

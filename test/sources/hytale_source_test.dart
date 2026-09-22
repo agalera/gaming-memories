@@ -2,8 +2,8 @@ import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:gaming_memories/models/app_settings.dart';
-import 'package:gaming_memories/providers/hytale_provider.dart';
-import 'package:gaming_memories/services/provider_paths.dart';
+import 'package:gaming_memories/services/source_paths.dart';
+import 'package:gaming_memories/sources/hytale_source.dart';
 import 'package:path/path.dart' as p;
 
 void main() {
@@ -30,7 +30,7 @@ void main() {
   }) {
     return AppSettings(
       outputPath: output.path,
-      hytale: ProviderSettings(
+      hytale: SourceSettings(
         enabled: enabled,
         useCustomPath: useCustomPath,
         sourcePath: sourcePath ?? source.path,
@@ -52,7 +52,7 @@ void main() {
       final nested = Directory(p.join(source.path, 'nested'))..createSync();
       await File(p.join(nested.path, 'nested.png')).writeAsString('ignored');
 
-      final result = await HytaleProvider(coverLoader: () async => [1, 2, 3])
+      final result = await HytaleSource(coverLoader: () async => [1, 2, 3])
           .collect(settings(downloadCovers: true));
 
       final album = p.join(output.path, 'PC', 'Hytale');
@@ -77,8 +77,8 @@ void main() {
       await screenshot.writeAsString('automatic screenshot');
       await screenshot.setLastModified(DateTime(2026, 8, 3, 4, 5, 6));
 
-      final result = await HytaleProvider(
-        providerPaths: const ProviderPathResolver(
+      final result = await HytaleSource(
+        sourcePaths: const SourcePathResolver(
           userHomeDirectory: '/unused',
           allowEnvironmentHome: false,
         ),
@@ -98,7 +98,7 @@ void main() {
     'warns when the automatically discovered installation is missing',
     () async {
       final missing = p.join(source.path, 'missing');
-      final result = await HytaleProvider(coverLoader: () async => const [])
+      final result = await HytaleSource(coverLoader: () async => const [])
           .collect(settings(useCustomPath: false, sourcePath: missing));
 
       expect(result.imported, 0);
@@ -111,7 +111,7 @@ void main() {
   );
 
   test('loads the packaged Hytale cover asset', () async {
-    await HytaleProvider().collect(settings(downloadCovers: true));
+    await HytaleSource().collect(settings(downloadCovers: true));
 
     final bytes = File(p.join(output.path, 'PC', 'Hytale', 'cover.png'))
         .readAsBytesSync();
@@ -120,7 +120,7 @@ void main() {
 
   test('does not scan or load the cover while disabled', () async {
     var loadedCover = false;
-    final result = await HytaleProvider(
+    final result = await HytaleSource(
       coverLoader: () async {
         loadedCover = true;
         return const [];

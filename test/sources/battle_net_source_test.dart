@@ -2,8 +2,8 @@ import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:gaming_memories/models/app_settings.dart';
-import 'package:gaming_memories/providers/battle_net_provider.dart';
 import 'package:gaming_memories/services/battle_net_games.dart';
+import 'package:gaming_memories/sources/battle_net_source.dart';
 import 'package:image/image.dart' as image;
 import 'package:path/path.dart' as p;
 
@@ -21,14 +21,13 @@ void main() {
     await output.delete(recursive: true);
   });
 
-  /// A provider whose macOS defaults live inside the temp home, so the tests
+  /// A source whose macOS defaults live inside the temp home, so the tests
   /// never see what is installed on the machine running them.
-  BattleNetProvider provider() =>
-      BattleNetProvider(locator: _TestLocator(home.path));
+  BattleNetSource source() => BattleNetSource(locator: _TestLocator(home.path));
 
   AppSettings settings({
     bool enabled = true,
-    Map<String, ProviderSettings> games = const {},
+    Map<String, SourceSettings> games = const {},
   }) {
     return AppSettings(
       outputPath: output.path,
@@ -73,7 +72,7 @@ void main() {
         modified: DateTime(2026, 9, 25, 16, 27, 38),
       );
 
-      final result = await provider().collect(settings());
+      final result = await source().collect(settings());
 
       expect(result.imported, 5);
       for (final relative in [
@@ -100,7 +99,7 @@ void main() {
     await file.parent.create(recursive: true);
     await file.writeAsBytes(image.encodeTga(tga));
 
-    final result = await provider().collect(settings());
+    final result = await source().collect(settings());
 
     expect(result.imported, 1);
     expect(
@@ -119,7 +118,7 @@ void main() {
   test('skips a World of Warcraft file with no date in its name', () async {
     await writeShot(p.join(wowFlavor('_retail_'), 'invalid.jpg'));
 
-    final result = await provider().collect(settings());
+    final result = await source().collect(settings());
 
     expect(result.imported, 0);
     expect(result.skipped, 1);
@@ -134,10 +133,10 @@ void main() {
       modified: DateTime(2026, 9, 23, 14, 25, 36),
     );
 
-    final result = await provider().collect(
+    final result = await source().collect(
       settings(
         games: const {
-          'diablo_iii': ProviderSettings(
+          'diablo_iii': SourceSettings(
             enabled: false,
             useCustomPath: false,
             sourcePath: '',
@@ -161,10 +160,10 @@ void main() {
       modified: DateTime(2026, 9, 24, 15, 26, 37),
     );
 
-    final result = await provider().collect(
+    final result = await source().collect(
       settings(
         games: {
-          'starcraft_ii': ProviderSettings(
+          'starcraft_ii': SourceSettings(
             enabled: true,
             useCustomPath: true,
             sourcePath: custom.path,
@@ -182,18 +181,18 @@ void main() {
   });
 
   test('warns when no game was found', () async {
-    final result = await provider().collect(settings());
+    final result = await source().collect(settings());
 
     expect(result.imported, 0);
     expect(result.warning, contains('none of its games were found'));
   });
 
-  test('a disabled provider does nothing', () async {
+  test('a disabled source does nothing', () async {
     await writeShot(
       p.join(wowFlavor('_retail_'), 'WoWScrnShot_092026_112233.jpg'),
     );
 
-    final result = await provider().collect(settings(enabled: false));
+    final result = await source().collect(settings(enabled: false));
 
     expect(result.imported, 0);
     expect(result.warning, isNull);
@@ -203,13 +202,13 @@ void main() {
     test('only installed games ask for access', () async {
       Directory(wowFlavor('_retail_')).createSync(recursive: true);
 
-      final requirements = provider().folderRequirements(settings());
+      final requirements = source().folderRequirements(settings());
 
       expect(requirements, hasLength(1));
       expect(requirements.single.path, wowFlavor('_retail_'));
       expect(
         requirements.single.id,
-        BattleNetProvider.grantIdForGame('wow_retail'),
+        BattleNetSource.grantIdForGame('wow_retail'),
       );
       expect(requirements.single.automatic, isTrue);
       expect(requirements.single.description, contains('World of Warcraft'));
@@ -220,7 +219,7 @@ void main() {
         Directory(wowFlavor(flavor)).createSync(recursive: true);
       }
 
-      final requirements = provider().folderRequirements(settings());
+      final requirements = source().folderRequirements(settings());
 
       expect(requirements, hasLength(3));
       expect(
@@ -233,10 +232,10 @@ void main() {
       final custom = Directory(p.join(home.path, 'custom'))
         ..createSync(recursive: true);
 
-      final requirements = provider().folderRequirements(
+      final requirements = source().folderRequirements(
         settings(
           games: {
-            'diablo_iii': ProviderSettings(
+            'diablo_iii': SourceSettings(
               enabled: true,
               useCustomPath: true,
               sourcePath: custom.path,
@@ -250,14 +249,14 @@ void main() {
       expect(requirements.single.path, custom.path);
     });
 
-    test('a switched-off provider requires nothing', () async {
+    test('a switched-off source requires nothing', () async {
       Directory(wowFlavor('_retail_')).createSync(recursive: true);
 
-      expect(provider().folderRequirements(settings(enabled: false)), isEmpty);
+      expect(source().folderRequirements(settings(enabled: false)), isEmpty);
     });
 
-    test('the provider stores no folder of its own', () {
-      final next = provider().withFolderPath(settings(), '/somewhere');
+    test('the source stores no folder of its own', () {
+      final next = source().withFolderPath(settings(), '/somewhere');
 
       expect(next.battleNet.games, settings().battleNet.games);
     });
@@ -266,7 +265,7 @@ void main() {
   test('lists every game for the settings rows, installed or not', () {
     Directory(wowFlavor('_retail_')).createSync(recursive: true);
 
-    final folders = provider().gameFolders(settings());
+    final folders = source().gameFolders(settings());
 
     expect(folders, hasLength(battleNetGames.length));
     expect(

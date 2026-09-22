@@ -5,26 +5,26 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:gaming_memories/controllers/library_controller.dart';
 import 'package:gaming_memories/models/app_settings.dart';
 import 'package:gaming_memories/models/library.dart';
-import 'package:gaming_memories/providers/battle_net_provider.dart';
-import 'package:gaming_memories/providers/guild_wars_2_provider.dart';
-import 'package:gaming_memories/providers/playstation_4_provider.dart';
-import 'package:gaming_memories/providers/screenshot_provider.dart';
-import 'package:gaming_memories/providers/steam_provider.dart';
-import 'package:gaming_memories/services/config_store.dart';
 import 'package:gaming_memories/services/app_log.dart';
 import 'package:gaming_memories/services/battle_net_games.dart';
+import 'package:gaming_memories/services/config_store.dart';
 import 'package:gaming_memories/services/folder_access_service.dart';
 import 'package:gaming_memories/services/library_scanner.dart';
 import 'package:gaming_memories/services/library_watcher.dart';
-import 'package:gaming_memories/services/provider_paths.dart';
 import 'package:gaming_memories/services/screenshot_action_service.dart';
+import 'package:gaming_memories/services/source_paths.dart';
 import 'package:gaming_memories/services/steam_client.dart';
 import 'package:gaming_memories/services/timeline_cache.dart';
+import 'package:gaming_memories/sources/battle_net_source.dart';
+import 'package:gaming_memories/sources/guild_wars_2_source.dart';
+import 'package:gaming_memories/sources/playstation_4_source.dart';
+import 'package:gaming_memories/sources/screenshot_source.dart';
+import 'package:gaming_memories/sources/steam_source.dart';
 import 'package:image/image.dart' as image_lib;
 import 'package:path/path.dart' as p;
 
 void main() {
-  test('disables an invalid provider during startup', () async {
+  test('disables an invalid source during startup', () async {
     final directory = await Directory.systemTemp.createTemp(
       'gaming-memories-controller-',
     );
@@ -35,7 +35,7 @@ void main() {
     await store.save(
       const AppSettings(
         outputPath: '',
-        playStation4: ProviderSettings(
+        playStation4: SourceSettings(
           enabled: true,
           useCustomPath: true,
           sourcePath: '/definitely/missing/gaming-memories',
@@ -45,7 +45,7 @@ void main() {
     final controller = LibraryController(
       configStore: store,
       scanner: const LibraryScanner(),
-      providers: const [PlayStation4Provider()],
+      sources: const [PlayStation4Source()],
     );
 
     await controller.initialize();
@@ -57,12 +57,12 @@ void main() {
       controller.error,
       'PlayStation 4 was disabled: PlayStation 4 folder does not exist.',
     );
-    expect(controller.providerValidationErrors, {
+    expect(controller.sourceValidationErrors, {
       'PlayStation 4': 'PlayStation 4 folder does not exist.',
     });
   });
 
-  test('disables an invalid provider during a settings save', () async {
+  test('disables an invalid source during a settings save', () async {
     final directory = await Directory.systemTemp.createTemp(
       'gaming-memories-controller-',
     );
@@ -73,13 +73,13 @@ void main() {
     final controller = LibraryController(
       configStore: store,
       scanner: const LibraryScanner(),
-      providers: const [PlayStation4Provider()],
+      sources: const [PlayStation4Source()],
     )..isInitializing = false;
 
     final saved = await controller.updateSettings(
       const AppSettings(
         outputPath: '',
-        playStation4: ProviderSettings(
+        playStation4: SourceSettings(
           enabled: true,
           useCustomPath: true,
           sourcePath: '/definitely/missing/gaming-memories',
@@ -112,7 +112,7 @@ void main() {
       final controller = LibraryController(
         configStore: store,
         scanner: const LibraryScanner(),
-        providers: [SteamProvider(api: const _ControllerSteamApi())],
+        sources: [SteamSource(api: const _ControllerSteamApi())],
       )..isInitializing = false;
 
       await controller.updateSettings(
@@ -134,7 +134,7 @@ void main() {
 
       expect(controller.settings.steam.enabled, isFalse);
       expect((await store.load()).steam.enabled, isFalse);
-      expect(controller.providerValidationErrors, {
+      expect(controller.sourceValidationErrors, {
         'Steam': 'Enter a Steam user ID for online gallery imports.',
       });
       expect(controller.notificationKind, NotificationKind.error);
@@ -161,7 +161,7 @@ void main() {
         configStore: store,
         scanner: _StartupFolderScanner(directory.path),
         timelineCache: timelineCache,
-        providers: const [],
+        sources: const [],
       );
 
       final initialization = controller.initialize();
@@ -191,7 +191,7 @@ void main() {
         LibraryController(
             configStore: const ConfigStore(filePath: 'unused'),
             scanner: scanner,
-            providers: const [],
+            sources: const [],
           )
           ..isInitializing = false
           ..settings = const AppSettings(outputPath: '/library');
@@ -241,7 +241,7 @@ void main() {
         configStore: store,
         scanner: scanner,
         timelineCache: cache,
-        providers: const [],
+        sources: const [],
       );
 
       await controller.initialize();
@@ -299,7 +299,7 @@ void main() {
       scanner: scanner,
       timelineCache: cache,
       libraryWatcher: watcher,
-      providers: const [],
+      sources: const [],
     );
     addTearDown(controller.dispose);
 
@@ -408,7 +408,7 @@ void main() {
         configStore: store,
         scanner: const LibraryScanner(),
         libraryWatcher: watcher,
-        providers: const [],
+        sources: const [],
       );
       addTearDown(controller.dispose);
 
@@ -484,7 +484,7 @@ void main() {
       configStore: store,
       scanner: scanner,
       libraryWatcher: watcher,
-      providers: const [],
+      sources: const [],
     );
     addTearDown(controller.dispose);
 
@@ -551,7 +551,7 @@ void main() {
     final controller = LibraryController(
       configStore: store,
       scanner: const LibraryScanner(),
-      providers: const [],
+      sources: const [],
     );
     addTearDown(controller.dispose);
 
@@ -596,7 +596,7 @@ void main() {
       configStore: store,
       scanner: scanner,
       libraryWatcher: watcher,
-      providers: const [],
+      sources: const [],
     );
     addTearDown(controller.dispose);
 
@@ -684,7 +684,7 @@ void main() {
       configStore: store,
       scanner: scanner,
       libraryWatcher: watcher,
-      providers: const [],
+      sources: const [],
     );
     addTearDown(controller.dispose);
 
@@ -747,7 +747,7 @@ void main() {
       configStore: store,
       scanner: scanner,
       libraryWatcher: watcher,
-      providers: const [],
+      sources: const [],
     );
     addTearDown(controller.dispose);
 
@@ -797,7 +797,7 @@ void main() {
       configStore: store,
       scanner: scanner,
       libraryWatcher: watcher,
-      providers: const [],
+      sources: const [],
     );
     addTearDown(controller.dispose);
 
@@ -851,7 +851,7 @@ void main() {
     expect(controller.timelineMedia, isEmpty);
   });
 
-  test('applies watched changes while provider collection is busy', () async {
+  test('applies watched changes while source collection is busy', () async {
     final directory = await Directory.systemTemp.createTemp(
       'gaming-memories-controller-',
     );
@@ -863,13 +863,13 @@ void main() {
       filePath: p.join(directory.path, 'settings.json'),
     );
     await store.save(AppSettings(outputPath: library.path));
-    final provider = _ProgressProvider();
+    final source = _ProgressSource();
     final watcher = _FakeLibraryWatcher();
     final controller = LibraryController(
       configStore: store,
       scanner: const LibraryScanner(),
       libraryWatcher: watcher,
-      providers: [provider],
+      sources: [source],
     );
     addTearDown(controller.dispose);
 
@@ -895,9 +895,9 @@ void main() {
 
     expect(controller.scanActivity.isRunning, isTrue);
     expect(controller.timelineMedia.single.path, media.path);
-    expect(provider.release.isCompleted, isFalse);
+    expect(source.release.isCompleted, isFalse);
 
-    provider.release.complete();
+    source.release.complete();
     await collection;
     expect(controller.scanActivity.isRunning, isFalse);
   });
@@ -918,7 +918,7 @@ void main() {
       configStore: store,
       scanner: scanner,
       libraryWatcher: const _FailingLibraryWatcher(),
-      providers: const [],
+      sources: const [],
     );
     addTearDown(controller.dispose);
 
@@ -933,7 +933,7 @@ void main() {
     final controller = LibraryController(
       configStore: const ConfigStore(filePath: 'unused'),
       scanner: const LibraryScanner(),
-      providers: const [],
+      sources: const [],
     );
     final older = MediaItem(
       path: '/pc-old.jpg',
@@ -993,7 +993,7 @@ void main() {
         LibraryController(
             configStore: const ConfigStore(filePath: 'unused'),
             scanner: const LibraryScanner(),
-            providers: const [],
+            sources: const [],
           )
           ..isInitializing = false
           ..settings = AppSettings(outputPath: directory.path)
@@ -1022,12 +1022,12 @@ void main() {
     expect(game.children.single.relativePath, 'Boss fights');
   });
 
-  test('reports provider progress during collection', () async {
-    final provider = _ProgressProvider();
+  test('reports source progress during collection', () async {
+    final source = _ProgressSource();
     final controller = LibraryController(
       configStore: const ConfigStore(filePath: 'unused'),
       scanner: const LibraryScanner(),
-      providers: [provider],
+      sources: [source],
     );
 
     final collection = controller.collect();
@@ -1040,7 +1040,7 @@ void main() {
     expect(controller.scanActivity.detail, 'Importing test screenshots…');
     expect(controller.scanActivity.progress, 0.5);
 
-    provider.release.complete();
+    source.release.complete();
     await collection;
 
     expect(controller.isBusy, isFalse);
@@ -1051,7 +1051,7 @@ void main() {
   });
 
   test(
-    'warns and continues when automatic provider discovery finds nothing',
+    'warns and continues when automatic source discovery finds nothing',
     () async {
       if (Platform.isWindows) {
         return;
@@ -1067,22 +1067,22 @@ void main() {
                 filePath: p.join(directory.path, 'settings.json'),
               ),
               scanner: const LibraryScanner(),
-              providers: const [
+              sources: const [
                 // Pin the game folders at a home that holds nothing, so the
                 // test does not see what is installed on the machine.
-                BattleNetProvider(
+                BattleNetSource(
                   locator: BattleNetLocator(
                     operatingSystem: 'linux',
                     allowEnvironmentHome: false,
                   ),
                 ),
-                GuildWars2Provider(),
+                GuildWars2Source(),
               ],
             )
             ..settings = AppSettings(
               outputPath: directory.path,
               battleNet: const BattleNetSettings(enabled: true),
-              guildWars2: const ProviderSettings(
+              guildWars2: const SourceSettings(
                 enabled: true,
                 useCustomPath: false,
                 sourcePath: '',
@@ -1112,7 +1112,7 @@ void main() {
     final controller = LibraryController(
       configStore: const ConfigStore(filePath: 'unused'),
       scanner: const LibraryScanner(),
-      providers: const [],
+      sources: const [],
     );
     final media = MediaItem(
       path: '/pc.jpg',
@@ -1141,7 +1141,7 @@ void main() {
     final controller = LibraryController(
       configStore: const ConfigStore(filePath: 'unused'),
       scanner: const LibraryScanner(),
-      providers: const [],
+      sources: const [],
       screenshotActions: actions,
     );
     final media = MediaItem(
@@ -1167,7 +1167,7 @@ void main() {
     final controller = LibraryController(
       configStore: const ConfigStore(filePath: 'unused'),
       scanner: const LibraryScanner(),
-      providers: const [],
+      sources: const [],
     );
     final video = MediaItem(
       path: '/PS5/Game/Other/clip.webm',
@@ -1221,7 +1221,7 @@ void main() {
     final controller = LibraryController(
       configStore: store,
       scanner: _RecordingScanner(events),
-      providers: const [],
+      sources: const [],
       folderAccess: access,
     );
 
@@ -1263,7 +1263,7 @@ void main() {
     final controller = LibraryController(
       configStore: store,
       scanner: const LibraryScanner(),
-      providers: const [],
+      sources: const [],
       folderAccess: access,
     )..settings = initial;
 
@@ -1275,7 +1275,7 @@ void main() {
     expect(access.released, ['new-lease']);
   });
 
-  test('warns separately for every provider missing folder access', () async {
+  test('warns separately for every source missing folder access', () async {
     final directory = await Directory.systemTemp.createTemp('gaming-memories-');
     addTearDown(() => directory.delete(recursive: true));
     final store = ConfigStore(
@@ -1297,9 +1297,9 @@ void main() {
     final controller = LibraryController(
       configStore: store,
       scanner: const LibraryScanner(),
-      providers: const [
-        _FolderProvider('First', FolderGrantIds.battleNet),
-        _FolderProvider('Second', FolderGrantIds.guildWars2),
+      sources: const [
+        _FolderSource('First', FolderGrantIds.battleNet),
+        _FolderSource('Second', FolderGrantIds.guildWars2),
       ],
       folderAccess: _FakeFolderAccess(),
     );
@@ -1321,7 +1321,7 @@ void main() {
     );
   });
 
-  test('releases provider access when collection fails', () async {
+  test('releases source access when collection fails', () async {
     final log = _RecordingAppLog();
     final directory = await Directory.systemTemp.createTemp('gaming-memories-');
     final source = Directory(p.join(directory.path, 'source'))..createSync();
@@ -1352,7 +1352,7 @@ void main() {
     final controller = LibraryController(
       configStore: store,
       scanner: const LibraryScanner(),
-      providers: [_ThrowingFolderProvider(source.path)],
+      sources: [_ThrowingFolderSource(source.path)],
       folderAccess: access,
       log: log,
     );
@@ -1368,9 +1368,9 @@ void main() {
     expect(
       log.entries.join('\n'),
       allOf(
-        contains('Provider "Throwing" failed'),
-        contains('Bad state: provider failed'),
-        contains('_ThrowingFolderProvider.collect'),
+        contains('Source "Throwing" failed'),
+        contains('Bad state: source failed'),
+        contains('_ThrowingFolderSource.collect'),
       ),
     );
     // The user reads a sentence, not the exception.
@@ -1380,14 +1380,14 @@ void main() {
     );
   });
 
-  test('redacts the Steam API key from provider failure diagnostics', () async {
+  test('redacts the Steam API key from source failure diagnostics', () async {
     const apiKey = 'super-secret-api-key';
     final log = _RecordingAppLog();
     final controller =
         LibraryController(
             configStore: const ConfigStore(filePath: 'unused'),
             scanner: const LibraryScanner(),
-            providers: const [_ThrowingProvider(apiKey)],
+            sources: const [_ThrowingSource(apiKey)],
             log: log,
           )
           ..settings = const AppSettings.defaults().copyWith(
@@ -1397,7 +1397,7 @@ void main() {
     await controller.collect();
 
     final output = log.entries.join('\n');
-    expect(output, contains('Provider "Steam" failed'));
+    expect(output, contains('Source "Steam" failed'));
     expect(output, contains('key=<REDACTED>'));
     expect(output, isNot(contains(apiKey)));
     expect(controller.notifications.single.message, isNot(contains(apiKey)));
@@ -1408,9 +1408,9 @@ void main() {
     final controller = LibraryController(
       configStore: const ConfigStore(filePath: 'unused'),
       scanner: const LibraryScanner(),
-      providers: const [],
+      sources: const [],
       folderAccess: access,
-      providerPaths: const _TestProviderPathResolver([
+      sourcePaths: const _TestSourcePathResolver([
         '/Steam One/userdata',
         '/Steam Two/userdata',
       ]),
@@ -1433,8 +1433,8 @@ void main() {
     final controller = LibraryController(
       configStore: const ConfigStore(filePath: 'unused'),
       scanner: const LibraryScanner(),
-      providers: const [
-        BattleNetProvider(
+      sources: const [
+        BattleNetSource(
           locator: BattleNetLocator(
             operatingSystem: 'macos',
             userHomeDirectory: '/home/tester',
@@ -1443,7 +1443,7 @@ void main() {
         ),
       ],
       folderAccess: access,
-      providerPaths: const _TestProviderPathResolver([]),
+      sourcePaths: const _TestSourcePathResolver([]),
     );
 
     final result = await controller.chooseFolder(
@@ -1454,7 +1454,7 @@ void main() {
     expect(result.cancelled, isTrue);
     expect(
       access.requests.single.id,
-      BattleNetProvider.grantIdForGame('wow_retail'),
+      BattleNetSource.grantIdForGame('wow_retail'),
     );
     expect(
       access.requests.single.suggestedPath,
@@ -1466,9 +1466,9 @@ void main() {
     final controller = LibraryController(
       configStore: const ConfigStore(filePath: 'unused'),
       scanner: const LibraryScanner(),
-      providers: const [BattleNetProvider()],
+      sources: const [BattleNetSource()],
       folderAccess: _FakeFolderAccess(),
-      providerPaths: const _TestProviderPathResolver([]),
+      sourcePaths: const _TestSourcePathResolver([]),
     );
 
     final result = await controller.chooseFolder(
@@ -1501,7 +1501,7 @@ void main() {
         LibraryController(
             configStore: store,
             scanner: const LibraryScanner(),
-            providers: const [],
+            sources: const [],
             folderAccess: access,
           )
           ..settings = const AppSettings(
@@ -1530,7 +1530,7 @@ void main() {
     );
   });
 
-  test('saves PlayStation folder access as a custom provider path', () async {
+  test('saves PlayStation folder access as a custom source path', () async {
     final directory = await Directory.systemTemp.createTemp('gaming-memories-');
     final captures = Directory(p.join(directory.path, 'PS5 captures'))
       ..createSync();
@@ -1552,7 +1552,7 @@ void main() {
     final controller = LibraryController(
       configStore: store,
       scanner: const LibraryScanner(),
-      providers: const [],
+      sources: const [],
       folderAccess: access,
     );
 
@@ -1597,7 +1597,7 @@ void main() {
       final controller = LibraryController(
         configStore: store,
         scanner: const LibraryScanner(),
-        providers: const [],
+        sources: const [],
         folderAccess: access,
       );
 
@@ -1646,12 +1646,9 @@ void main() {
       final controller = LibraryController(
         configStore: store,
         scanner: const LibraryScanner(),
-        providers: const [],
+        sources: const [],
         folderAccess: access,
-        providerPaths: _TestProviderPathResolver(
-          const [],
-          hytalePath: hytale.path,
-        ),
+        sourcePaths: _TestSourcePathResolver(const [], hytalePath: hytale.path),
       );
 
       final result = await controller.chooseFolder(
@@ -1696,9 +1693,9 @@ void main() {
       final controller = LibraryController(
         configStore: store,
         scanner: const LibraryScanner(),
-        providers: const [],
+        sources: const [],
         folderAccess: access,
-        providerPaths: _TestProviderPathResolver(
+        sourcePaths: _TestSourcePathResolver(
           const [],
           minecraftPaths: [minecraft.path],
         ),
@@ -1739,7 +1736,7 @@ class _FakeScreenshotActions implements ScreenshotActionService {
   Future<void> copyPath(String path) async => copiedPaths.add(path);
 }
 
-class _ProgressProvider implements ScreenshotProvider {
+class _ProgressSource implements ScreenshotSource {
   final release = Completer<void>();
 
   @override
@@ -1754,14 +1751,14 @@ class _ProgressProvider implements ScreenshotProvider {
     ProgressCallback? onProgress,
   }) async {
     onProgress?.call(
-      const ProviderProgress(
+      const SourceProgress(
         message: 'Importing test screenshots…',
         completed: 1,
         total: 2,
       ),
     );
     await release.future;
-    return const ImportResult(provider: 'Test', imported: 1, skipped: 0);
+    return const ImportResult(source: 'Test', imported: 1, skipped: 0);
   }
 }
 
@@ -2076,8 +2073,8 @@ class _FakeFolderAccess implements FolderAccessService {
   Future<void> dispose() async {}
 }
 
-class _TestProviderPathResolver extends ProviderPathResolver {
-  const _TestProviderPathResolver(
+class _TestSourcePathResolver extends SourcePathResolver {
+  const _TestSourcePathResolver(
     this.paths, {
     this.hytalePath,
     this.minecraftPaths = const [],
@@ -2177,10 +2174,10 @@ class _ControllerSteamApi implements SteamApi {
   ) async => const [];
 }
 
-class _FolderProvider
+class _FolderSource
     with SingleFolderRequirement
-    implements FolderBackedScreenshotProvider {
-  const _FolderProvider(this.name, this.folderGrantId);
+    implements FolderBackedScreenshotSource {
+  const _FolderSource(this.name, this.folderGrantId);
 
   @override
   final String name;
@@ -2192,10 +2189,10 @@ class _FolderProvider
   bool isEnabled(AppSettings settings) => true;
 
   @override
-  ProviderFolderRequirement? folderRequirement(AppSettings settings) {
-    return ProviderFolderRequirement(
+  SourceFolderRequirement? folderRequirement(AppSettings settings) {
+    return SourceFolderRequirement(
       id: folderGrantId,
-      path: '/provider/$name',
+      path: '/source/$name',
       automatic: false,
     );
   }
@@ -2210,10 +2207,10 @@ class _FolderProvider
   }) async => ImportResult.empty(name);
 }
 
-class _ThrowingFolderProvider
+class _ThrowingFolderSource
     with SingleFolderRequirement
-    implements FolderBackedScreenshotProvider {
-  const _ThrowingFolderProvider(this.path);
+    implements FolderBackedScreenshotSource {
+  const _ThrowingFolderSource(this.path);
 
   final String path;
 
@@ -2227,8 +2224,8 @@ class _ThrowingFolderProvider
   bool isEnabled(AppSettings settings) => true;
 
   @override
-  ProviderFolderRequirement? folderRequirement(AppSettings settings) {
-    return ProviderFolderRequirement(
+  SourceFolderRequirement? folderRequirement(AppSettings settings) {
+    return SourceFolderRequirement(
       id: folderGrantId,
       path: path,
       automatic: false,
@@ -2243,12 +2240,12 @@ class _ThrowingFolderProvider
     AppSettings settings, {
     ProgressCallback? onProgress,
   }) {
-    throw StateError('provider failed');
+    throw StateError('source failed');
   }
 }
 
-class _ThrowingProvider implements ScreenshotProvider {
-  const _ThrowingProvider(this.apiKey);
+class _ThrowingSource implements ScreenshotSource {
+  const _ThrowingSource(this.apiKey);
 
   final String apiKey;
 

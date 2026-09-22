@@ -19,25 +19,25 @@ void main() {
       battleNet: BattleNetSettings(
         enabled: true,
         games: {
-          'wow_retail': ProviderSettings(
+          'wow_retail': SourceSettings(
             enabled: true,
             useCustomPath: true,
             sourcePath: '/wow',
           ),
         },
       ),
-      guildWars2: ProviderSettings(
+      guildWars2: SourceSettings(
         enabled: true,
         useCustomPath: true,
         sourcePath: '/guild-wars-2',
       ),
-      hytale: ProviderSettings(
+      hytale: SourceSettings(
         enabled: true,
         useCustomPath: false,
         sourcePath: '/Users/alice/Pictures/Hytale Screenshots',
         downloadCovers: true,
       ),
-      minecraft: ProviderSettings(
+      minecraft: SourceSettings(
         enabled: true,
         useCustomPath: true,
         sourcePath: '/minecraft/screenshots',
@@ -48,12 +48,12 @@ void main() {
         sourcePath: '/switch-2-album',
         ignoredFolders: ['Other folder', 'News'],
       ),
-      playStation4: ProviderSettings(
+      playStation4: SourceSettings(
         enabled: true,
         useCustomPath: true,
         sourcePath: '/playstation-4',
       ),
-      playStation5: ProviderSettings(
+      playStation5: SourceSettings(
         enabled: true,
         useCustomPath: true,
         sourcePath: '/playstation-5',
@@ -142,7 +142,7 @@ void main() {
   "nintendoSwitch2": {"enabled": true, "sourcePath": "auto"},
   "steam": {"enabled": true, "userdataPath": "auto"},
   "folderGrants": {
-    "provider.diabloIV": {
+    "source.diabloIV": {
       "platform": "macos",
       "path": "/legacy/diablo",
       "access": "readOnly",
@@ -174,9 +174,9 @@ void main() {
     );
     expect(settings.steam.useCustomPath, isFalse);
     expect(settings.steam.userdataPath, isEmpty);
-    expect(settings.folderGrants['provider.diabloIV'], isNull);
+    expect(settings.folderGrants['source.diabloIV'], isNull);
     expect(
-      settings.folderGrants['provider.battleNet']?.bookmark,
+      settings.folderGrants['source.battleNet']?.bookmark,
       'legacy-bookmark',
     );
   });

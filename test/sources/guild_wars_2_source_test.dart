@@ -2,7 +2,7 @@ import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:gaming_memories/models/app_settings.dart';
-import 'package:gaming_memories/providers/guild_wars_2_provider.dart';
+import 'package:gaming_memories/sources/guild_wars_2_source.dart';
 import 'package:path/path.dart' as p;
 
 void main() {
@@ -21,7 +21,7 @@ void main() {
 
   AppSettings settings({bool enabled = true}) => AppSettings(
     outputPath: output.path,
-    guildWars2: ProviderSettings(
+    guildWars2: SourceSettings(
       enabled: enabled,
       useCustomPath: true,
       sourcePath: source.path,
@@ -49,20 +49,18 @@ void main() {
     await File(p.join(source.path, 'notes.png')).writeAsString('ignored');
     await Directory(p.join(source.path, 'nested')).create();
 
-    final result = await const GuildWars2Provider().collect(settings());
+    final result = await const GuildWars2Source().collect(settings());
 
     expect(result.imported, 2);
     expect(result.skipped, 0);
     expect(
-      File(
-        p.join(output.path, 'PC', 'Guild Wars 2', '2026-03-14_09-05-01.jpg'),
-      ).existsSync(),
+      File(p.join(output.path, 'PC', 'Guild Wars 2', '2026-03-14_09-05-01.jpg'))
+          .existsSync(),
       isTrue,
     );
     expect(
-      File(
-        p.join(output.path, 'PC', 'Guild Wars 2', '2026-03-15_10-06-02.jpg'),
-      ).existsSync(),
+      File(p.join(output.path, 'PC', 'Guild Wars 2', '2026-03-15_10-06-02.jpg'))
+          .existsSync(),
       isTrue,
     );
   });
@@ -73,23 +71,23 @@ void main() {
       'same screenshot',
       DateTime(2026, 4, 2, 12, 30, 5),
     );
-    const provider = GuildWars2Provider();
+    const source = GuildWars2Source();
 
-    await provider.collect(settings());
-    final result = await provider.collect(settings());
+    await source.collect(settings());
+    final result = await source.collect(settings());
 
     expect(result.imported, 0);
     expect(result.skipped, 1);
   });
 
-  test('imports nothing while the provider is disabled', () async {
+  test('imports nothing while the source is disabled', () async {
     await writeScreenshot(
       'gw001.jpg',
       'screenshot',
       DateTime(2026, 4, 2, 12, 30, 5),
     );
 
-    final result = await const GuildWars2Provider().collect(
+    final result = await const GuildWars2Source().collect(
       settings(enabled: false),
     );
 

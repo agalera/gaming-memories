@@ -2,7 +2,7 @@ import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:gaming_memories/models/app_settings.dart';
-import 'package:gaming_memories/providers/playstation_4_provider.dart';
+import 'package:gaming_memories/sources/playstation_4_source.dart';
 import 'package:path/path.dart' as p;
 
 void main() {
@@ -22,7 +22,7 @@ void main() {
   AppSettings settings({bool enabled = true, String? sourcePath}) {
     return AppSettings(
       outputPath: output.path,
-      playStation4: ProviderSettings(
+      playStation4: SourceSettings(
         enabled: enabled,
         useCustomPath: true,
         sourcePath: sourcePath ?? source.path,
@@ -40,11 +40,10 @@ void main() {
     await datedClip.writeAsString('dated clip');
     await undatedClip.writeAsString('undated clip');
     await File(p.join(game.path, 'Thumbs.db')).writeAsString('ignored');
-    await File(
-      p.join(game.path, '._Bloodborne_20260920112233.mp4'),
-    ).writeAsString('ignored');
+    await File(p.join(game.path, '._Bloodborne_20260920112233.mp4'))
+        .writeAsString('ignored');
 
-    final result = await const PlayStation4Provider().collect(settings());
+    final result = await const PlayStation4Source().collect(settings());
 
     final album = p.join(output.path, 'PlayStation 4', 'Bloodborne');
     expect(result.imported, 3);
@@ -62,10 +61,10 @@ void main() {
     final screenshot = File(p.join(game.path, 'Journey.jpg'));
     await screenshot.writeAsString('screenshot');
     await screenshot.setLastModified(DateTime(2026, 5, 6, 7, 8, 9));
-    const provider = PlayStation4Provider();
+    const playStation4 = PlayStation4Source();
 
-    await provider.collect(settings());
-    final result = await provider.collect(settings());
+    await playStation4.collect(settings());
+    final result = await playStation4.collect(settings());
 
     expect(result.imported, 0);
     expect(result.skipped, 1);
@@ -82,11 +81,11 @@ void main() {
     );
   });
 
-  test('imports nothing while the provider is disabled', () async {
+  test('imports nothing while the source is disabled', () async {
     final game = Directory(p.join(source.path, 'Journey'))..createSync();
     await File(p.join(game.path, 'Journey.jpg')).writeAsString('screenshot');
 
-    final result = await const PlayStation4Provider().collect(
+    final result = await const PlayStation4Source().collect(
       settings(enabled: false),
     );
 

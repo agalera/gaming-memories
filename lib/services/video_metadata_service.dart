@@ -46,9 +46,9 @@ class VideoMetadataService implements VideoDurationReader {
       try {
         await _writeMetadata(metadata, seconds);
       } on FileSystemException {
-        // Providers can read clips from a read-only folder. The probed
+        // Sources can read clips from a read-only folder. The probed
         // duration is still useful even when its optional cache cannot be
-        // written beside the source file.
+        // written beside the clip.
       }
       return duration;
     } on FileSystemException {

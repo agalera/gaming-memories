@@ -6,13 +6,13 @@ import '../models/app_settings.dart';
 import '../services/library_scanner.dart';
 import '../services/media_importer.dart';
 import '../services/folder_access_service.dart';
-import '../services/provider_paths.dart';
-import 'screenshot_provider.dart';
+import '../services/source_paths.dart';
+import 'screenshot_source.dart';
 
-class GuildWars2Provider
+class GuildWars2Source
     with SingleFolderRequirement
-    implements FolderBackedScreenshotProvider {
-  const GuildWars2Provider({this.importer = const MediaImporter()});
+    implements FolderBackedScreenshotSource {
+  const GuildWars2Source({this.importer = const MediaImporter()});
 
   final MediaImporter importer;
 
@@ -30,22 +30,22 @@ class GuildWars2Provider
   bool isEnabled(AppSettings settings) => settings.guildWars2.enabled;
 
   @override
-  ProviderFolderRequirement? folderRequirement(AppSettings settings) {
-    final provider = settings.guildWars2;
-    if (provider.useCustomPath) {
-      final path = provider.sourcePath.trim();
+  SourceFolderRequirement? folderRequirement(AppSettings settings) {
+    final config = settings.guildWars2;
+    if (config.useCustomPath) {
+      final path = config.sourcePath.trim();
       return path.isEmpty
           ? null
-          : ProviderFolderRequirement(
+          : SourceFolderRequirement(
               id: folderGrantId,
               path: expandUserPath(path),
               automatic: false,
             );
     }
-    final path = ProviderPaths.guildWars2Screenshots();
+    final path = SourcePaths.guildWars2Screenshots();
     return path == null
         ? null
-        : ProviderFolderRequirement(
+        : SourceFolderRequirement(
             id: folderGrantId,
             path: path,
             automatic: true,
@@ -102,7 +102,7 @@ class GuildWars2Provider
     }
 
     onProgress?.call(
-      const ProviderProgress(message: 'Scanning Guild Wars 2 screenshots…'),
+      const SourceProgress(message: 'Scanning Guild Wars 2 screenshots…'),
     );
     final files = await source
         .list(followLinks: false)
@@ -118,7 +118,7 @@ class GuildWars2Provider
     var skipped = 0;
     for (var index = 0; index < files.length; index++) {
       onProgress?.call(
-        ProviderProgress(
+        SourceProgress(
           message: 'Importing Guild Wars 2 screenshots…',
           completed: index,
           total: files.length,
@@ -136,16 +136,16 @@ class GuildWars2Provider
     }
 
     onProgress?.call(
-      ProviderProgress(
+      SourceProgress(
         message: 'Processed Guild Wars 2 screenshots.',
         completed: files.length,
         total: files.length,
       ),
     );
-    return ImportResult(provider: name, imported: imported, skipped: skipped);
+    return ImportResult(source: name, imported: imported, skipped: skipped);
   }
 
-  Directory? _sourceDirectory(ProviderSettings settings) {
+  Directory? _sourceDirectory(SourceSettings settings) {
     final path = settings.sourcePath.trim();
     if (settings.useCustomPath) {
       if (path.isEmpty) {
@@ -154,7 +154,7 @@ class GuildWars2Provider
       return Directory(expandUserPath(path));
     }
 
-    final automatic = ProviderPaths.guildWars2Screenshots();
+    final automatic = SourcePaths.guildWars2Screenshots();
     return automatic == null ? null : Directory(automatic);
   }
 

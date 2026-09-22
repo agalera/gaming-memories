@@ -8,12 +8,12 @@ import '../services/app_log.dart';
 import '../services/library_scanner.dart';
 import '../services/media_importer.dart';
 import '../services/mtp_client.dart';
-import 'screenshot_provider.dart';
+import 'screenshot_source.dart';
 
-class NintendoSwitch2Provider
+class NintendoSwitch2Source
     with SingleFolderRequirement
-    implements FolderBackedScreenshotProvider {
-  const NintendoSwitch2Provider({
+    implements FolderBackedScreenshotSource {
+  const NintendoSwitch2Source({
     this.importer = const MediaImporter(),
     this.mtpClient = const LibMtpClient(),
     this.usbDeviceFinder = const LinuxSysfsUsbDeviceFinder(),
@@ -40,14 +40,14 @@ class NintendoSwitch2Provider
   bool isEnabled(AppSettings settings) => settings.nintendoSwitch2.enabled;
 
   @override
-  ProviderFolderRequirement? folderRequirement(AppSettings settings) {
-    final provider = settings.nintendoSwitch2;
-    if (!provider.useCustomPath || provider.sourcePath.trim().isEmpty) {
+  SourceFolderRequirement? folderRequirement(AppSettings settings) {
+    final config = settings.nintendoSwitch2;
+    if (!config.useCustomPath || config.sourcePath.trim().isEmpty) {
       return null;
     }
-    return ProviderFolderRequirement(
+    return SourceFolderRequirement(
       id: folderGrantId,
-      path: expandUserPath(provider.sourcePath.trim()),
+      path: expandUserPath(config.sourcePath.trim()),
       automatic: false,
     );
   }
@@ -75,9 +75,9 @@ class NintendoSwitch2Provider
       throw const FileSystemException('Select a library folder first.');
     }
 
-    final provider = settings.nintendoSwitch2;
-    if (provider.useCustomPath) {
-      final sourcePath = provider.sourcePath.trim();
+    final config = settings.nintendoSwitch2;
+    if (config.useCustomPath) {
+      final sourcePath = config.sourcePath.trim();
       if (sourcePath.isEmpty) {
         throw const FileSystemException(
           'Choose a copied Nintendo Switch 2 album folder in Settings.',
@@ -112,7 +112,7 @@ class NintendoSwitch2Provider
     }
 
     onProgress?.call(
-      const ProviderProgress(message: 'Scanning Nintendo Switch 2 album…'),
+      const SourceProgress(message: 'Scanning Nintendo Switch 2 album…'),
     );
     final ignored = _ignoredFolders(settings);
     final captures = <({File file, String game})>[];
@@ -136,7 +136,7 @@ class NintendoSwitch2Provider
       } on FileSystemException catch (exception) {
         diagnosticLog.warning(
           'Nintendo Switch 2 could not read "${game.path}".',
-          category: 'provider',
+          category: 'source',
           error: exception,
         );
       }
@@ -150,7 +150,7 @@ class NintendoSwitch2Provider
     ProgressCallback? onProgress,
   ) async {
     onProgress?.call(
-      const ProviderProgress(message: 'Looking for a Nintendo Switch 2 album…'),
+      const SourceProgress(message: 'Looking for a Nintendo Switch 2 album…'),
     );
     final device = await usbDeviceFinder.find(
       vendorId: _nintendoVendorId,
@@ -166,7 +166,7 @@ class NintendoSwitch2Provider
     try {
       await mtpClient.ensureAvailable();
       onProgress?.call(
-        const ProviderProgress(
+        const SourceProgress(
           message: 'Reading Nintendo Switch 2 album folders…',
         ),
       );
@@ -178,15 +178,11 @@ class NintendoSwitch2Provider
       try {
         final plan = _planConsoleCollection(folders, files, stage, settings);
         if (plan.pulls.isEmpty) {
-          return ImportResult(
-            provider: name,
-            imported: 0,
-            skipped: plan.skipped,
-          );
+          return ImportResult(source: name, imported: 0, skipped: plan.skipped);
         }
 
         onProgress?.call(
-          ProviderProgress(
+          SourceProgress(
             message: 'Copying Nintendo Switch 2 captures over USB…',
             completed: 0,
             total: plan.pulls.length,
@@ -195,7 +191,7 @@ class NintendoSwitch2Provider
         await mtpClient.pull(
           plan.pulls,
           onProgress: (completed, total) => onProgress?.call(
-            ProviderProgress(
+            SourceProgress(
               message: 'Copying Nintendo Switch 2 captures over USB…',
               completed: completed,
               total: total,
@@ -208,7 +204,7 @@ class NintendoSwitch2Provider
           onProgress,
         );
         return ImportResult(
-          provider: name,
+          source: name,
           imported: result.imported,
           skipped: result.skipped + plan.skipped,
         );
@@ -218,7 +214,7 @@ class NintendoSwitch2Provider
         } on FileSystemException catch (exception) {
           diagnosticLog.warning(
             'Nintendo Switch 2 could not remove staging folder "${stage.path}".',
-            category: 'provider',
+            category: 'source',
             error: exception,
           );
         }
@@ -226,7 +222,7 @@ class NintendoSwitch2Provider
     } on MtpException catch (exception) {
       diagnosticLog.warning(
         'Nintendo Switch 2 MTP transfer failed.',
-        category: 'provider',
+        category: 'source',
         error: exception,
       );
       final warning = _mtpWarning(exception);
@@ -286,7 +282,7 @@ class NintendoSwitch2Provider
     for (var index = 0; index < captures.length; index++) {
       final capture = captures[index];
       onProgress?.call(
-        ProviderProgress(
+        SourceProgress(
           message: 'Importing Nintendo Switch 2 captures…',
           completed: index,
           total: captures.length,
@@ -311,13 +307,13 @@ class NintendoSwitch2Provider
       }
     }
     onProgress?.call(
-      ProviderProgress(
+      SourceProgress(
         message: 'Processed Nintendo Switch 2 captures.',
         completed: captures.length,
         total: captures.length,
       ),
     );
-    return ImportResult(provider: name, imported: imported, skipped: skipped);
+    return ImportResult(source: name, imported: imported, skipped: skipped);
   }
 
   Set<String> _ignoredFolders(AppSettings settings) => settings
