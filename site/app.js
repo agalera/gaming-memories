@@ -238,10 +238,6 @@ function setUpScreenshotCarousel() {
   start();
 }
 
-document.querySelectorAll('[data-year]').forEach((item) => {
-  item.textContent = new Date().getFullYear();
-});
-
 setUpNavigation();
 setUpTheme();
 setUpReveal();
