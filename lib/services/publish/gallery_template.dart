@@ -751,6 +751,31 @@ document.addEventListener('DOMContentLoaded', () => {
 
     lightbox.classList.add('active');
     history.replaceState(null, null, '#' + path.split('/').pop());
+    preloadNeighbours();
+  }
+
+  // The captures on either side of the one on screen, fetched ahead so the
+  // next and the previous show at once. Clips are left out: one weighs as
+  // much as many screenshots, and a video streams as it plays anyway. Only
+  // the two neighbours are held, so a long walk through an album does not
+  // keep every image it passed in memory.
+  let preloaded = new Map();
+  function preloadNeighbours() {
+    const kept = new Map();
+    if (items.length > 1) {
+      [currentIndex + 1, currentIndex - 1].forEach((index) => {
+        const item = items[(index + items.length) % items.length];
+        if (!item || item.querySelector('.video') !== null) return;
+        let image = preloaded.get(item.href);
+        if (!image) {
+          image = new Image();
+          image.decoding = 'async';
+          image.src = item.href;
+        }
+        kept.set(item.href, image);
+      });
+    }
+    preloaded = kept;
   }
 
   function closeLightbox() {

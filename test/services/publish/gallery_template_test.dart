@@ -371,6 +371,28 @@ void main() {
     expect(html, contains('caption.textContent = tile ? tile.dataset.date'));
   });
 
+  test('the lightbox fetches the neighbouring images, never a clip', () {
+    final album = folder(files: [file('a.png'), file('b.png')]);
+
+    final html = const GalleryTemplate(site: site).render(album.pages().first);
+
+    // Every open, arrow and swipe goes through showLightbox, so the preload
+    // runs on each of them.
+    final show = html.substring(html.indexOf('function showLightbox('));
+    expect(
+      show.substring(0, show.indexOf('function preloadNeighbours()')),
+      contains('preloadNeighbours();'),
+    );
+    final preload = html.substring(
+      html.indexOf('function preloadNeighbours()'),
+    );
+    final body = preload.substring(0, preload.indexOf('\n  }\n'));
+    expect(body, contains('[currentIndex + 1, currentIndex - 1]'));
+    expect(body, contains("item.querySelector('.video') !== null) return;"));
+    expect(body, contains('new Image()'));
+    expect(body, contains('preloaded = kept;'));
+  });
+
   test('the caption is cleared when the lightbox closes', () {
     final album = folder(files: [file('a.png')]);
 

@@ -169,7 +169,9 @@ then appears in the sidebar, above **Settings**.
 
 Each album becomes one page, with folder tiles, a screenshot and clip filter, a
 sort toggle, a light and dark theme that follows the reader's system setting,
-and a lightbox with keyboard, click and swipe navigation. The pages
+and a lightbox with keyboard, click and swipe navigation. The lightbox fetches
+the screenshots on either side of the open one, so the next one shows at once;
+clips are not fetched ahead. The pages
 are written to a folder of the app's own, so nothing is ever written between
 your captures. The upload merges the two: captures and their thumbnails from the
 library first, then the pages from that folder, so a page never arrives before
